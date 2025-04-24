@@ -1,0 +1,4 @@
+package de.jamsintown.config.main;
+
+public class Settings {
+}
