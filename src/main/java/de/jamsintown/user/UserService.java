@@ -1,7 +1,6 @@
 package de.jamsintown.user;
 
 import de.jamsintown.bild.Bild;
-import de.jamsintown.project.Project;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
@@ -50,17 +49,6 @@ public class UserService {
         return User.getSession();
       })
       .chain(s -> s.merge(user));
-  }
-
-  @WithTransaction
-  public Uni<Void> delete(long id) {
-    return findById(id)
-      .chain(u -> Uni.combine().all().unis(
-            Bild.delete("user.id", u.id),
-            Project.delete("user.id", u.id)
-          ).asTuple()
-          .chain(t -> u.delete())
-      );
   }
 
   public Uni<User> getCurrentUser() {
