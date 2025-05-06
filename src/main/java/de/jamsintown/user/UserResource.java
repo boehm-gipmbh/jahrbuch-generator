@@ -46,11 +46,6 @@ public class UserResource {
     return userService.update(user);
   }
 
-  @DELETE
-  @Path("{id}")
-  public Uni<Void> delete(@PathParam("id") long id) {
-    return userService.delete(id);
-  }
 
   @GET
   @Path("self")
