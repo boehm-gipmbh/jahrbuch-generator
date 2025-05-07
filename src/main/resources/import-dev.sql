@@ -18,18 +18,18 @@ INSERT INTO "user_roles" ("id", "role") VALUES (2, 'user')
     ON CONFLICT DO NOTHING;
 
 INSERT INTO "texte" ("id", "title", "text", "created", "version")
-VALUES (0, 'Test-Title', 'Test-Text',NOW(), 0)
+VALUES (10, 'Test-Title', 'Test-Text',NOW(), 0)
     ON CONFLICT DO NOTHING;
 INSERT INTO "bilder" ("id", "description", "pfad", "user_id", "text_id","created", "version")
-VALUES (0, 'test', 'Test-Pfad', 2, 0,NOW(), 0)
+VALUES (0, 'test', 'Test-Pfad', 2, 10,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 INSERT INTO "texte" ("id", "title", "text", "created", "version")
-VALUES (1, 'User-Title', 'User-Text',NOW(), 0)
+VALUES (11, 'User-Title', 'User-Text',NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 INSERT INTO "bilder" ("id", "description", "pfad", "user_id", "text_id","created", "version")
-VALUES (1, 'Usertest', 'User-Pfad', 1, 1,NOW(), 0)
+VALUES (1, 'Usertest', 'User-Pfad', 1, 11,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
-ALTER SEQUENCE IF EXISTS hibernate_sequence RESTART WITH 10;
+ALTER SEQUENCE IF EXISTS hibernate_sequence RESTART WITH 20;
