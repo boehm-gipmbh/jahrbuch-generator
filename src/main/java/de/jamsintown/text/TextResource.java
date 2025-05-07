@@ -20,20 +20,15 @@ public class TextResource {
         this.textService = textService;
     }
 
-/*    @GET
-    public Uni<List<Text>> get() {
-        return textService.listForUser();
-    }*/
-
     @GET
     public Uni<List<Text>> get() {
-        return textService.listAll();
+        return textService.listForUser();
     }
 
     @GET
     @Path("/{id}")
     public Uni<Text> getSingle(Long id) {
-        return Text.findById(id);
+        return textService.findByIdForUser(id);
     }
 
     @POST
