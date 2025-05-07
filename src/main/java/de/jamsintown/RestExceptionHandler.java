@@ -22,7 +22,7 @@ public class RestExceptionHandler implements ExceptionMapper<HibernateException>
       return Response.status(Response.Status.NOT_FOUND).entity(exception.getMessage()).build();
     }
     if (hasExceptionInChain(exception, StaleObjectStateException.class)
-      || hasPostgresErrorCode(exception, PG_UNIQUE_VIOLATION_ERROR)) {
+      || hasPostgresErrorCode(exception)) {
       return Response.status(Response.Status.CONFLICT).build();
     }
     return Response
@@ -35,16 +35,16 @@ public class RestExceptionHandler implements ExceptionMapper<HibernateException>
     return getExceptionInChain(throwable, exceptionClass).isPresent();
   }
 
-  private static boolean hasPostgresErrorCode(Throwable throwable, String code) {
+  private static boolean hasPostgresErrorCode(Throwable throwable) {
     return getExceptionInChain(throwable, PgException.class)
-      .filter(ex -> Objects.equals(ex.getCode(), code))
+      .filter(ex -> Objects.equals(ex.getSqlState(), RestExceptionHandler.PG_UNIQUE_VIOLATION_ERROR))
       .isPresent();
   }
 
   private static <T extends Throwable> Optional<T> getExceptionInChain(Throwable throwable, Class<T> exceptionClass) {
     while (throwable != null) {
       if (exceptionClass.isInstance(throwable)) {
-        return Optional.of((T) throwable);
+        return Optional.of(exceptionClass.cast(throwable));
       }
       throwable = throwable.getCause();
     }
