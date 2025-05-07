@@ -2,7 +2,7 @@ package de.jamsintown.bild;
 
 import de.jamsintown.config.main.ImageSettings;
 import de.jamsintown.user.UserService;
-import io.quarkus.security.UnauthorizedException;
+import io.quarkus.security.ForbiddenException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -32,7 +32,7 @@ public class BildService {
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Bild"))
                         .onItem().invoke(bild -> {
                             if (!user.equals(bild.user)) {
-                                throw new UnauthorizedException("You are not allowed to update this bild");
+                                throw new ForbiddenException("Access denied to bild with id: " + id);
                             }
                         }));
     }
