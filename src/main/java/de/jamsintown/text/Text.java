@@ -1,5 +1,6 @@
 package de.jamsintown.text;
 
+import de.jamsintown.user.User;
 import jakarta.persistence.*;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import org.hibernate.annotations.CreationTimestamp;
@@ -20,6 +21,9 @@ public class Text extends PanacheEntity {
 
     @Column(nullable = false)
     public String text;
+
+    @ManyToOne(optional = false)
+    public User user;
 
     @CreationTimestamp
     @Column(updatable = false, nullable = false)

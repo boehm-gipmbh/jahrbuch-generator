@@ -39,17 +39,20 @@ public class TextService {
     @WithTransaction
     public Uni<Text> create(Text text) {
         return userService.getCurrentUser()
-                .chain(user -> text.persistAndFlush());
+                .chain(user -> {
+                    text.user = user;
+                    return text.persistAndFlush();
+                });
     }
 
     public Uni<Text> findByIdForUser(Long id) {
-        return  bildService.listForUser()
-                        .chain(bilder -> {
-                            List<Long> textIds = bilder.stream().map(bild -> bild.text.id).toList();
-                            if (!textIds.contains(id)) {
-                                return Uni.createFrom().failure(new ForbiddenException("Access denied to text with id: " + id));
-                            }
-                            return Text.find("id = ?1 AND id IN ?2", id, textIds).firstResult();
-                        });
+        return bildService.listForUser()
+                .chain(bilder -> {
+                    List<Long> textIds = bilder.stream().map(bild -> bild.text.id).toList();
+                    if (!textIds.contains(id)) {
+                        return Uni.createFrom().failure(new ForbiddenException("Access denied to text with id: " + id));
+                    }
+                    return Text.find("id = ?1 AND id IN ?2", id, textIds).firstResult();
+                });
     }
 }

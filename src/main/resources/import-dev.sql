@@ -17,19 +17,19 @@ VALUES (2, 'detlef', 'drdboehm@jamsintown.de', '$2a$10$7b.9iLgXFVh.r1u9HEbMv.EDL
 INSERT INTO "user_roles" ("id", "role") VALUES (2, 'user')
     ON CONFLICT DO NOTHING;
 
-INSERT INTO "texte" ("id", "title", "text", "created", "version")
-VALUES (10, 'Test-Title', 'Test-Text',NOW(), 0)
+INSERT INTO "texte" ("id", "title", "text", "user_id","created", "version")
+VALUES (10, 'Detlef "ungekämmt" am Schreibtisch :-)', 'An einem Samstag wie diesem, ja da kann es Mittag werden, und kämmen ist erstmal nicht wichtig',2,NOW(), 0)
     ON CONFLICT DO NOTHING;
 INSERT INTO "bilder" ("id", "description", "pfad", "user_id", "text_id","created", "version")
-VALUES (0, 'test', 'Test-Pfad', 2, 10,NOW(), 0)
+VALUES (0, 'Detlef "ungekämmt" am Schreibtisch :-)', '/home/dboehm/git/git.quarkus/jahrbuch-generator.git/src/main/frontend/captures/test01.jpg', 2, 10,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
-INSERT INTO "texte" ("id", "title", "text", "created", "version")
-VALUES (11, 'User-Title', 'User-Text',NOW(), 0)
+INSERT INTO "texte" ("id", "title", "text", "user_id","created", "version")
+VALUES (11, 'Einfach nur Kabelsalat', 'Einfach nur mal in die Runde',1,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 INSERT INTO "bilder" ("id", "description", "pfad", "user_id", "text_id","created", "version")
-VALUES (1, 'Usertest', 'User-Pfad', 1, 11,NOW(), 0)
+VALUES (1, 'Einfach nur Kabelsalat', '/home/dboehm/git/git.quarkus/jahrbuch-generator.git/src/main/frontend/captures/test02.jpg', 1, 11,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 ALTER SEQUENCE IF EXISTS hibernate_sequence RESTART WITH 20;
