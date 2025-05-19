@@ -76,3 +76,35 @@ Create your first JPA entity
 Easily start your REST Web Services
 
 [Related guide section...](https://quarkus.io/guides/getting-started-reactive#reactive-jax-rs-resources)
+
+Here's your content formatted in **Markdown (`.md`)**:
+
+````markdown
+## Avoid gphoto2 USB Automount
+
+To avoid the automatic mounting of USB devices, including cameras, when using `gphoto2`, you can disable the automount feature in GNOME. Run `dconf-editor` and navigate to the section `org.gnome.desktop.media-handling` to disable the `automount` option. This will prevent all devices from being automatically mounted, including USB flash drives and other media devices.
+
+Alternatively, you can use `gsettings` to disable `automount` and `automount-open` as follows:
+
+```bash
+gsettings set org.gnome.desktop.media-handling automount "false"
+gsettings set org.gnome.desktop.media-handling automount-open "false"
+````
+
+To reverse these settings and enable automounting again, you can use:
+
+```bash
+gsettings set org.gnome.desktop.media-handling automount "true"
+gsettings set org.gnome.desktop.media-handling automount-open "true"
+```
+
+This method provides a way to control the automount behavior without affecting other devices.
+
+If you specifically want to target a camera or a specific USB device, you might need to use `udev` rules, but this can be complex and may affect other devices as well.
+
+> **Note:** KI-generierte Antwort. Verifizieren Sie die Fakten.
+
+```
+
+Let me know if you need anything else in Markdown or have any other questions!
+```
