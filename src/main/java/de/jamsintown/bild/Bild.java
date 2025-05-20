@@ -17,8 +17,12 @@ public class Bild extends PanacheEntity {
     @Column(length = 1000)
     public String description;
 
+    public Integer quality;
+
     @ManyToOne(optional = false)
     public User user;
+
+    public ZonedDateTime protect;
 
     @ManyToOne(optional = true)
     public Text text;
