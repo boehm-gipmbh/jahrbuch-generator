@@ -3,10 +3,7 @@ package de.jamsintown.bild;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.POST;
-import jakarta.ws.rs.Path;
+import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.jboss.resteasy.reactive.ResponseStatus;
 
@@ -30,7 +27,7 @@ public class BildResource {
     @GET
     @Path("/{id}")
     public Uni<Bild> getSingle(Long id) {
-        return bildService.getIdForUser(id);
+        return bildService.findById(id);
     }
 
     @POST
@@ -38,5 +35,11 @@ public class BildResource {
     @ResponseStatus(201)
     public Uni<Bild> create(Bild bild) {
         return bildService.create(bild);
+    }
+
+    @PUT
+    @Path("/{id}/protect")
+    public Uni<Boolean> setProtect(@PathParam("id") long id, boolean protect) {
+        return bildService.setProtect(id, protect);
     }
 }
