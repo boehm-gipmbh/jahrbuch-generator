@@ -1,5 +1,7 @@
 package de.jamsintown.bild;
 
+import de.jamsintown.capture.CaptureService;
+import de.jamsintown.config.main.ImageSettings;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -13,10 +15,12 @@ import java.util.List;
 @RolesAllowed("user")
 public class BildResource {
     private final BildService bildService;
+    private final CaptureService captureService;
 
     @Inject
-    public BildResource(BildService bildService) {
+    public BildResource(BildService bildService, CaptureService captureService) {
         this.bildService = bildService;
+        this.captureService = captureService;
     }
 
     @GET
@@ -41,5 +45,14 @@ public class BildResource {
     @Path("/{id}/protect")
     public Uni<Boolean> setProtect(@PathParam("id") long id, boolean protect) {
         return bildService.setProtect(id, protect);
+    }
+    // Define your REST endpoints here
+    // For example:
+    @POST
+    @Path("/capture")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @ResponseStatus(201)
+    public Uni<Bild> create(ImageSettings imageSettings) {
+        return captureService.create(imageSettings);
     }
 }
