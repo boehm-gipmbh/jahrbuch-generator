@@ -108,3 +108,35 @@ If you specifically want to target a camera or a specific USB device, you might 
 
 Let me know if you need anything else in Markdown or have any other questions!
 ```
+
+Natürlich! Hier ist die Information als **Markdown** formatiert:
+
+# Einstellen der Idle-Zeit – Canon EOS M50 Mark II
+
+Um den Zeitpunkt einzustellen, zu dem der **Bildschirm**, die **Kamera** und der **Sucher** der Canon EOS M50 Mark II automatisch ausgeschaltet werden, nachdem die Kamera im Ruhezustand war, gehen Sie wie folgt vor:
+
+## Schritte zur Einstellung der automatischen Abschaltung
+
+1. Wählen Sie im Menü die Option `[: Stromsparmodus]` aus.
+2. Wählen Sie eine der verfügbaren Optionen, um den Zeitpunkt der automatischen Abschaltung festzulegen.
+
+> **Hinweis:**  
+> Die Einstellungen `["Display Aus"]` und `["Autom. Absch."]` haben **keine Auswirkung**, wenn `["Eco-Modus"]` auf `["Ein"]` eingestellt ist.
+
+---
+
+## Energiesparmodus deaktivieren oder anpassen
+
+1. Öffnen Sie im Menü die Option `[: Stromsparmodus]`.
+2. Deaktivieren Sie die Option `["Autom. Absch."]`, wenn Sie möchten, dass die Kamera **nicht automatisch abschaltet**.
+3. Alternativ können Sie eine andere Zeitoption für `["Autom. Absch."]` wählen, um die automatische Abschaltung zeitlich anzupassen.
+
+> **Achtung:**  
+> Die Funktionen `["Display Aus"]` und `["Autom. Absch."]` **wirken auch dann**, wenn `["Eco-Modus"]` **aktiviert** ist.
+
+---
+
+*KI-generierte Antwort. Verifizieren Sie die Fakten vor Anwendung.*
+
+Wenn du möchtest, kann ich dir das auch in HTML oder als PDF vorbereiten.
+
