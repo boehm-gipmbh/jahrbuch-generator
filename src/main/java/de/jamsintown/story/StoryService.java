@@ -29,15 +29,31 @@ public class StoryService {
     public Uni<Story> findById(long id) {
         return userService.getCurrentUser()
                 .chain(user -> Story.<Story>findById(id)
-                        .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Project"))
+                        .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Story"))
                         .onItem().invoke(story -> {
                             if (!user.equals(story.user)) {
-                                throw new UnauthorizedException("You are not allowed to update this project");
+                                throw new UnauthorizedException("You are not allowed to update this story");
                             }
                         }));
     }
 
     public Uni<List<Story>> listForUser() {
+//        public Uni<List<Story>> listForUser() {
+//            return userService.getCurrentUser()
+//                    .chain(user -> Story.find("user", user).list())
+//                    .chain(stories -> Uni.combine().all().unis(
+//                            stories.stream().map(story ->
+//                                Uni.combine().all().unis(
+//                                    textService.,
+//                                    bildService.findByStoryId(story.id)
+//                                ).asTuple().invoke(tuple -> {
+//                                    story.text = tuple.getItem1();
+//                                    story.bild = tuple.getItem2();
+//                                })
+//                            ).concatenate().collect().asList()
+//                    ).replaceWith(stories));
+//        }
+//
         return userService.getCurrentUser()
                 .chain(user -> Story.find("user", user).list());
     }

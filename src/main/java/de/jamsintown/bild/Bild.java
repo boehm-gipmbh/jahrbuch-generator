@@ -1,5 +1,6 @@
 package de.jamsintown.bild;
 
+import de.jamsintown.story.Story;
 import de.jamsintown.text.Text;
 import de.jamsintown.user.User;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
@@ -24,8 +25,9 @@ public class Bild extends PanacheEntity {
 
     public ZonedDateTime protect;
 
-    @ManyToOne(optional = true)
-    public Text text;
+    @ManyToOne
+   // @JoinColumn(name = "story_id")
+    public Story story;
 
     @CreationTimestamp
     @Column(updatable = false, nullable = false)

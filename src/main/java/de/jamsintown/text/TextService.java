@@ -1,5 +1,6 @@
 package de.jamsintown.text;
 
+import de.jamsintown.bild.Bild;
 import de.jamsintown.bild.BildService;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
@@ -14,21 +15,24 @@ import java.util.List;
 @ApplicationScoped
 public class TextService {
     private final UserService userService;
-    private final BildService bildService;
+   // private final BildService bildService;
 
     @Inject
     public TextService(UserService userService, BildService bildService) {
         this.userService = userService;
-        this.bildService = bildService;
+        // this.bildService = bildService;
     }
 
     public Uni<List<Text>> listForUser() {
         return userService.getCurrentUser()
-                .chain(user -> bildService.listForUser()
-                        .chain(bilder -> {
-                            List<Long> textIds = bilder.stream().map(bild -> bild.text.id).toList();
-                            return Text.find("id IN ?1", textIds).list();
-                        }));
+                .chain(user -> Text.find("user", user).list());
+
+//        return userService.getCurrentUser()
+//                .chain(user -> bildService.listForUser()
+//                        .chain(bilder -> {
+//                            List<Long> textIds = bilder.stream().map(bild -> bild.text.id).toList();
+//                            return Text.find("id IN ?1", textIds).list();
+//                        }));
 
     }
 
@@ -46,13 +50,21 @@ public class TextService {
     }
 
     public Uni<Text> findByIdForUser(Long id) {
-        return bildService.listForUser()
-                .chain(bilder -> {
-                    List<Long> textIds = bilder.stream().map(bild -> bild.text.id).toList();
-                    if (!textIds.contains(id)) {
-                        return Uni.createFrom().failure(new ForbiddenException("Access denied to text with id: " + id));
-                    }
-                    return Text.find("id = ?1 AND id IN ?2", id, textIds).firstResult();
-                });
+        return userService.getCurrentUser()
+                .chain(user -> Text.<Text>findById(id)
+                        .onItem().ifNull().failWith(() -> new ForbiddenException("Access denied to text with id: " + id))
+                        .onItem().invoke(text -> {
+                            if (!user.equals(text.user)) {
+                                throw new ForbiddenException("Access denied to text with id: " + id);
+                            }
+                        }));
+//        return bildService.listForUser()
+//                .chain(bilder -> {
+//                    List<Long> textIds = bilder.stream().map(bild -> bild.text.id).toList();
+//                    if (!textIds.contains(id)) {
+//                        return Uni.createFrom().failure(new ForbiddenException("Access denied to text with id: " + id));
+//                    }
+//                    return Text.find("id = ?1 AND id IN ?2", id, textIds).firstResult();
+//                });
     }
 }

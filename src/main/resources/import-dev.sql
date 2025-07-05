@@ -26,8 +26,8 @@ INSERT INTO "user_roles" ("id", "role") VALUES (2, 'user')
 INSERT INTO "texte" ("id", "title", "text", "user_id","created", "version")
 VALUES (0, 'Detlef "ungekämmt" am Schreibtisch :-)', 'An einem Samstag wie diesem, ja da kann es Mittag werden, und kämmen ist erstmal nicht so wichtig',2,NOW(), 0)
     ON CONFLICT DO NOTHING;
-INSERT INTO "bilder" ("id", "quality", "description", "pfad", "user_id", "text_id","created", "version")
-VALUES (0, 1,'Detlef "ungekämmt" am Schreibtisch :-)', '/home/dboehm/git/git.quarkus/jahrbuch-generator.git/src/main/frontend/public/captures/test01.jpg', 2, 0,NOW(), 0)
+INSERT INTO "bilder" ("id", "quality", "description", "pfad", "user_id", "created", "version")
+VALUES (0, 1,'Detlef "ungekämmt" am Schreibtisch :-)', '/home/dboehm/git/git.quarkus/jahrbuch-generator.git/src/main/frontend/public/captures/test01.jpg', 2,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 INSERT into "stories" ("id", "title", "user_id", "created", "version")
@@ -41,8 +41,8 @@ INSERT INTO "texte" ("id", "title", "text", "user_id","created", "version")
 VALUES (1, 'Einfach nur Kabelsalat', 'Einfach nur mal in die Runde',1,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
-INSERT INTO "bilder" ("id", "quality", "description", "pfad", "user_id", "text_id","created", "version")
-VALUES (1, 2,'Einfach nur Kabelsalat', '/home/dboehm/git/git.quarkus/jahrbuch-generator.git/src/main/frontend/public/captures/test02.jpg', 1, 1,NOW(), 0)
+INSERT INTO "bilder" ("id", "quality", "description", "pfad", "user_id", "created", "version")
+VALUES (1, 2,'Einfach nur Kabelsalat', '/home/dboehm/git/git.quarkus/jahrbuch-generator.git/src/main/frontend/public/captures/test02.jpg', 1, NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 ALTER SEQUENCE IF EXISTS hibernate_sequence RESTART WITH 10;

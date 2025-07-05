@@ -24,13 +24,13 @@ public class Story extends PanacheEntity {
     @ManyToOne(optional = false)
     public User user;
 
-    @OneToMany
-    @JoinColumn(name = "story_id")
-    public java.util.List<Bild> items;
+//    @OneToMany(mappedBy = "story", fetch = FetchType.EAGER)
+//   // @JoinColumn(name = "story_id")
+//    public java.util.List<Bild> bilder;
 
-    @OneToMany
-    @JoinColumn(name = "story_id")
-    public java.util.List<Text> stories;
+//    @OneToMany(mappedBy = "story", fetch = FetchType.EAGER)
+//   // @JoinColumn(name = "story_id")
+//    public java.util.List<Text> texte;
 
     @CreationTimestamp
     @Column(updatable = false, nullable = false)
