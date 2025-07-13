@@ -13,24 +13,16 @@ import java.time.ZonedDateTime;
 @Table(
         name = "stories",
         uniqueConstraints = {
-                @UniqueConstraint(columnNames = {"title", "user_id"})
+                @UniqueConstraint(columnNames = {"name", "user_id"})
         }
 )
 public class Story extends PanacheEntity {
 
     @Column(nullable = false)
-    public String title;
+    public String name;
 
     @ManyToOne(optional = false)
     public User user;
-
-//    @OneToMany(mappedBy = "story", fetch = FetchType.EAGER)
-//   // @JoinColumn(name = "story_id")
-//    public java.util.List<Bild> bilder;
-
-//    @OneToMany(mappedBy = "story", fetch = FetchType.EAGER)
-//   // @JoinColumn(name = "story_id")
-//    public java.util.List<Text> texte;
 
     @CreationTimestamp
     @Column(updatable = false, nullable = false)
