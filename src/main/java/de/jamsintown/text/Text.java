@@ -10,18 +10,21 @@ import java.time.ZonedDateTime;
 @Entity
 @Table(name = "texte")
 public class Text extends PanacheEntity {
-    public Text(String text, String title) {
-        this.text = text;
+    public Text(String title) {
         this.title = title;
     }
+    @Column(nullable = true)
+    public String title;
+
+    @Column(length = 1000)
+    public String description;
+
+    public Integer priority;
+
     public Text() {
     }
 
-    @Column(nullable = false)
-    public String title;
-
-    @Column(nullable = false)
-    public String text;
+    public ZonedDateTime complete;
 
     @ManyToOne(optional = false)
     public User user;

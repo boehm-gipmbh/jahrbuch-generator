@@ -2,10 +2,7 @@ package de.jamsintown.text;
 
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.POST;
-import jakarta.ws.rs.Path;
+import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.jboss.resteasy.reactive.ResponseStatus;
 
@@ -36,6 +33,26 @@ public class TextResource {
     @ResponseStatus(201)
     public Uni<Text> create(Text text) {
         return textService.create(text);
+    }
+
+    @PUT
+    @Path("/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Uni<Text> update(@PathParam("id") Long id, Text text) {
+        text.id = id;
+        return textService.update(text);
+    }
+
+    @DELETE
+    @Path("/{id}")
+    public Uni<Void> delete(@PathParam("id") long id) {
+        return textService.delete(id);
+    }
+
+    @PUT
+    @Path("/{id}/complete")
+    public Uni<Boolean> setComplete(@PathParam("id") long id, boolean complete) {
+        return textService.setComplete(id, complete);
     }
 
 }

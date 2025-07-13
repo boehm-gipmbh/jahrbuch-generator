@@ -4,23 +4,38 @@ import de.jamsintown.bild.Bild;
 import de.jamsintown.bild.BildService;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
+import io.quarkus.hibernate.reactive.panache.common.runtime.ReactiveTransactional;
 import io.quarkus.panache.common.Sort;
 import io.quarkus.security.ForbiddenException;
+import io.quarkus.security.UnauthorizedException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.hibernate.ObjectNotFoundException;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 
 @ApplicationScoped
 public class TextService {
     private final UserService userService;
-   // private final BildService bildService;
+    // private final BildService bildService;
 
     @Inject
     public TextService(UserService userService, BildService bildService) {
         this.userService = userService;
         // this.bildService = bildService;
+    }
+
+    private Uni<Text> findById(long id) {
+        return userService.getCurrentUser()
+                .chain(user -> Text.<Text>findById(id)
+                        .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Text"))
+                        .onItem().invoke(text -> {
+                            if (!user.equals(text.user)) {
+                                throw new UnauthorizedException("You are not allowed to update this text");
+                            }
+                        }));
     }
 
     public Uni<List<Text>> listForUser() {
@@ -67,4 +82,28 @@ public class TextService {
 //                    return Text.find("id = ?1 AND id IN ?2", id, textIds).firstResult();
 //                });
     }
+
+    @WithTransaction
+    public Uni<Text> update(Text text) {
+        return findById(text.id)
+                .chain(t -> Text.getSession())
+                .chain(s -> s.merge(text));
+    }
+
+    @WithTransaction
+    public Uni<Void> delete(long id) {
+        return findById(id)
+                .chain(Text::delete);
+    }
+
+    @WithTransaction
+    public Uni<Boolean> setComplete(long id, boolean complete) {
+        return findById(id)
+                .chain(text -> {
+                    text.complete = complete ? ZonedDateTime.now() : null;
+                    return text.persistAndFlush();
+                })
+                .chain(task -> Uni.createFrom().item(complete));
+    }
+
 }
