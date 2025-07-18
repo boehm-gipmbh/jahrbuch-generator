@@ -1,10 +1,8 @@
 package de.jamsintown.text;
 
-import de.jamsintown.bild.Bild;
 import de.jamsintown.bild.BildService;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
-import io.quarkus.hibernate.reactive.panache.common.runtime.ReactiveTransactional;
 import io.quarkus.panache.common.Sort;
 import io.quarkus.security.ForbiddenException;
 import io.quarkus.security.UnauthorizedException;
