@@ -42,9 +42,23 @@ public class BildResource {
     }
 
     @PUT
-    @Path("/{id}/protect")
-    public Uni<Boolean> setProtect(@PathParam("id") long id, boolean protect) {
-        return bildService.setProtect(id, protect);
+    @Path("/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Uni<Bild> update(@PathParam("id") Long id, Bild text) {
+        text.id = id;
+        return bildService.update(text);
+    }
+
+    @DELETE
+    @Path("/{id}")
+    public Uni<Void> delete(@PathParam("id") long id) {
+        return bildService.delete(id);
+    }
+
+    @PUT
+    @Path("/{id}/complete")
+    public Uni<Boolean> setComplete(@PathParam("id") long id, boolean complete) {
+        return bildService.setComplete(id, complete);
     }
     // Define your REST endpoints here
     // For example:

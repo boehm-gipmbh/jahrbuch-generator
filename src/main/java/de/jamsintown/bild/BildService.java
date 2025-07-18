@@ -51,12 +51,25 @@ public class BildService {
     }
 
     @WithTransaction
-    public Uni<Boolean> setProtect(long id, boolean protect) {
+    public Uni<Bild> update(Bild bild) {
+        return findById(bild.id)
+                .chain(t -> Bild.getSession())
+                .chain(s -> s.merge(bild));
+    }
+
+    @WithTransaction
+    public Uni<Void> delete(long id) {
+        return findById(id)
+                .chain(Bild::delete);
+    }
+
+    @WithTransaction
+    public Uni<Boolean> setComplete(long id, boolean complete) {
         return findById(id)
                 .chain(bild -> {
-                    bild.protect = protect ? ZonedDateTime.now() : null;
+                    bild.complete = complete ? ZonedDateTime.now() : null;
                     return bild.persistAndFlush();
                 })
-                .chain(bild -> Uni.createFrom().item(protect));
+                .chain(bild -> Uni.createFrom().item(complete));
     }
 }
