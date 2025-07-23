@@ -4,11 +4,14 @@ import de.jamsintown.bild.Bild;
 import de.jamsintown.config.main.ImageSettings;
 import de.jamsintown.user.UserService;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.buffer.Buffer;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.ZonedDateTime;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,7 +24,7 @@ public class CaptureService {
 
     @Inject
     public CaptureService(UserService userService) {
-         this.userService = userService;
+        this.userService = userService;
     }
 
     public Uni<Bild> create(ImageSettings imageSettings) {
@@ -72,32 +75,38 @@ public class CaptureService {
             Process process = processBuilder.start();
 
             // Ausgabe lesen
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            String path = null;
-            while ((line = reader.readLine()) != null) {
-                System.out.println(line);
-                if ((path = extractPath(line)) != null) {
-                    break;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                String path = null;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println(line);
+                    if ((path = extractPath(line)) != null) {
+                        break;
+                    }
                 }
+                // Warten, bis der Prozess beendet ist
+                int exitCode = process.waitFor();
+                System.out.println("Exit-Code: " + exitCode);
+                Bild bild = new Bild();
+                if (path != null) {
+                    byte[] bytes = Files.readAllBytes(Paths.get(path));
+                    //  Buffer buffer = Buffer.buffer(bytes);
+                  //  bild.data = bytes;
+                }
+                bild.created = ZonedDateTime.now();
+                bild.pfad = path;
+                bild.description = "Schreib etwas zu dem Bild!";
+                bild.title = "Gib dem Bild einen Titel!";
+
+                return userService.getCurrentUser().chain(user -> {
+                    bild.user = user;
+                    return bild.persistAndFlush();
+                });
             }
-
-            // Warten, bis der Prozess beendet ist
-            int exitCode = process.waitFor();
-            System.out.println("Exit-Code: " + exitCode);
-            Bild bild = new Bild();
-            bild.created = ZonedDateTime.now();
-            bild.pfad = path;
-            bild.description = "Bild von Kamera";
-
-            return userService.getCurrentUser().chain(user -> {
-                bild.user = user;
-                return bild.persistAndFlush();
-            });
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return null;
+        return Uni.createFrom().failure(new RuntimeException("Failed to capture and process the image"));
     }
 
     public String extractPath(String input) {

@@ -14,6 +14,10 @@ public class Bild extends PanacheEntity {
     @Column(nullable = false)
     public String pfad;
 
+    @Lob
+    @Column(columnDefinition = "BYTEA")
+    public byte[] data;
+
     @Column(nullable = false)
     public String title;
 
