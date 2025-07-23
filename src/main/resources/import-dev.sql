@@ -30,8 +30,8 @@ INSERT INTO "bilder" ("id", "priority", "title","description", "pfad", "user_id"
 VALUES (0, 3,'Erstes Bild', 'Beschreibung bitte einfügen', '/home/dboehm/git/git.quarkus/jahrbuch-generator.git/src/main/frontend/public/captures/test01.jpg', 2,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
-INSERT into "stories" ("id", "name", "user_id", "created", "version")
-VALUES (0, 'Erste Story', 2, NOW(), 0)
+INSERT into "stories" ("id", "name", "description", "user_id", "created", "version")
+VALUES (0, 'Erste Story', 'Schreib was dazu', 2, NOW(), 0)
     ON CONFLICT DO NOTHING;
 UPDATE "bilder" SET "story_id" = 0 WHERE "id" = 0;
 UPDATE "texte" SET "story_id" = 0 WHERE "id" = 0;
