@@ -74,10 +74,10 @@ public class StoryService {
                 .chain(s -> s.merge(story));
     }
 
-//    @WithTransaction
-//    public Uni<Void> delete(long id) {
-//        return findById(id)
-//                .chain(p -> Task.update("project = null where project = ?1", p)
-//                        .chain(i -> p.delete()));
-//    }
+    @WithTransaction
+    public Uni<Void> delete(long id) {
+        return findById(id)
+                .chain(s -> Story.update("story = null where story = ?1", s)
+                        .chain(i -> s.delete()));
+    }
 }

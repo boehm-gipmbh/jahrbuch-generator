@@ -46,10 +46,10 @@ public class StoryResource {
     return storyService.update(story);
   }
 
-//  @DELETE
-//  @Path("/{id}")
-//  public Uni<Void> delete(@PathParam("id") long id) {
-//    return storyService.delete(id);
-//  }
+  @DELETE
+  @Path("/{id}")
+  public Uni<Void> delete(@PathParam("id") long id) {
+    return storyService.delete(id);
+  }
 
 }
