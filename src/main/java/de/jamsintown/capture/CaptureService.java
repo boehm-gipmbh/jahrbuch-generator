@@ -7,6 +7,7 @@ import io.smallrye.mutiny.Uni;
 import io.vertx.core.buffer.Buffer;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -19,6 +20,8 @@ import java.util.regex.Pattern;
 @ApplicationScoped
 public class CaptureService {
 
+    @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
+    String capturesPath;
 
     private final UserService userService;
 
