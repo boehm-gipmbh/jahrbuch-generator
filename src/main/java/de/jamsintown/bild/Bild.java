@@ -1,5 +1,6 @@
 package de.jamsintown.bild;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import de.jamsintown.story.Story;
 import de.jamsintown.user.User;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
@@ -13,10 +14,6 @@ import java.time.ZonedDateTime;
 public class Bild extends PanacheEntity {
     @Column(nullable = false)
     public String pfad;
-
-    @Lob
-    @Column(columnDefinition = "BYTEA")
-    public byte[] data;
 
     @Column(nullable = false)
     public String title;
