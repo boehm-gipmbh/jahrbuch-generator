@@ -27,7 +27,7 @@ INSERT INTO "texte" ("id", "priority","title", "description", "user_id","created
 VALUES (0, 3,'Erste Erinnerung', 'An einem Samstag wie diesem, ja da kann es Mittag werden, und kämmen ist erstmal nicht so wichtig',2,NOW(), 0)
     ON CONFLICT DO NOTHING;
 INSERT INTO "bilder" ("id", "priority", "title","description", "pfad", "user_id", "created", "version")
-VALUES (0, 3,'Erstes Bild', 'Beschreibung bitte einfügen', '/home/dboehm/git/git.quarkus/jahrbuch-generator.git/src/main/webui/public/captures/test01.jpg', 2,NOW(), 0)
+VALUES (0, 3,'Erstes Bild', 'Beschreibung bitte einfügen', '/test01.jpg', 2,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 INSERT into "stories" ("id", "name", "description", "user_id", "created", "version")
@@ -42,7 +42,7 @@ VALUES (1, 3,'Einfach nur Kabelsalat', 'Einfach nur mal in die Runde',1,NOW(), 0
     ON CONFLICT DO NOTHING;
 
 INSERT INTO "bilder" ("id", "priority", "title", "description", "pfad", "user_id", "created", "version")
-VALUES (1, 2,'Einfach nur Kabelsalat', '','/home/dboehm/git/git.quarkus/jahrbuch-generator.git/src/main/webui/public/captures/test02.jpg', 1, NOW(), 0)
+VALUES (1, 2,'Einfach nur Kabelsalat', '','/test02.jpg', 1, NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 ALTER SEQUENCE IF EXISTS hibernate_sequence RESTART WITH 10;
