@@ -24,25 +24,26 @@ INSERT INTO "user_roles" ("id", "role") VALUES (2, 'user')
     ON CONFLICT DO NOTHING;
 
 INSERT INTO "texte" ("id", "priority","title", "description", "user_id","created", "version")
-VALUES (0, 3,'Erste Erinnerung', 'An einem Samstag wie diesem, ja da kann es Mittag werden, und kämmen ist erstmal nicht so wichtig',2,NOW(), 0)
+VALUES (0, 3,'Erste Erinnerung', 'Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.',2,NOW(), 0)
     ON CONFLICT DO NOTHING;
 INSERT INTO "bilder" ("id", "priority", "title","description", "pfad", "user_id", "created", "version")
-VALUES (0, 3,'Erstes Bild', 'Beschreibung bitte einfügen', '/test01.jpg', 2,NOW(), 0)
+VALUES (0, 3,'Erstes Bild', 'Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.', '/test01.jpg', 2,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 INSERT into "stories" ("id", "name", "description", "user_id", "created", "version")
-VALUES (0, 'Erste Story', 'Schreib was dazu', 2, NOW(), 0)
+VALUES (0, 'Erste Story', 'Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.', 2, NOW(), 0)
     ON CONFLICT DO NOTHING;
 UPDATE "bilder" SET "story_id" = 0 WHERE "id" = 0;
 UPDATE "texte" SET "story_id" = 0 WHERE "id" = 0;
 
 
 INSERT INTO "texte" ("id", "priority","title", "description", "user_id","created", "version")
-VALUES (1, 3,'Einfach nur Kabelsalat', 'Einfach nur mal in die Runde',1,NOW(), 0)
+VALUES (1, 3,'Anderer Text', 'Nam liber tempor cum soluta nobis eleifend option congue nihil imperdiet doming id quod mazim placerat facer possim assum. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.
+',1,NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 INSERT INTO "bilder" ("id", "priority", "title", "description", "pfad", "user_id", "created", "version")
-VALUES (1, 2,'Einfach nur Kabelsalat', '','/test02.jpg', 1, NOW(), 0)
+VALUES (1, 2,'Anderes Bild', 'Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis. ','/test02.jpg', 1, NOW(), 0)
     ON CONFLICT DO NOTHING;
 
 ALTER SEQUENCE IF EXISTS hibernate_sequence RESTART WITH 10;
