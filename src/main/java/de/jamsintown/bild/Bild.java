@@ -39,4 +39,16 @@ public class Bild extends PanacheEntity {
     @Version
     public int version;
 
+    public void setPfad(String pfad) {
+        this.pfad = pfad;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+
+    }
 }
