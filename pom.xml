@@ -161,6 +161,31 @@
     </build>
     <profiles>
         <profile>
+            <id>fly</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.eclipse.jkube</groupId>
+                        <artifactId>kubernetes-maven-plugin</artifactId>
+                        <configuration>
+                            <images>
+                                <image>
+                                    <name>drdboehm/jahrbuch-generator:fly</name>
+                                    <build>
+                                        <dockerFile>${project.basedir}/Dockerfile.fly</dockerFile>
+                                        <assembly>
+                                            <name>fly</name>
+                                        </assembly>
+                                    </build>
+                                </image>
+                            </images>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
             <id>frontend</id>
             <build>
                 <plugins>
