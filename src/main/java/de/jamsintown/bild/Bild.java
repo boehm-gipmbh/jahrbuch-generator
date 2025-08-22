@@ -1,14 +1,17 @@
 package de.jamsintown.bild;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import de.jamsintown.story.Story;
 import de.jamsintown.user.User;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.ZonedDateTime;
 
+@Getter
+@Setter
 @Entity
 @Table(name = "bilder")
 public class Bild extends PanacheEntity {
@@ -21,6 +24,7 @@ public class Bild extends PanacheEntity {
     @Column(length = 1000)
     public String description;
 
+    @Column
     public Integer priority;
 
     @ManyToOne(optional = false)
@@ -39,16 +43,18 @@ public class Bild extends PanacheEntity {
     @Version
     public int version;
 
-    public void setPfad(String pfad) {
-        this.pfad = pfad;
-    }
-
-    public void setTitle(String title) {
-        this.title = title;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-
-    }
+//    public void setPfad(String pfad) {
+//        this.pfad = pfad;
+//    }
+//
+//    public void setTitle(String title) {
+//        this.title = title;
+//    }
+//
+//    public void setDescription(String description) {
+//        this.description = description;
+//    }
+//    public void setPriority(Integer priority) {
+//        this.priority = priority;
+//    }
 }
