@@ -7,13 +7,20 @@ import io.quarkus.security.ForbiddenException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.hibernate.ObjectNotFoundException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.io.IOException;
 
 import java.time.ZonedDateTime;
 import java.util.List;
 
 @ApplicationScoped
 public class BildService {
+
+    @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
+    private String capturesPath;
 
     private final UserService userService;
 
@@ -57,11 +64,21 @@ public class BildService {
                 .chain(s -> s.merge(bild));
     }
 
-    @WithTransaction
-    public Uni<Void> delete(long id) {
-        return findById(id)
-                .chain(Bild::delete);
-    }
+@WithTransaction
+public Uni<Void> delete(long id) {
+    return findFullPathById(id)
+            .chain(fullPath -> {
+                try {
+                    // Datei von der Festplatte löschen
+                    Files.deleteIfExists(Paths.get(fullPath));
+                    return Uni.createFrom().item(fullPath);
+                } catch (IOException e) {
+                    return Uni.createFrom().failure(new RuntimeException("Fehler beim Löschen der Datei: " + e.getMessage(), e));
+                }
+            })
+            .chain(path -> findById(id))
+            .chain(Bild::delete);
+}
 
     @WithTransaction
     public Uni<Boolean> setComplete(long id, boolean complete) {
@@ -71,5 +88,19 @@ public class BildService {
                     return bild.persistAndFlush();
                 })
                 .chain(bild -> Uni.createFrom().item(complete));
+    }
+
+    /**
+     * Ruft nur den Dateipfad eines Bildes anhand seiner ID ab
+     *
+     * @param id Die ID des Bildes
+     * @return Uni mit dem Pfad des Bildes oder Fehler, wenn nicht gefunden
+     */
+    private Uni<String> findFullPathById(Long id) {
+        return findById(id)
+                .map(bild -> capturesPath + bild.pfad.replaceFirst("^/", ""));
+    }
+
+    public void rotateBild(String string, int degrees) {
     }
 }
