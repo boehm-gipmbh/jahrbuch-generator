@@ -1,18 +1,21 @@
 package de.jamsintown.bild;
 
-import de.jamsintown.capture.CaptureService;
+import de.jamsintown.dtos.RotationDTO;
+import de.jamsintown.dtos.UploadConfigDTO;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.POST;
-import jakarta.ws.rs.Path;
+import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 
-import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.reactive.server.multipart.FormValue;
 import org.jboss.resteasy.reactive.server.multipart.MultipartFormDataInput;
+
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.geom.AffineTransform;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.io.InputStream;
@@ -22,6 +25,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.List;
 
 @Path("/api/v1/bilder")
 public class BilderUploadResource {
@@ -35,6 +39,12 @@ public class BilderUploadResource {
 
     @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
     private String capturesPath;
+
+    @ConfigProperty(name = "jahrbuch.upload.max-size", defaultValue = "5242880") // 5MB Standardwert
+    private long maxUploadSize;
+
+    @ConfigProperty(name = "jahrbuch.upload.allowed-types", defaultValue = ".jpg,.jpeg,.png,.gif")
+    private String allowedFileTypes;
 
     @POST
     @Path("/upload")
@@ -53,21 +63,39 @@ public class BilderUploadResource {
             String title = getFormValue(formParts, "title");
             String description = getFormValue(formParts, "description");
 
-
             if (fileParts == null || fileParts.isEmpty()) {
-              if (fileParts == null || fileParts.isEmpty()) {
-                    return Uni.createFrom().failure(
+                return Uni.createFrom().failure(
                         new WebApplicationException(
-                            "Keine Datei gefunden",
-                            Response.Status.BAD_REQUEST
+                                "Keine Datei gefunden",
+                                Response.Status.BAD_REQUEST
                         )
-                    );
-                }
+                );
             }
 
             FormValue filePart = fileParts.get(0);
             String fileName = filePart.getFileName();
             String fileExtension = getFileExtension(fileName);
+
+            // Überprüfung des Dateiformats
+            if (!isAllowedFileType(fileExtension)) {
+                return Uni.createFrom().failure(
+                        new WebApplicationException(
+                                "Nicht unterstütztes Dateiformat. Erlaubte Formate: " + allowedFileTypes,
+                                Response.Status.BAD_REQUEST
+                        )
+                );
+            }
+
+            // Überprüfung der Dateigröße
+            long fileSize = filePart.getFileItem().getFileSize();
+            if (fileSize > maxUploadSize) {
+                return Uni.createFrom().failure(
+                        new WebApplicationException(
+                                "Datei zu groß. Maximale Größe: " + (maxUploadSize / 1024 / 1024) + "MB",
+                                Response.Status.BAD_REQUEST
+                        )
+                );
+            }
 
             // Eindeutigen Dateinamen generieren
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
@@ -88,12 +116,10 @@ public class BilderUploadResource {
             bild.setPfad("/" + uniqueFileName);
             bild.setTitle(title);
             bild.setDescription(description);
-            return bildService.create(bild);
-            // Hier Speichern in der Datenbank...
+            bild.setPriority(3);  // set default priority to 3 (green)
 
-//            return Response.status(Response.Status.CREATED)
-//                    .entity(bild)
-//                    .build();
+            // hier Speicherung des Bildes in der Datenbank
+            return bildService.create(bild);
         } catch (Exception e) {
          return Uni.createFrom().failure(
                 new WebApplicationException(
@@ -102,6 +128,103 @@ public class BilderUploadResource {
                 )
             );
         }
+    }
+
+    /**
+     * Endpunkt zum Abrufen der Upload-Konfigurationen für das Frontend
+     */
+    @GET
+    @Path("/uploadconfig")
+    @Produces(MediaType.APPLICATION_JSON)
+    public UploadConfigDTO getUploadConfig() {
+        // Konvertiere String mit erlaubten Dateitypen in eine Liste
+        List<String> allowedTypesList = Arrays.asList(allowedFileTypes.split(","));
+
+        return new UploadConfigDTO(maxUploadSize, allowedTypesList);
+    }
+
+  @POST
+    @Path("/{id}/rotate")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Bild> rotateBild(@PathParam("id") Long id, RotationDTO rotation) {
+        return bildService.findById(id)
+            .onItem().transformToUni(bild -> {
+                if (bild == null) {
+                    return Uni.createFrom().failure(
+                        new WebApplicationException("Bild nicht gefunden", 404)
+                    );
+                }
+
+                // Pfad aus der Bild-Entität holen
+                String bildPfad = bild.getPfad();
+
+                // Vollständigen Dateipfad erstellen
+                java.nio.file.Path imagePath = Paths.get(capturesPath).resolve(bildPfad.substring(1));
+
+                // Bild rotieren
+                try {
+                    // Bild einlesen
+                    BufferedImage originalImage = ImageIO.read(imagePath.toFile());
+
+                    // Neue Bildgröße bestimmen
+                    int degrees = rotation.getDegrees();
+                    // Winkel normalisieren (auf 0-360 Grad)
+                    degrees = ((degrees % 360) + 360) % 360;
+                    int width = originalImage.getWidth();
+                    int height = originalImage.getHeight();
+
+                    BufferedImage rotatedImage;
+
+                    // Bildrotation durchführen
+                    if (degrees == 90 || degrees == 270) {
+                        rotatedImage = new BufferedImage(height, width, originalImage.getType());
+                    } else {
+                        rotatedImage = new BufferedImage(width, height, originalImage.getType());
+                    }
+
+                    Graphics2D g2d = rotatedImage.createGraphics();
+                    AffineTransform transform = new AffineTransform();
+
+                    // Transformation für die Rotation
+                    if (degrees == 90) {
+                        transform.translate(height, 0);
+                        transform.rotate(Math.toRadians(90));
+                    } else if (degrees == 180) {
+                        transform.translate(width, height);
+                        transform.rotate(Math.toRadians(180));
+                    } else if (degrees == 270) {
+                        transform.translate(0, width);
+                        transform.rotate(Math.toRadians(270));
+                    }
+
+                    g2d.drawImage(originalImage, transform, null);
+                    g2d.dispose();
+
+                    // Dateiformat aus dem Dateinamen extrahieren
+                    String format = getFileFormat(imagePath.getFileName().toString());
+
+                    // Rotiertes Bild speichern
+                    ImageIO.write(rotatedImage, format, imagePath.toFile());
+
+                    return bildService.update(bild);
+                } catch (Exception e) {
+                    return Uni.createFrom().failure(
+                        new WebApplicationException("Fehler beim Rotieren: " + e.getMessage(),
+                            Response.Status.INTERNAL_SERVER_ERROR)
+                    );
+                }
+            });
+    }
+
+    // Hilfsmethode zum Extrahieren des Dateiformats
+    private String getFileFormat(String fileName) {
+        String extension = getFileExtension(fileName);
+        // Entferne den Punkt vom Dateiformat
+        if (extension.startsWith(".")) {
+            extension = extension.substring(1);
+        }
+        return extension;
     }
 
     private String getFormValue(Map<String, List<FormValue>> formParts, String key) throws Exception {
@@ -118,5 +241,18 @@ public class BilderUploadResource {
             return fileName.substring(lastDot);
         }
         return "";
+    }
+
+    private boolean isAllowedFileType(String fileExtension) {
+        if (fileExtension.isEmpty()) {
+            return false;
+        }
+        String[] allowedTypes = allowedFileTypes.split(",");
+        for (String type : allowedTypes) {
+            if (fileExtension.equalsIgnoreCase(type)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
