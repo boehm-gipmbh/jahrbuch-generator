@@ -26,6 +26,18 @@
         <postgresql.serviceName>jbpostgresql</postgresql.serviceName>
         <jkube.enricher.jkube-project-label.group>${project.artifactId}</jkube.enricher.jkube-project-label.group>
     </properties>
+    <repositories>
+        <repository>
+            <id>quarkiverse</id>
+            <url>https://maven.repository.redhat.com/ga/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
 
     <dependencyManagement>
         <dependencies>
@@ -88,6 +100,13 @@
             <groupId>org.gphoto</groupId>
             <artifactId>gphoto2-java</artifactId>
             <version>1.5-SNAPSHOT</version>
+        </dependency>
+        <!-- Ersetze die aktuelle quarkus-lombok Dependency mit dieser: -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.30</version>
+            <scope>provided</scope>
         </dependency>
 
 <!--        <dependency>-->
