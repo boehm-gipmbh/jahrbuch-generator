@@ -14,12 +14,6 @@ INSERT INTO "user_roles" ("id", "role") VALUES (1, 'user')
     ON CONFLICT DO NOTHING;
 
 INSERT INTO "users" ("id", "name", "email", "password", "created", "version")
-VALUES (2, 'christophjess', 'info@christophjess.de','$2a$10$P/tywX2InCQVRR7AoN8Wgu9/W0KBnVinyfSMkxfzfoGKUvWiAi1hO', NOW(), 0)
-    ON CONFLICT DO NOTHING;
-INSERT INTO "user_roles" ("id", "role") VALUES (2, 'user')
-    ON CONFLICT DO NOTHING;
-
-INSERT INTO "users" ("id", "name", "email", "password", "created", "version")
 VALUES (3, 'abi85', 'abi85@newtown.de','$2a$10$P/tywX2InCQVRR7AoN8Wgu9/W0KBnVinyfSMkxfzfoGKUvWiAi1hO', NOW(), 0)
     ON CONFLICT DO NOTHING;
 INSERT INTO "user_roles" ("id", "role") VALUES (3, 'user')
