@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Token aus Datei lesen
-TOKEN_FILE="my-app.token.ssh"
+TOKEN_FILE="jahrbuch-generator.token.ssh"
 APP_NAME="jahrbuch-generator"  # Füge den App-Namen hier ein
 
 # Prüfen, ob die Token-Datei existiert
