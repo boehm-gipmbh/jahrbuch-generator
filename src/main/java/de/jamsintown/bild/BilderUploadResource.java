@@ -2,12 +2,14 @@ package de.jamsintown.bild;
 
 import de.jamsintown.dtos.RotationDTO;
 import de.jamsintown.dtos.UploadConfigDTO;
+import de.jamsintown.story.StoryService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 
 import jakarta.ws.rs.core.Response;
+import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.reactive.server.multipart.FormValue;
 import org.jboss.resteasy.reactive.server.multipart.MultipartFormDataInput;
@@ -27,14 +29,17 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
 
+@Slf4j
 @Path("/api/v1/bilder")
 public class BilderUploadResource {
 
     private final BildService bildService;
+    private final StoryService storyService;
 
     @Inject
-    public BilderUploadResource(BildService bildService) {
+    public BilderUploadResource(BildService bildService, StoryService storyService) {
         this.bildService = bildService;
+        this.storyService = storyService;
     }
 
     @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
@@ -62,6 +67,16 @@ public class BilderUploadResource {
             List<FormValue> fileParts = formParts.get("file");
             String title = getFormValue(formParts, "title");
             String description = getFormValue(formParts, "description");
+            // Story-ID aus dem Formular extrahieren
+            String storyIdStr = getFormValue(formParts, "storyId");
+            Long storyId = null;
+            if (storyIdStr != null && !storyIdStr.isEmpty()) {
+                try {
+                    storyId = Long.parseLong(storyIdStr);
+                } catch (NumberFormatException e) {
+                    log.error("Ungültige Story-ID: {}", storyIdStr);
+                }
+            }
 
             if (fileParts == null || fileParts.isEmpty()) {
                 return Uni.createFrom().failure(
@@ -118,14 +133,27 @@ public class BilderUploadResource {
             bild.setDescription(description);
             bild.setPriority(3);  // set default priority to 3 (green)
 
+            // Story finden und zuweisen wenn vorhanden
+            if (storyId != null) {
+                // Hier muss ein Story-Service injiziert werden
+                return storyService.findById(storyId)
+                        .onItem().transformToUni(story -> {
+                            if (story != null) {
+                                bild.setStory(story);
+                            }
+                            return bildService.create(bild);
+                        });
+            }
+
             // hier Speicherung des Bildes in der Datenbank
             return bildService.create(bild);
         } catch (Exception e) {
-         return Uni.createFrom().failure(
-                new WebApplicationException(
-                    "Fehler beim Upload: " + e.getMessage(),
-                    Response.Status.INTERNAL_SERVER_ERROR
-                )
+            log.error("Fehler beim Upload: {}", e.getMessage(), e);
+            return Uni.createFrom().failure(
+                    new WebApplicationException(
+                            "Fehler beim Upload: " + e.getMessage(),
+                            Response.Status.INTERNAL_SERVER_ERROR
+                    )
             );
         }
     }
@@ -143,78 +171,78 @@ public class BilderUploadResource {
         return new UploadConfigDTO(maxUploadSize, allowedTypesList);
     }
 
-  @POST
+    @POST
     @Path("/{id}/rotate")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Uni<Bild> rotateBild(@PathParam("id") Long id, RotationDTO rotation) {
         return bildService.findById(id)
-            .onItem().transformToUni(bild -> {
-                if (bild == null) {
-                    return Uni.createFrom().failure(
-                        new WebApplicationException("Bild nicht gefunden", 404)
-                    );
-                }
-
-                // Pfad aus der Bild-Entität holen
-                String bildPfad = bild.getPfad();
-
-                // Vollständigen Dateipfad erstellen
-                java.nio.file.Path imagePath = Paths.get(capturesPath).resolve(bildPfad.substring(1));
-
-                // Bild rotieren
-                try {
-                    // Bild einlesen
-                    BufferedImage originalImage = ImageIO.read(imagePath.toFile());
-
-                    // Neue Bildgröße bestimmen
-                    int degrees = rotation.getDegrees();
-                    // Winkel normalisieren (auf 0-360 Grad)
-                    degrees = ((degrees % 360) + 360) % 360;
-                    int width = originalImage.getWidth();
-                    int height = originalImage.getHeight();
-
-                    BufferedImage rotatedImage;
-
-                    // Bildrotation durchführen
-                    if (degrees == 90 || degrees == 270) {
-                        rotatedImage = new BufferedImage(height, width, originalImage.getType());
-                    } else {
-                        rotatedImage = new BufferedImage(width, height, originalImage.getType());
+                .onItem().transformToUni(bild -> {
+                    if (bild == null) {
+                        return Uni.createFrom().failure(
+                                new WebApplicationException("Bild nicht gefunden", 404)
+                        );
                     }
 
-                    Graphics2D g2d = rotatedImage.createGraphics();
-                    AffineTransform transform = new AffineTransform();
+                    // Pfad aus der Bild-Entität holen
+                    String bildPfad = bild.getPfad();
 
-                    // Transformation für die Rotation
-                    if (degrees == 90) {
-                        transform.translate(height, 0);
-                        transform.rotate(Math.toRadians(90));
-                    } else if (degrees == 180) {
-                        transform.translate(width, height);
-                        transform.rotate(Math.toRadians(180));
-                    } else if (degrees == 270) {
-                        transform.translate(0, width);
-                        transform.rotate(Math.toRadians(270));
+                    // Vollständigen Dateipfad erstellen
+                    java.nio.file.Path imagePath = Paths.get(capturesPath).resolve(bildPfad.substring(1));
+
+                    // Bild rotieren
+                    try {
+                        // Bild einlesen
+                        BufferedImage originalImage = ImageIO.read(imagePath.toFile());
+
+                        // Neue Bildgröße bestimmen
+                        int degrees = rotation.getDegrees();
+                        // Winkel normalisieren (auf 0-360 Grad)
+                        degrees = ((degrees % 360) + 360) % 360;
+                        int width = originalImage.getWidth();
+                        int height = originalImage.getHeight();
+
+                        BufferedImage rotatedImage;
+
+                        // Bildrotation durchführen
+                        if (degrees == 90 || degrees == 270) {
+                            rotatedImage = new BufferedImage(height, width, originalImage.getType());
+                        } else {
+                            rotatedImage = new BufferedImage(width, height, originalImage.getType());
+                        }
+
+                        Graphics2D g2d = rotatedImage.createGraphics();
+                        AffineTransform transform = new AffineTransform();
+
+                        // Transformation für die Rotation
+                        if (degrees == 90) {
+                            transform.translate(height, 0);
+                            transform.rotate(Math.toRadians(90));
+                        } else if (degrees == 180) {
+                            transform.translate(width, height);
+                            transform.rotate(Math.toRadians(180));
+                        } else if (degrees == 270) {
+                            transform.translate(0, width);
+                            transform.rotate(Math.toRadians(270));
+                        }
+
+                        g2d.drawImage(originalImage, transform, null);
+                        g2d.dispose();
+
+                        // Dateiformat aus dem Dateinamen extrahieren
+                        String format = getFileFormat(imagePath.getFileName().toString());
+
+                        // Rotiertes Bild speichern
+                        ImageIO.write(rotatedImage, format, imagePath.toFile());
+
+                        return bildService.update(bild);
+                    } catch (Exception e) {
+                        return Uni.createFrom().failure(
+                                new WebApplicationException("Fehler beim Rotieren: " + e.getMessage(),
+                                        Response.Status.INTERNAL_SERVER_ERROR)
+                        );
                     }
-
-                    g2d.drawImage(originalImage, transform, null);
-                    g2d.dispose();
-
-                    // Dateiformat aus dem Dateinamen extrahieren
-                    String format = getFileFormat(imagePath.getFileName().toString());
-
-                    // Rotiertes Bild speichern
-                    ImageIO.write(rotatedImage, format, imagePath.toFile());
-
-                    return bildService.update(bild);
-                } catch (Exception e) {
-                    return Uni.createFrom().failure(
-                        new WebApplicationException("Fehler beim Rotieren: " + e.getMessage(),
-                            Response.Status.INTERNAL_SERVER_ERROR)
-                    );
-                }
-            });
+                });
     }
 
     // Hilfsmethode zum Extrahieren des Dateiformats
