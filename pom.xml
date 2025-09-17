@@ -64,10 +64,6 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-hibernate-reactive-panache</artifactId>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>io.quarkus</groupId>-->
-<!--            <artifactId>quarkus-rest-jackson</artifactId>-->
-<!--        </dependency>-->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-jdbc-postgresql</artifactId>
@@ -109,14 +105,25 @@
             <scope>provided</scope>
         </dependency>
 
-<!--        <dependency>-->
-<!--            <groupId>io.quarkiverse.quinoa</groupId>-->
-<!--            <artifactId>quarkus-quinoa</artifactId>-->
-<!--            <version>2.5.5</version>-->
-<!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>io.quarkiverse.quinoa</groupId>-->
+        <!--            <artifactId>quarkus-quinoa</artifactId>-->
+        <!--            <version>2.5.5</version>-->
+        <!--        </dependency>-->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-awt</artifactId>
+        </dependency>
+
+<!--         Security Dependency wegen @PermitAll-->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-security</artifactId>
+        </dependency>
+        <!-- wegen @PermitAll-->
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
         </dependency>
 
         <!-- Test Dependencies -->
@@ -271,8 +278,11 @@
                                 </goals>
                                 <configuration>
                                     <systemPropertyVariables>
-                                        <native.image.path>${project.build.directory}/${project.build.finalName}-runner</native.image.path>
-                                        <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                                        <native.image.path>
+                                            ${project.build.directory}/${project.build.finalName}-runner
+                                        </native.image.path>
+                                        <java.util.logging.manager>org.jboss.logmanager.LogManager
+                                        </java.util.logging.manager>
                                         <maven.home>${maven.home}</maven.home>
                                     </systemPropertyVariables>
                                 </configuration>
@@ -287,8 +297,9 @@
                     -H:ResourceConfigurationFiles=resources-config.json,
                 </quarkus.native.additional-build-args>
                 <quarkus.native.container-build>true</quarkus.native.container-build>
-<!--                <quarkus.native.builder-image>quay.io/quarkus/ubi-quarkus-mandrel:22.3.0.1-Final-java17</quarkus.native.builder-image>-->
-                <quarkus.native.builder-image>quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-21</quarkus.native.builder-image>
+                <!--                <quarkus.native.builder-image>quay.io/quarkus/ubi-quarkus-mandrel:22.3.0.1-Final-java17</quarkus.native.builder-image>-->
+                <quarkus.native.builder-image>quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-21
+                </quarkus.native.builder-image>
             </properties>
         </profile>
     </profiles>
