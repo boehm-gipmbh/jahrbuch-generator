@@ -7,4 +7,4 @@ RUN chmod a+x /deployments/*
 CMD ./deployments/application                                               \
          -Dquarkus.http.host=0.0.0.0                                        \
          -Dquarkus.datasource.reactive.url=$DATABASE_URL                    \
-         -Dquarkus.hibernate-orm.database.generation=create
+         -Dquarkus.hibernate-orm.database.generation=none
