@@ -18,6 +18,7 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.io.InputStream;
@@ -170,6 +171,34 @@ public class BilderUploadResource {
 
         return new UploadConfigDTO(maxUploadSize, allowedTypesList);
     }
+
+    /**
+     * Einfacher Datei-Upload-Endpunkt, der eine Datei entgegennimmt und im Verzeichnis /data/captures speichert.
+     * Der Dateiname wird beibehalten.
+     */
+    @POST
+    @Path("/uploadcapture")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    public Response uploadFile(MultipartFormDataInput input) {
+        try {
+            Map<String, Collection<FormValue>> formValues = input.getValues();
+            List<FormValue> fileParts = new ArrayList<>(formValues.get("file"));
+            if (fileParts.isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST).entity("Keine Datei gefunden").build();
+            }
+            FormValue filePart = fileParts.get(0);
+            String fileName = filePart.getFileName();
+            try (InputStream fileInputStream = filePart.getFileItem().getInputStream()) {
+                java.nio.file.Path target = java.nio.file.Paths.get("/data/captures", fileName);
+                java.nio.file.Files.copy(fileInputStream, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            return Response.ok("File uploaded").build();
+        } catch (Exception e) {
+            return Response.serverError().entity("Upload failed: " + e.getMessage()).build();
+        }
+    }
+
+
 
     @POST
     @Path("/{id}/rotate")
