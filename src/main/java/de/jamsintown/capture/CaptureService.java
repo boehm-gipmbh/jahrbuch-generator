@@ -6,6 +6,7 @@ import de.jamsintown.user.UserService;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.concurrent.CompletableFuture;
@@ -20,10 +21,9 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.ZonedDateTime;
-import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
+@Slf4j
 @ApplicationScoped
 public class CaptureService {
 
@@ -62,15 +62,15 @@ public class CaptureService {
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
-                System.out.println(line);
+                log.info(line);
             }
 
             // Warten, bis der Prozess beendet ist
             int exitCode = process.waitFor();
-            System.out.println("Exit-Code: " + exitCode);
+            log.info("Exit-Code: {}", exitCode);
             return true;
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error(e.getMessage());
             return false;
         }
     }
@@ -90,14 +90,14 @@ public class CaptureService {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    System.out.println(line);
+                    log.info(line);
                     if ((originalPath = extractPath(line)) != null) {
                         break;
                     }
                 }
                 // Warten, bis der Prozess beendet ist
                 int exitCode = process.waitFor();
-                System.out.println("Exit-Code: " + exitCode);
+                log.info("Exit-Code: {}", exitCode);
                 final String capturedPath = originalPath;
                 if (capturedPath == null) {
                     return Uni.createFrom().failure(new RuntimeException("Konnte kein Bild aufnehmen"));
@@ -143,15 +143,19 @@ Das Verzeichnis ist in /home/dboehm/.gphoto/settings konfiguriert:
                     return bild;
                 }).chain(bild -> {
                     try {
-                        return bild.persistAndFlush();
+                        return bild.persistAndFlush()
+                                .replaceWith(bild)
+                                .invoke(b -> log.info("Bild in der DB gespeichert mit ID: {}", bild.id))
+                                .onFailure().invoke(e -> log.error("Fehler beim Persistieren: {}", e.getMessage(), e));
                     } catch (Exception e) {
-                        System.err.println("Fehler beim Speichern des Bildes: " + e.getMessage());
+                        log.error("Fehler beim Upload in die Cloud: {}", e.getMessage(), e);
                         return Uni.createFrom().failure(e);
                     }
                 });
             }
         } catch (InterruptedException | IOException e) {
-            throw new RuntimeException(e);
+            log.error("Fehler beim Upload in die Cloud: {}", e.getMessage(), e);
+            return Uni.createFrom().failure(e);
         }
     }
 
@@ -187,8 +191,9 @@ Das Verzeichnis ist in /home/dboehm/.gphoto/settings konfiguriert:
                         .build();
 
                 HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+                log.info("Bild erfolgreich in die Cloud hochgeladen: {}", file.getName());
             } catch (Exception e) {
-                e.printStackTrace();
+                log.error("Fehler beim Upload in die Cloud: {}", e.getMessage(), e);
             }
         });
     }
