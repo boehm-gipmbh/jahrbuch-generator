@@ -29,52 +29,52 @@ public class GPhotoJava {
         cameraWidgets.getNames()
                 .forEach(name -> {
                     switch (cameraWidgets.getType(name)) {
-                        case CameraWidgets.WidgetTypeEnum.Menu:
+                        case Menu:
                             System.out.println(cameraWidgets.getType(name).name().toUpperCase() + ": " + name + " = " + cameraWidgets.getValue(name));
                             System.out.println("Choices: " + cameraWidgets.listChoices(name));
                             System.out.println("Info: " + cameraWidgets.getInfo(name));
                             System.out.println("Label: " + cameraWidgets.getLabel(name));
                             break;
-                        case CameraWidgets.WidgetTypeEnum.Radio:
+                        case Radio:
                             System.out.println(cameraWidgets.getType(name).name().toUpperCase() + ": " + name + " = " + cameraWidgets.getValue(name));
                             System.out.println("Choices: " + cameraWidgets.listChoices(name));
                             System.out.println("Info: " + cameraWidgets.getInfo(name));
                             System.out.println("Label: " + cameraWidgets.getLabel(name));
                             break;
-                        case CameraWidgets.WidgetTypeEnum.Section:
+                        case Section:
                             System.out.println(cameraWidgets.getType(name).name().toUpperCase() + ": " + name + " = " + cameraWidgets.getValue(name));
                             System.out.println("Info: " + cameraWidgets.getInfo(name));
                             System.out.println("Label: " + cameraWidgets.getLabel(name));
                             break;
 
-                        case CameraWidgets.WidgetTypeEnum.Date:
+                        case Date:
                             System.out.println(cameraWidgets.getType(name).name().toUpperCase() + ": " + name + " = " + cameraWidgets.getValue(name));
                             System.out.println("Info: " + cameraWidgets.getInfo(name));
                             System.out.println("Label: " + cameraWidgets.getLabel(name));
                             break;
 
-                        case CameraWidgets.WidgetTypeEnum.Text:
+                        case Text:
                             System.out.println(cameraWidgets.getType(name).name().toUpperCase() + ": " + name + " = " + cameraWidgets.getValue(name));
                             System.out.println("Info: " + cameraWidgets.getInfo(name));
                             System.out.println("Label: " + cameraWidgets.getLabel(name));
                             break;
-                        case CameraWidgets.WidgetTypeEnum.Button:
+                        case Button:
                             System.out.println(cameraWidgets.getType(name).name().toUpperCase() + ": " + name + " = " + cameraWidgets.getValue(name));
                             System.out.println("Info: " + cameraWidgets.getInfo(name));
                             System.out.println("Label: " + cameraWidgets.getLabel(name));
                             break;
-                        case CameraWidgets.WidgetTypeEnum.Toggle:
+                        case Toggle:
                             System.out.println(cameraWidgets.getType(name).name().toUpperCase() + ": " + name + " = " + cameraWidgets.getValue(name));
                             System.out.println("Info: " + cameraWidgets.getInfo(name));
                             System.out.println("Label: " + cameraWidgets.getLabel(name));
                             break;
-                        case CameraWidgets.WidgetTypeEnum.Window:
+                        case Window:
                             System.out.println(cameraWidgets.getType(name).name().toUpperCase() + ": " + name + " = " + cameraWidgets.getValue(name));
                             System.out.println("Info: " + cameraWidgets.getInfo(name));
                             System.out.println("Label: " + cameraWidgets.getLabel(name));
                             break;
 
-                        case CameraWidgets.WidgetTypeEnum.Range:
+                        case Range:
                             System.out.println(cameraWidgets.getType(name).name().toUpperCase() + ": " + name + " = " + cameraWidgets.getValue(name));
                             System.out.println("Range: " + cameraWidgets.getRange(name));
                             System.out.println("Info: " + cameraWidgets.getInfo(name));
