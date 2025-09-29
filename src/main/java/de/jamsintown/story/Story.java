@@ -21,7 +21,7 @@ public class Story extends PanacheEntity {
     @Column(nullable = false)
     public String name;
 
-    @Column(length = 1000)
+    @Column
     public String description;
 
     @ManyToOne(optional = false)

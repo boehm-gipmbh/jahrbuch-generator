@@ -16,7 +16,7 @@ public class Text extends PanacheEntity {
     @Column(nullable = true)
     public String title;
 
-    @Column(length = 1000)
+    @Column
     public String description;
 
     public Integer priority;

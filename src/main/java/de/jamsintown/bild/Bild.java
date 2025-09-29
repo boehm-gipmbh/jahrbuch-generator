@@ -21,7 +21,7 @@ public class Bild extends PanacheEntity {
     @Column(nullable = false)
     public String title;
 
-    @Column(length = 1000)
+    @Column
     public String description;
 
     @Column
