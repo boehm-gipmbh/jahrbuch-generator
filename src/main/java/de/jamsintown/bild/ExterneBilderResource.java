@@ -1,5 +1,6 @@
 package de.jamsintown.bild;
 
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -15,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 
 @Path("/api/bilder/extern")
+@RolesAllowed("user")
 public class ExterneBilderResource {
     @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
     private String capturesPath;
