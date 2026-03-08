@@ -4,6 +4,7 @@ import de.jamsintown.dtos.RotationDTO;
 import de.jamsintown.dtos.UploadConfigDTO;
 import de.jamsintown.story.StoryService;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -32,6 +33,7 @@ import java.util.List;
 
 @Slf4j
 @Path("/api/v1/bilder")
+@RolesAllowed("user")
 public class BilderUploadResource {
 
     private final BildService bildService;
