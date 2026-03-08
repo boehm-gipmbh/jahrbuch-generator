@@ -191,7 +191,7 @@ public class BilderUploadResource {
             FormValue filePart = fileParts.get(0);
             String fileName = filePart.getFileName();
             try (InputStream fileInputStream = filePart.getFileItem().getInputStream()) {
-                java.nio.file.Path target = java.nio.file.Paths.get("/data/captures", fileName);
+                java.nio.file.Path target = java.nio.file.Paths.get(capturesPath, fileName);
                 java.nio.file.Files.copy(fileInputStream, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
             return Response.ok("File uploaded").build();
