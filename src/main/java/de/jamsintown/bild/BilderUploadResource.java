@@ -38,11 +38,13 @@ public class BilderUploadResource {
 
     private final BildService bildService;
     private final StoryService storyService;
+    private final io.vertx.mutiny.core.Vertx vertx;
 
     @Inject
-    public BilderUploadResource(BildService bildService, StoryService storyService) {
+    public BilderUploadResource(BildService bildService, StoryService storyService, io.vertx.mutiny.core.Vertx vertx) {
         this.bildService = bildService;
         this.storyService = storyService;
+        this.vertx = vertx;
     }
 
     @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
@@ -209,71 +211,51 @@ public class BilderUploadResource {
     public Uni<Bild> rotateBild(@PathParam("id") Long id, RotationDTO rotation) {
         return bildService.findById(id)
                 .onItem().transformToUni(bild -> {
-                    if (bild == null) {
-                        return Uni.createFrom().failure(
-                                new WebApplicationException("Bild nicht gefunden", 404)
-                        );
-                    }
-
-                    // Pfad aus der Bild-Entität holen
-                    String bildPfad = bild.getPfad();
-
-                    // Vollständigen Dateipfad erstellen
-                    java.nio.file.Path imagePath = Paths.get(capturesPath).resolve(bildPfad.substring(1));
-
-                    // Bild rotieren
-                    try {
-                        // Bild einlesen
-                        BufferedImage originalImage = ImageIO.read(imagePath.toFile());
-
-                        // Neue Bildgröße bestimmen
-                        int degrees = rotation.getDegrees();
-                        // Winkel normalisieren (auf 0-360 Grad)
-                        degrees = ((degrees % 360) + 360) % 360;
-                        int width = originalImage.getWidth();
-                        int height = originalImage.getHeight();
-
-                        BufferedImage rotatedImage;
-
-                        // Bildrotation durchführen
-                        if (degrees == 90 || degrees == 270) {
-                            rotatedImage = new BufferedImage(height, width, originalImage.getType());
-                        } else {
-                            rotatedImage = new BufferedImage(width, height, originalImage.getType());
-                        }
-
-                        Graphics2D g2d = rotatedImage.createGraphics();
-                        AffineTransform transform = new AffineTransform();
-
-                        // Transformation für die Rotation
-                        if (degrees == 90) {
-                            transform.translate(height, 0);
-                            transform.rotate(Math.toRadians(90));
-                        } else if (degrees == 180) {
-                            transform.translate(width, height);
-                            transform.rotate(Math.toRadians(180));
-                        } else if (degrees == 270) {
-                            transform.translate(0, width);
-                            transform.rotate(Math.toRadians(270));
-                        }
-
-                        g2d.drawImage(originalImage, transform, null);
-                        g2d.dispose();
-
-                        // Dateiformat aus dem Dateinamen extrahieren
-                        String format = getFileFormat(imagePath.getFileName().toString());
-
-                        // Rotiertes Bild speichern
-                        ImageIO.write(rotatedImage, format, imagePath.toFile());
-
-                        return bildService.update(bild);
-                    } catch (Exception e) {
-                        return Uni.createFrom().failure(
-                                new WebApplicationException("Fehler beim Rotieren: " + e.getMessage(),
-                                        Response.Status.INTERNAL_SERVER_ERROR)
-                        );
-                    }
+                    java.nio.file.Path imagePath = Paths.get(capturesPath).resolve(bild.getPfad().substring(1));
+                    // Datei-I/O auf Vert.x Worker-Thread auslagern, DB-Operationen bleiben auf dem EventLoop
+                    return vertx.<Bild>executeBlocking(() -> {
+                                try {
+                                    rotateImageFile(imagePath, rotation.getDegrees());
+                                } catch (Exception e) {
+                                    throw new WebApplicationException("Fehler beim Rotieren: " + e.getMessage(),
+                                            Response.Status.INTERNAL_SERVER_ERROR);
+                                }
+                                return bild;
+                            })
+                            .onItem().transformToUni(b -> bildService.update(b));
                 });
+    }
+
+    private void rotateImageFile(java.nio.file.Path imagePath, int degrees) throws Exception {
+        BufferedImage originalImage = ImageIO.read(imagePath.toFile());
+
+        degrees = ((degrees % 360) + 360) % 360;
+        int width = originalImage.getWidth();
+        int height = originalImage.getHeight();
+
+        BufferedImage rotatedImage;
+        if (degrees == 90 || degrees == 270) {
+            rotatedImage = new BufferedImage(height, width, originalImage.getType());
+        } else {
+            rotatedImage = new BufferedImage(width, height, originalImage.getType());
+        }
+
+        Graphics2D g2d = rotatedImage.createGraphics();
+        AffineTransform transform = new AffineTransform();
+        if (degrees == 90) {
+            transform.translate(height, 0);
+            transform.rotate(Math.toRadians(90));
+        } else if (degrees == 180) {
+            transform.translate(width, height);
+            transform.rotate(Math.toRadians(180));
+        } else if (degrees == 270) {
+            transform.translate(0, width);
+            transform.rotate(Math.toRadians(270));
+        }
+        g2d.drawImage(originalImage, transform, null);
+        g2d.dispose();
+
+        ImageIO.write(rotatedImage, getFileFormat(imagePath.getFileName().toString()), imagePath.toFile());
     }
 
     // Hilfsmethode zum Extrahieren des Dateiformats

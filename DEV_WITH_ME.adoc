@@ -1,0 +1,71 @@
+= DEV_WITH_ME: Native Image lokal testen
+:toc:
+:toc-title: Inhalt
+
+== 1. Fly.io DB-Proxy starten
+
+[source,bash]
+----
+fly proxy 5433:5432 -a jahrbuch-generator-pg
+----
+
+In einem separaten Terminal offen lassen.
+
+== 2. Native Image bauen
+
+Ohne Frontend (schneller):
+[source,bash]
+----
+./mvnw -Pnative clean package
+----
+
+Mit Frontend:
+[source,bash]
+----
+./mvnw -Pfrontend,native clean package
+----
+
+== 3. Native Runner starten
+
+[source,bash]
+----
+./target/*-runner -Dquarkus.datasource.reactive.url=postgresql://localhost:5433/postgres -Dquarkus.datasource.username=postgres -Dquarkus.datasource.password=yKTSyH4aXUsrB9e -Djahrbuch.captures.path=/home/dboehm/git/git.quarkus/jahrbuch-generator.git/captures/ -Djava.awt.headless=true
+----
+
+== 4. API testen mit curl
+
+=== Token holen
+
+[source,bash]
+----
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"name":"abi85","password":"abi1985#40years"}')
+----
+
+=== Bilder auflisten (erste ID ermitteln)
+
+[source,bash]
+----
+curl -s http://localhost:8080/api/v1/bilder -H "Authorization: Bearer $TOKEN" | jq '.[0].id'
+----
+
+=== Bild rotieren
+
+[source,bash]
+----
+curl -s -X POST http://localhost:8080/api/v1/bilder/BILD_ID/rotate \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"degrees":90}'
+----
+
+Erlaubte Werte für `degrees`: `90`, `180`, `270`.
+
+== 5. Für Fly.io deployen (nach erfolgreichem Test)
+
+[source,bash]
+----
+./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push
+flyctl deploy --image drdboehm/jahrbuch-generator:fly
+----
