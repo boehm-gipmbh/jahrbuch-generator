@@ -37,6 +37,12 @@ public class BildService {
                 .chain(user -> Bild.find("user", user).list());
     }
 
+    public Uni<Bild> findByPfad(String pfad) {
+        return userService.getCurrentUser()
+                .chain(user -> Bild.<Bild>find("pfad = ?1 and user = ?2", pfad, user).firstResult()
+                        .onItem().ifNull().failWith(() -> new ObjectNotFoundException((java.io.Serializable) pfad, "Bild")));
+    }
+
     public Uni<Bild> findById(Long id) {
         return userService.getCurrentUser()
                 .chain(user -> Bild.<Bild>findById(id)
