@@ -72,18 +72,19 @@ public class BildService {
 
 @WithTransaction
 public Uni<Void> delete(long id) {
-    return findFullPathById(id)
-            .chain(fullPath -> {
+    // Einmaliger DB-Lookup: Bild laden, Datei von Festplatte löschen, dann aus DB löschen
+    return findById(id)
+            .chain(bild -> {
+                String fullPath = capturesPath + bild.pfad.replaceFirst("^/", "");
                 try {
                     // Datei von der Festplatte löschen
                     Files.deleteIfExists(Paths.get(fullPath));
-                    return Uni.createFrom().item(fullPath);
                 } catch (IOException e) {
-                    return Uni.createFrom().failure(new RuntimeException("Fehler beim Löschen der Datei: " + e.getMessage(), e));
+                    return Uni.<Void>createFrom().failure(new RuntimeException("Fehler beim Löschen der Datei: " + e.getMessage(), e));
                 }
-            })
-            .chain(path -> findById(id))
-            .chain(Bild::delete);
+                // Bild aus der Datenbank löschen
+                return bild.delete();
+            });
 }
 
     @WithTransaction
@@ -96,17 +97,4 @@ public Uni<Void> delete(long id) {
                 .chain(bild -> Uni.createFrom().item(complete));
     }
 
-    /**
-     * Ruft nur den Dateipfad eines Bildes anhand seiner ID ab
-     *
-     * @param id Die ID des Bildes
-     * @return Uni mit dem Pfad des Bildes oder Fehler, wenn nicht gefunden
-     */
-    private Uni<String> findFullPathById(Long id) {
-        return findById(id)
-                .map(bild -> capturesPath + bild.pfad.replaceFirst("^/", ""));
-    }
-
-    public void rotateBild(String string, int degrees) {
-    }
 }
