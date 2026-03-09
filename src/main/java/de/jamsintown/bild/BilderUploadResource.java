@@ -227,35 +227,19 @@ public class BilderUploadResource {
     }
 
     private void rotateImageFile(java.nio.file.Path imagePath, int degrees) throws Exception {
-        BufferedImage originalImage = ImageIO.read(imagePath.toFile());
-
         degrees = ((degrees % 360) + 360) % 360;
-        int width = originalImage.getWidth();
-        int height = originalImage.getHeight();
+        if (degrees == 0) return;
 
-        BufferedImage rotatedImage;
-        if (degrees == 90 || degrees == 270) {
-            rotatedImage = new BufferedImage(height, width, originalImage.getType());
-        } else {
-            rotatedImage = new BufferedImage(width, height, originalImage.getType());
+        // ImageMagick statt javax.imageio — funktioniert zuverlässig im Native Image
+        Process process = new ProcessBuilder(
+                "convert", imagePath.toString(), "-rotate", String.valueOf(degrees), imagePath.toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(process.getInputStream().readAllBytes());
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new IOException("Bildrotation fehlgeschlagen (ImageMagick): " + output);
         }
-
-        Graphics2D g2d = rotatedImage.createGraphics();
-        AffineTransform transform = new AffineTransform();
-        if (degrees == 90) {
-            transform.translate(height, 0);
-            transform.rotate(Math.toRadians(90));
-        } else if (degrees == 180) {
-            transform.translate(width, height);
-            transform.rotate(Math.toRadians(180));
-        } else if (degrees == 270) {
-            transform.translate(0, width);
-            transform.rotate(Math.toRadians(270));
-        }
-        g2d.drawImage(originalImage, transform, null);
-        g2d.dispose();
-
-        ImageIO.write(rotatedImage, getFileFormat(imagePath.getFileName().toString()), imagePath.toFile());
     }
 
     // Hilfsmethode zum Extrahieren des Dateiformats

@@ -1,7 +1,7 @@
 # ubi-minimal statt quarkus-micro-image, da quarkus-awt fontconfig/freetype benötigt
 FROM registry.access.redhat.com/ubi9/ubi-minimal
 
-RUN microdnf install -y fontconfig freetype && microdnf clean all
+RUN microdnf install -y fontconfig freetype ImageMagick && microdnf clean all
 
 COPY fly/target/*-runner /deployments/application
 
