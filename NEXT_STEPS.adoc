@@ -19,8 +19,8 @@
 === 8. `console.log` in production ✅ ERLEDIGT
 `Story.js` — zwei Debug-Logs entfernt.
 
-=== 9. `SHOW_ROTATION_BUTTONS = false`
-`Bilder.js:52` — rotation buttons are silently disabled; the entire related code (~100 lines) is unreachable.
+=== 9. `SHOW_ROTATION_BUTTONS = false` ✅ ERLEDIGT
+Konstante war bereits auf `true` gesetzt (Buttons aktiv). Konstante und bedingten `{SHOW_ROTATION_BUTTONS && ...}` Wrapper entfernt — `<Box>` ist jetzt direktes JSX-Child.
 
 === 10. Empty stub methods in `BildService`
 * `takeBild()` (line 32) — empty body
