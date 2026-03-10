@@ -11,13 +11,13 @@
 === 6. `imageVersion` is shared across all images ✅ ERLEDIGT
 `Bilder.js` — `imageVersion` war ein globaler Zähler; auf pro-Bild-Map `imageVersions[bild.id]` umgestellt, sodass bei Rotation nur das betroffene Bild neu lädt.
 
-=== 7. `bildSort` in `Bilder.js:23-30`
-Both conditions compare `t1.id`/`t2.id` (not priority), so priority is effectively never used for sorting Bilder.
+=== 7. `bildSort` in `Bilder.js:23-30` ✅ ERLEDIGT
+`sortUtils.js` extrahiert mit `sortBy`, `byPriorityDesc`, `byIdDesc`. `bildSort = sortBy(byPriorityDesc, byIdDesc)` in `Bilder.js` und `Story.js`.
 
 == Dead Code / Leftovers
 
-=== 8. `console.log` in production
-`Story.js:60-61` — two debug logs left in.
+=== 8. `console.log` in production ✅ ERLEDIGT
+`Story.js` — zwei Debug-Logs entfernt.
 
 === 9. `SHOW_ROTATION_BUTTONS = false`
 `Bilder.js:52` — rotation buttons are silently disabled; the entire related code (~100 lines) is unreachable.
@@ -31,13 +31,13 @@ Both conditions compare `t1.id`/`t2.id` (not priority), so priority is effective
 * `TextService` — two commented blocks + unused `BildService` injection (lines 21–25, 43–81)
 * `Bild.java:46–59` — commented-out getters/setters (superseded by Lombok)
 
-=== 12. Wrong default filter params in `Story.js`
-`Story.js:48` — `filterText` and `filterBild` default params are `() => false` (filter everything out), which would show empty lists if no `storyId` is provided. Should be `() => true`.
+=== 12. Wrong default filter params in `Story.js` — KEIN BUG
+`Story` wird ausschließlich über `/bilder/story/:storyId` aufgerufen, daher greift `if (Boolean(story))` immer. `() => false` als Default zeigt während des Ladens eine leere Liste — das ist korrekt.
 
 == Code Quality
 
-=== 13. Duplicate `bildSort` function
-Defined identically in both `Bilder.js:23` and `Story.js:39`. Should be extracted to a shared util.
+=== 13. Duplicate `bildSort` function ✅ ERLEDIGT
+Beide Dateien verwenden jetzt `sortBy(byPriorityDesc, byIdDesc)` aus `sortUtils.js`.
 
 === 14. `TextService` constructor injects `BildService` but comments it out
 Unused injection — misleading.
