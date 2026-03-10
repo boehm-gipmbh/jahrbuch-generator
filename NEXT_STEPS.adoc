@@ -61,8 +61,14 @@ Konzept:
 
 Betroffene Klassen: `BilderUploadResource.java`, `ExterneBilderResource.java`, `Bilder.js`, `Story.js`, `AuthImage.js`.
 
-=== 18. No pagination
-`listForUser()` returns all Bilder/Texte at once. Performance will degrade as content grows.
+=== 18. Virtuelles Scrollen statt Pagination
+Klassische Pagination passt nicht zum Polling-Konzept (alle 10s) und würde DnD (Punkt 20) behindern, da alle Elemente im DOM verfügbar sein müssen.
+
+Besserer Ansatz: **Virtuelles Scrollen** — alle Daten werden geladen, aber nur die sichtbaren Elemente werden gerendert. Die Render-Performance bleibt damit auch bei vielen Bildern gut.
+
+Mögliche Bibliothek: `@tanstack/react-virtual` oder MUI `VirtualList`.
+
+Betroffene Komponenten: `Bilder.js`, `Story.js`.
 
 === 19. No story completion/progress indicator
 The `Story` entity has no aggregated completion state. The UI cannot show how many items in a story are marked complete without iterating client-side.
