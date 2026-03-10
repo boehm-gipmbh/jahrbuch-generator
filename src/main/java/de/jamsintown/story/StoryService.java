@@ -1,7 +1,5 @@
 package de.jamsintown.story;
 
-import de.jamsintown.bild.BildService;
-import de.jamsintown.text.TextService;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.security.UnauthorizedException;
@@ -16,14 +14,10 @@ import java.util.List;
 public class StoryService {
 
     private final UserService userService;
-    private final BildService bildService;
-    private final TextService textService;
 
     @Inject
-    public StoryService(UserService userService, BildService bildService, TextService textService) {
+    public StoryService(UserService userService) {
         this.userService = userService;
-        this.bildService = bildService;
-        this.textService = textService;
     }
 
     public Uni<Story> findById(long id) {
@@ -38,22 +32,6 @@ public class StoryService {
     }
 
     public Uni<List<Story>> listForUser() {
-//        public Uni<List<Story>> listForUser() {
-//            return userService.getCurrentUser()
-//                    .chain(user -> Story.find("user", user).list())
-//                    .chain(stories -> Uni.combine().all().unis(
-//                            stories.stream().map(story ->
-//                                Uni.combine().all().unis(
-//                                    textService.,
-//                                    bildService.findByStoryId(story.id)
-//                                ).asTuple().invoke(tuple -> {
-//                                    story.text = tuple.getItem1();
-//                                    story.bild = tuple.getItem2();
-//                                })
-//                            ).concatenate().collect().asList()
-//                    ).replaceWith(stories));
-//        }
-//
         return userService.getCurrentUser()
                 .chain(user -> Story.find("user", user).list());
     }

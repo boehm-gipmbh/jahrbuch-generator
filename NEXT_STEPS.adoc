@@ -25,10 +25,10 @@ Konstante war bereits auf `true` gesetzt (Buttons aktiv). Konstante und bedingte
 === 10. Empty stub methods in `BildService` ✅ ERLEDIGT
 `rotateBild()` war bereits entfernt. `takeBild()` entfernt, ungenutzter `ImageSettings`-Import bereinigt.
 
-=== 11. Commented-out code blocks
-* `StoryService.listForUser()` — large commented block (lines 41–55)
-* `TextService` — two commented blocks + unused `BildService` injection (lines 21–25, 43–81)
-* `Bild.java:46–59` — commented-out getters/setters (superseded by Lombok)
+=== 11. Commented-out code blocks ✅ ERLEDIGT
+* `StoryService` — kommentierter Block entfernt, `BildService`/`TextService` Injection entfernt (Punkt 15 mit erledigt)
+* `TextService` — zwei kommentierte Blöcke + `BildService` Injection entfernt (Punkt 14 mit erledigt)
+* `Bild.java` — auskommentierte Getter/Setter entfernt (durch Lombok ersetzt)
 
 === 12. Wrong default filter params in `Story.js` — KEIN BUG
 `Story` wird ausschließlich über `/bilder/story/:storyId` aufgerufen, daher greift `if (Boolean(story))` immer. `() => false` als Default zeigt während des Ladens eine leere Liste — das ist korrekt.
@@ -38,11 +38,11 @@ Konstante war bereits auf `true` gesetzt (Buttons aktiv). Konstante und bedingte
 === 13. Duplicate `bildSort` function ✅ ERLEDIGT
 Beide Dateien verwenden jetzt `sortBy(byPriorityDesc, byIdDesc)` aus `sortUtils.js`.
 
-=== 14. `TextService` constructor injects `BildService` but comments it out
-Unused injection — misleading.
+=== 14. `TextService` constructor injects `BildService` but comments it out ✅ ERLEDIGT
+Siehe Punkt 11.
 
-=== 15. `StoryService` imports `BildService`/`TextService` for dead code only
-Both injections exist only to support commented-out code and should be removed.
+=== 15. `StoryService` imports `BildService`/`TextService` for dead code only ✅ ERLEDIGT
+Siehe Punkt 11.
 
 === 16. Redundant annotation in `Text.java`
 `Text.java:16` — `@Column(nullable = true)` is redundant (it is the default).
