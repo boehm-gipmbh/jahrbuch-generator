@@ -1,0 +1,76 @@
+= Next Steps: Codebase Improvements
+:toc:
+:toc-title: Table of Contents
+:toclevels: 2
+
+== Bugs / Correctness Issues
+
+=== 5. Double DB lookup on delete ✅ ERLEDIGT
+`BildService.java` — `delete()` lud das Bild zweimal (via `findFullPathById` + `findById`). Jetzt einmaliger `findById`-Aufruf; Pfadberechnung und DB-Löschung im selben `chain`-Schritt. Tote Hilfsmethode `findFullPathById()` und leerer Stub `rotateBild()` entfernt. Unit-Tests in `BildServiceTest` ergänzt.
+
+=== 6. `imageVersion` is shared across all images ✅ ERLEDIGT
+`Bilder.js` — `imageVersion` war ein globaler Zähler; auf pro-Bild-Map `imageVersions[bild.id]` umgestellt, sodass bei Rotation nur das betroffene Bild neu lädt.
+
+=== 7. `bildSort` in `Bilder.js:23-30`
+Both conditions compare `t1.id`/`t2.id` (not priority), so priority is effectively never used for sorting Bilder.
+
+== Dead Code / Leftovers
+
+=== 8. `console.log` in production
+`Story.js:60-61` — two debug logs left in.
+
+=== 9. `SHOW_ROTATION_BUTTONS = false`
+`Bilder.js:52` — rotation buttons are silently disabled; the entire related code (~100 lines) is unreachable.
+
+=== 10. Empty stub methods in `BildService`
+* `takeBild()` (line 32) — empty body
+* `rotateBild()` (line 104) — empty body
+
+=== 11. Commented-out code blocks
+* `StoryService.listForUser()` — large commented block (lines 41–55)
+* `TextService` — two commented blocks + unused `BildService` injection (lines 21–25, 43–81)
+* `Bild.java:46–59` — commented-out getters/setters (superseded by Lombok)
+
+=== 12. Wrong default filter params in `Story.js`
+`Story.js:48` — `filterText` and `filterBild` default params are `() => false` (filter everything out), which would show empty lists if no `storyId` is provided. Should be `() => true`.
+
+== Code Quality
+
+=== 13. Duplicate `bildSort` function
+Defined identically in both `Bilder.js:23` and `Story.js:39`. Should be extracted to a shared util.
+
+=== 14. `TextService` constructor injects `BildService` but comments it out
+Unused injection — misleading.
+
+=== 15. `StoryService` imports `BildService`/`TextService` for dead code only
+Both injections exist only to support commented-out code and should be removed.
+
+=== 16. Redundant annotation in `Text.java`
+`Text.java:16` — `@Column(nullable = true)` is redundant (it is the default).
+
+== Missing Features / UX Gaps
+
+=== 17. No thumbnail/resize on upload
+Full-size images are served without resizing. This can be expensive on mobile or slow connections.
+
+=== 18. No pagination
+`listForUser()` returns all Bilder/Texte at once. Performance will degrade as content grows.
+
+=== 19. No story completion/progress indicator
+The `Story` entity has no aggregated completion state. The UI cannot show how many items in a story are marked complete without iterating client-side.
+
+== Repository / Infrastruktur
+
+=== 20. DnD-Funktionalität implementieren
+`@dnd-kit` ist installiert (`core`, `sortable`, `utilities`) und `DndContext` wrapp den Layout (Branch `feature-dnd`). Die eigentliche Drag-and-Drop-Logik fehlt noch.
+Offen: Was soll sortierbar sein? Bilder innerhalb einer Story? Stories untereinander?
+
+=== 21. `.gitignore` ergänzen
+Folgende Dateien liegen unversioniert im Projektroot und sollten in `.gitignore` eingetragen werden, damit sie nicht versehentlich committet werden:
+* `.wireguard.con` — VPN-Konfiguration mit privaten Keys
+* `data_dump.sql` — Datenbankdump mit potenziell echten Nutzerdaten
+* `schema_dump.sql` — Datenbankschema
+* `test-output.png` — temporäre Testausgabe
+
+=== 22. CI-Workflow fixen
+`.github/workflows/ci.yml` ruft `./gradlew build` auf — das Projekt verwendet aber Maven. Da GitHub Actions aktuell nicht aktiv genutzt wird und ein Wechsel zu GitLab geplant ist, hat dies niedrige Priorität. Bei GitLab-Migration eine neue Pipeline auf Basis von `./mvnw` erstellen.
