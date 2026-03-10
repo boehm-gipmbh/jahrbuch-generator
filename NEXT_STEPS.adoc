@@ -81,9 +81,8 @@ Umsetzungsoptionen:
 
 == Repository / Infrastruktur
 
-=== 20. DnD-Funktionalität implementieren
-`@dnd-kit` ist installiert (`core`, `sortable`, `utilities`) und `DndContext` wrapp den Layout (Branch `feature-dnd`). Die eigentliche Drag-and-Drop-Logik fehlt noch.
-Offen: Was soll sortierbar sein? Bilder innerhalb einer Story? Stories untereinander?
+=== 20. DnD-Funktionalität implementieren ✅ ERLEDIGT
+Bilder und Texte innerhalb einer Story sind per Drag-and-Drop sortierbar (`@dnd-kit/core`, `sortable`, `modifiers`). Position wird in der DB gespeichert (`position`-Feld auf `Bild` und `Text`). Optimistisches Update verhindert visuelles Zurückspringen. Drag-Handle über dem Inhalt zentriert (90° rotiertes `DragIndicatorIcon`).
 
 === 21. `.gitignore` ergänzen ✅ ERLEDIGT
 `.wireguard.con`, `data_dump.sql`, `schema_dump.sql`, `test-output.png`, `fly.toml`, `pg_migrate.sh` in `.gitignore` eingetragen.
@@ -126,6 +125,74 @@ Danach lokal `.env` aktualisieren:
 ----
 DEV_DB_PASSWORD=neues_passwort
 ----
+
+=== 25. Gemischte Bild+Text-Sortierung mit Layout-Modi
+
+Bilder und Texte innerhalb einer Story sollen in einer gemeinsamen, per DnD frei sortierbaren Liste gemischt werden können. Zusätzlich soll die Story-Ansicht zwischen verschiedenen Layout-Modi umschaltbar sein (1-spaltig, Zeitungsstil 2-/3-spaltig, Grid).
+
+==== Phase 1 – Backend: Gemeinsamer Reorder-Endpunkt
+
+Neuer Endpunkt `PUT /api/stories/{storyId}/reorder` in `StoryResource`/`StoryService`.
+
+Request-Body: geordnete Liste mit Typ-Tags:
+[source,json]
+----
+[{"type": "bild", "id": 3}, {"type": "text", "id": 7}, {"type": "bild", "id": 5}]
+----
+
+`StoryService.reorder()` weist jedem referenzierten `Bild` bzw. `Text` `position = index` zu (gemeinsamer Namespace). Die bestehenden Einzel-Endpunkte (`/bilder/reorder/{storyId}`, `/texte/reorder/{storyId}`) bleiben für die Einzel-Ansichten erhalten.
+
+Betroffene Klassen: `StoryResource.java`, `StoryService.java`
+
+==== Phase 2 – Frontend: Einheitlicher DnD-Kontext
+
+In `Story.js` werden Bilder und Texte zu einer gemeinsamen Liste zusammengeführt und nach `position` sortiert:
+
+[source,js]
+----
+const items = [
+  ...sortedBilder.map(b => ({ type: 'bild', id: `bild-${b.id}`, item: b })),
+  ...sortedTexte.map(t => ({ type: 'text', id: `text-${t.id}`, item: t })),
+].sort((a, b) => a.item.position - b.item.position);
+----
+
+Ein einzelner `DndContext` ersetzt die zwei getrennten. `handleDragEnd` ruft den neuen gemeinsamen Endpunkt auf (mit optimistischem Update auf beide Caches).
+
+Neue Komponente `SortableStoryItem.js` — rendert je nach Typ entweder `SortableBildCard` oder eine Card-Variante des Textes. Beide benötigen dieselbe äußere Container-Form (Box/Paper statt TableRow) damit alle Layout-Modi funktionieren.
+
+Neuer API-Endpunkt in `stories/api.js`: `reorderStory` mit optimistischem Update auf `getBilder`- und `getTexte`-Cache.
+
+Betroffene Dateien: `Story.js`, `SortableBildCard.js`, `SortableTextRow.js`, `stories/api.js`, neu: `SortableStoryItem.js`
+
+==== Phase 3 – Layout-Umschalter
+
+`ToggleButtonGroup` oben in der Story-Ansicht, Präferenz per `storyId` in `localStorage` gespeichert (kein Backend nötig).
+
+[cols="1,3,2"]
+|===
+|Modus |Darstellung |DnD-Strategie
+
+|`1col` |Einzelspalte, gestapelt |`verticalListSortingStrategy`
+|`2col` |CSS `columns: 2`, `break-inside: avoid` |`rectSortingStrategy`
+|`3col` |CSS `columns: 3` |`rectSortingStrategy`
+|`grid` |MUI Grid xs=12 sm=6 md=4 |`rectSortingStrategy`
+|===
+
+DnD operiert immer auf der flachen logischen Liste — die Spalten sind reines CSS-Display.
+
+Neue Dateien: `StoryLayoutSwitcher.js`, `SortableStoryItem.js`
+
+==== Offene Fragen (vor Umsetzung klären)
+
+* *TextRow-Form:* Kompakte TableRow als eigenen Layout-Modus behalten, oder im gemischten Modus immer Cards verwenden?
+* *Alter 2-Spalten-Split:* Als zusätzlichen Layout-Modus behalten (Texte links / Bilder rechts) oder vollständig ersetzen?
+* *Position-Konflikt beim ersten Speichern:* Bestehende Bilder und Texte haben alle `position=0` — erst beim ersten Speichern nach dem Deployment wird die Reihenfolge korrekt gesetzt. Akzeptabel?
+
+==== Umsetzungsreihenfolge
+
+. Backend: `StoryService.reorder()` + `StoryResource`-Endpunkt
+. Frontend: Listen zusammenführen, einheitlicher DnD-Kontext, `SortableStoryItem`, optimistisches Update
+. Frontend: Layout-Umschalter (rein additiv sobald Schritt 2 funktioniert)
 
 === 22. CI-Workflow fixen
 `.github/workflows/ci.yml` ruft `./gradlew build` auf — das Projekt verwendet aber Maven. Da GitHub Actions aktuell nicht aktiv genutzt wird und ein Wechsel zu GitLab geplant ist, hat dies niedrige Priorität. Bei GitLab-Migration eine neue Pipeline auf Basis von `./mvnw` erstellen.
