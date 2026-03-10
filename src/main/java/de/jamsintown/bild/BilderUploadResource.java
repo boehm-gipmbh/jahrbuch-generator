@@ -15,10 +15,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.reactive.server.multipart.FormValue;
 import org.jboss.resteasy.reactive.server.multipart.MultipartFormDataInput;
 
-import javax.imageio.ImageIO;
-import java.awt.*;
-import java.awt.geom.AffineTransform;
-import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -240,16 +236,6 @@ public class BilderUploadResource {
         if (exitCode != 0) {
             throw new IOException("Bildrotation fehlgeschlagen (ImageMagick): " + output);
         }
-    }
-
-    // Hilfsmethode zum Extrahieren des Dateiformats
-    private String getFileFormat(String fileName) {
-        String extension = getFileExtension(fileName);
-        // Entferne den Punkt vom Dateiformat
-        if (extension.startsWith(".")) {
-            extension = extension.substring(1);
-        }
-        return extension;
     }
 
     private String getFormValue(Map<String, List<FormValue>> formParts, String key) throws Exception {

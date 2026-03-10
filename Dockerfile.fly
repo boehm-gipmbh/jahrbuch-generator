@@ -1,7 +1,6 @@
-# ubi-minimal statt quarkus-micro-image, da quarkus-awt fontconfig/freetype benötigt
-FROM registry.access.redhat.com/ubi9/ubi-minimal
+FROM debian:bookworm-slim
 
-RUN microdnf install -y fontconfig freetype ImageMagick && microdnf clean all
+RUN apt-get update && apt-get install -y --no-install-recommends imagemagick && rm -rf /var/lib/apt/lists/*
 
 COPY fly/target/*-runner /deployments/application
 
