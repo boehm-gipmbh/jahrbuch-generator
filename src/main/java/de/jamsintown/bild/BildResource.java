@@ -66,6 +66,13 @@ public class BildResource {
     public Uni<Boolean> setComplete(@PathParam("id") long id, boolean complete) {
         return bildService.setComplete(id, complete);
     }
+
+    @PUT
+    @Path("/reorder/{storyId}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Uni<List<Bild>> reorder(@PathParam("storyId") Long storyId, List<Long> bildIds) {
+        return bildService.reorder(storyId, bildIds);
+    }
     @POST
     @Path("/capture")
     @Consumes(MediaType.APPLICATION_JSON)
