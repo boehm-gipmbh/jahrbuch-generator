@@ -21,6 +21,9 @@ public class Text extends PanacheEntity {
 
     public Integer priority;
 
+    @Column
+    public Integer position;
+
     public Text() {
     }
 
