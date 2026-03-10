@@ -67,5 +67,12 @@ Offen: Was soll sortierbar sein? Bilder innerhalb einer Story? Stories untereina
 === 21. `.gitignore` ergänzen ✅ ERLEDIGT
 `.wireguard.con`, `data_dump.sql`, `schema_dump.sql`, `test-output.png`, `fly.toml`, `pg_migrate.sh` in `.gitignore` eingetragen.
 
+=== 23. `ImageSettings` in `CaptureService` einbinden
+`ImageSettings.java` modelliert gphoto2-Kameraeinstellungen (Bildformat, ISO, Weißabgleich, Farbtemperatur, Farbraum) vollständig als DTO. Die Klasse ist aktuell ungenutzt — `CaptureService` löst nur blind den Auslöser aus (`gphoto2 --capture-image-and-download`), ohne Einstellungen zu setzen.
+
+Ziel: Vor dem Snapshot per `gphoto2 --set-config` die gewünschten Einstellungen aus `ImageSettings` auf die Kamera schreiben. Entweder als feste Konfiguration in `application.properties` oder als API-Parameter beim Capture-Aufruf.
+
+Betroffene Klassen: `CaptureService.java`, `BildService.java` (oder neue `takeBild()`-Implementierung), `ImageSettings.java`.
+
 === 22. CI-Workflow fixen
 `.github/workflows/ci.yml` ruft `./gradlew build` auf — das Projekt verwendet aber Maven. Da GitHub Actions aktuell nicht aktiv genutzt wird und ein Wechsel zu GitLab geplant ist, hat dies niedrige Priorität. Bei GitLab-Migration eine neue Pipeline auf Basis von `./mvnw` erstellen.
