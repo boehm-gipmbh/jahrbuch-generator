@@ -65,12 +65,8 @@ The `Story` entity has no aggregated completion state. The UI cannot show how ma
 `@dnd-kit` ist installiert (`core`, `sortable`, `utilities`) und `DndContext` wrapp den Layout (Branch `feature-dnd`). Die eigentliche Drag-and-Drop-Logik fehlt noch.
 Offen: Was soll sortierbar sein? Bilder innerhalb einer Story? Stories untereinander?
 
-=== 21. `.gitignore` ergänzen
-Folgende Dateien liegen unversioniert im Projektroot und sollten in `.gitignore` eingetragen werden, damit sie nicht versehentlich committet werden:
-* `.wireguard.con` — VPN-Konfiguration mit privaten Keys
-* `data_dump.sql` — Datenbankdump mit potenziell echten Nutzerdaten
-* `schema_dump.sql` — Datenbankschema
-* `test-output.png` — temporäre Testausgabe
+=== 21. `.gitignore` ergänzen ✅ ERLEDIGT
+`.wireguard.con`, `data_dump.sql`, `schema_dump.sql`, `test-output.png`, `fly.toml`, `pg_migrate.sh` in `.gitignore` eingetragen.
 
 === 22. CI-Workflow fixen
 `.github/workflows/ci.yml` ruft `./gradlew build` auf — das Projekt verwendet aber Maven. Da GitHub Actions aktuell nicht aktiv genutzt wird und ein Wechsel zu GitLab geplant ist, hat dies niedrige Priorität. Bei GitLab-Migration eine neue Pipeline auf Basis von `./mvnw` erstellen.

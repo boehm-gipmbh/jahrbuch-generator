@@ -45,3 +45,11 @@ nb-configuration.xml
 /.private.key-cert.pub
 /jahrbuch-generator.token.ssh
 /captures/
+
+# Sensible Dateien / lokale Dumps
+.wireguard.con
+data_dump.sql
+schema_dump.sql
+test-output.png
+fly.toml
+pg_migrate.sh
