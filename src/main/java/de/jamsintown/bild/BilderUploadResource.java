@@ -126,6 +126,7 @@ public class BilderUploadResource {
             try (InputStream fileInputStream = filePart.getFileItem().getInputStream()) {
                 Files.copy(fileInputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
             }
+            generateThumbnail(targetPath);
 
             // Bild-Entität erstellen und in der Datenbank speichern
             Bild bild = new Bild();
@@ -191,6 +192,7 @@ public class BilderUploadResource {
             try (InputStream fileInputStream = filePart.getFileItem().getInputStream()) {
                 java.nio.file.Path target = java.nio.file.Paths.get(capturesPath, fileName);
                 java.nio.file.Files.copy(fileInputStream, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                generateThumbnail(target);
             }
             return Response.ok("File uploaded").build();
         } catch (Exception e) {
@@ -212,6 +214,7 @@ public class BilderUploadResource {
                     return vertx.<Bild>executeBlocking(() -> {
                                 try {
                                     rotateImageFile(imagePath, rotation.getDegrees());
+                                    generateThumbnail(imagePath);
                                 } catch (Exception e) {
                                     throw new WebApplicationException("Fehler beim Rotieren: " + e.getMessage(),
                                             Response.Status.INTERNAL_SERVER_ERROR);
@@ -220,6 +223,49 @@ public class BilderUploadResource {
                             })
                             .onItem().transformToUni(b -> bildService.update(b));
                 });
+    }
+
+    @POST
+    @Path("/generate-thumbs")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Response> generateThumbs() {
+        return bildService.listForUser()
+                .chain(bilder -> vertx.<Integer>executeBlocking(() -> {
+                    int count = 0;
+                    for (Bild bild : bilder) {
+                        java.nio.file.Path originalPath = Paths.get(capturesPath).resolve(bild.getPfad().substring(1));
+                        java.nio.file.Path thumbPath = Paths.get(capturesPath).resolve(toThumbName(originalPath.getFileName().toString()));
+                        if (originalPath.toFile().exists() && !thumbPath.toFile().exists()) {
+                            try {
+                                generateThumbnail(originalPath);
+                                count++;
+                            } catch (Exception e) {
+                                log.warn("Thumbnail-Generierung fehlgeschlagen für {}: {}", bild.getPfad(), e.getMessage());
+                            }
+                        }
+                    }
+                    return count;
+                }))
+                .map(count -> Response.ok("Thumbnails generiert: " + count).build());
+    }
+
+    static String toThumbName(String fileName) {
+        int dot = fileName.lastIndexOf('.');
+        String base = dot > 0 ? fileName.substring(0, dot) : fileName;
+        return base + "_thumb.jpg";
+    }
+
+    private void generateThumbnail(java.nio.file.Path originalPath) throws Exception {
+        java.nio.file.Path thumbPath = originalPath.getParent().resolve(toThumbName(originalPath.getFileName().toString()));
+        Process process = new ProcessBuilder(
+                "convert", originalPath.toString(), "-resize", "400x>", thumbPath.toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(process.getInputStream().readAllBytes());
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            throw new IOException("Thumbnail-Generierung fehlgeschlagen (ImageMagick): " + output);
+        }
     }
 
     private void rotateImageFile(java.nio.file.Path imagePath, int degrees) throws Exception {

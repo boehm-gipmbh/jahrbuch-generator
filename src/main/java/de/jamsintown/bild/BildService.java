@@ -75,12 +75,12 @@ public Uni<Void> delete(long id) {
             .chain(bild -> {
                 String fullPath = capturesPath + bild.pfad.replaceFirst("^/", "");
                 try {
-                    // Datei von der Festplatte löschen
                     Files.deleteIfExists(Paths.get(fullPath));
+                    String fileName = Paths.get(fullPath).getFileName().toString();
+                    Files.deleteIfExists(Paths.get(capturesPath).resolve(de.jamsintown.bild.BilderUploadResource.toThumbName(fileName)));
                 } catch (IOException e) {
                     return Uni.<Void>createFrom().failure(new RuntimeException("Fehler beim Löschen der Datei: " + e.getMessage(), e));
                 }
-                // Bild aus der Datenbank löschen
                 return bild.delete();
             });
 }
