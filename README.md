@@ -1,4 +1,74 @@
-# reactive Project
+# Jahrbuch-Generator
+
+Full-Stack-Webanwendung zur Verwaltung und Generierung von Jahrbüchern und Fotoalben.
+Backend: Quarkus (reaktiv, Maven) | Frontend: React SPA
+
+---
+
+## Repository-Struktur
+
+Dieses Projekt besteht aus zwei Git-Repositories:
+
+| Repository | URL |
+|---|---|
+| Backend (dieses Repo) | `https://github.com/boehm-gipmbh/jahrbuch-generator.git` |
+| Frontend | `https://github.com/boehm-gipmbh/jahrbuch-generator-frontend.git` |
+
+Das Frontend ist als **Git-Submodul** unter `src/main/frontend/` eingebunden.
+
+### Erstmaliges Klonen (mit Submodul)
+
+```shell
+git clone --recurse-submodules https://github.com/boehm-gipmbh/jahrbuch-generator.git
+```
+
+### Bereits geklont, Submodul noch nicht initialisiert
+
+```shell
+git submodule update --init
+```
+
+### Submodul auf den neuesten Stand bringen
+
+```shell
+git submodule update --remote
+```
+
+### Nach einem `git pull` im Backend-Repo
+
+Wenn sich der referenzierte Submodul-Commit geändert hat:
+
+```shell
+git pull
+git submodule update
+```
+
+### Am Frontend arbeiten
+
+Das Frontend ist ein eigenständiges Git-Repository. Änderungen dort werden separat committet und gepusht:
+
+```shell
+cd src/main/frontend
+
+# Branch wechseln oder erstellen
+git checkout feature-dnd
+
+# Änderungen committen
+git add .
+git commit -m "Meine Änderung"
+git push
+
+# Zurück im Backend-Repo: neuen Submodul-Stand festhalten
+cd ../../..
+git add src/main/frontend
+git commit -m "Aktualisiere Frontend-Submodul auf neuen Commit"
+```
+
+> **Hinweis:** Das Backend-Repo speichert immer einen **konkreten Commit** des Frontend-Repos,
+> keinen Branch-Namen. Nach Frontend-Änderungen muss der neue Commit explizit im Backend-Repo
+> eingecheckt werden (wie oben gezeigt).
+
+---
 
 This project uses Quarkus, the Supersonic Subatomic Java Framework.
 
