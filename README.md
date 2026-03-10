@@ -5,6 +5,29 @@ Backend: Quarkus (reaktiv, Maven) | Frontend: React SPA
 
 ---
 
+## Konfiguration: `.env`-Datei
+
+Sensible Zugangsdaten (Datenbankpasswort etc.) werden **nicht** ins Git eingecheckt, sondern über eine lokale `.env`-Datei bereitgestellt. Quarkus lädt diese Datei automatisch beim Start.
+
+### Einrichtung
+
+```shell
+cp .env.template .env
+# Dann .env öffnen und die Werte eintragen
+```
+
+### Benötigte Variablen
+
+| Variable | Beschreibung | Verwendet in |
+|---|---|---|
+| `DEV_DB_USERNAME` | PostgreSQL-Benutzername (Dev) | `%dev.quarkus.datasource.username` |
+| `DEV_DB_PASSWORD` | PostgreSQL-Passwort (Dev) | `%dev.quarkus.datasource.password` |
+
+> **Hinweis:** Die `.env`-Datei ist in `.gitignore` eingetragen und wird nie committet.
+> Das Template `.env.template` zeigt alle benötigten Variablen ohne echte Werte.
+
+---
+
 ## Repository-Struktur
 
 Dieses Projekt besteht aus zwei Git-Repositories:
