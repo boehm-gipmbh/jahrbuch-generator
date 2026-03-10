@@ -13,7 +13,7 @@ public class Text extends PanacheEntity {
     public Text(String title) {
         this.title = title;
     }
-    @Column(nullable = true)
+    @Column
     public String title;
 
     @Column
