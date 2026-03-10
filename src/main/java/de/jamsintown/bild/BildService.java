@@ -1,6 +1,5 @@
 package de.jamsintown.bild;
 
-import de.jamsintown.config.main.ImageSettings;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.security.ForbiddenException;
@@ -27,9 +26,6 @@ public class BildService {
     @Inject
     public BildService(UserService userService) {
         this.userService = userService;
-    }
-
-    public void takeBild(ImageSettings imageSettings) {
     }
 
     public Uni<List<Bild>> listForUser() {
