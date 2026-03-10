@@ -70,8 +70,14 @@ Mögliche Bibliothek: `@tanstack/react-virtual` oder MUI `VirtualList`.
 
 Betroffene Komponenten: `Bilder.js`, `Story.js`.
 
-=== 19. No story completion/progress indicator
-The `Story` entity has no aggregated completion state. The UI cannot show how many items in a story are marked complete without iterating client-side.
+=== 19. Idee: Story-Fortschrittsanzeige
+Jedes `Bild` und `Text` hat ein `complete`-Flag, aber die `Story`-Entity kennt keinen aggregierten Fortschritt.
+
+Idee: Fortschrittsbalken oder Badge auf der Story-Karte in der Übersicht, z.B. "3 von 5 Bildern fertig".
+
+Umsetzungsoptionen:
+* Client-seitig: Bilder/Texte der Story filtern und `complete`-Flags zählen (keine Backend-Änderung nötig)
+* Server-seitig: Neuer Endpunkt oder berechnetes Feld in der Story-Response
 
 == Repository / Infrastruktur
 
