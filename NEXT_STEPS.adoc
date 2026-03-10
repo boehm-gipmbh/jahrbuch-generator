@@ -49,8 +49,17 @@ Siehe Punkt 11.
 
 == Missing Features / UX Gaps
 
-=== 17. No thumbnail/resize on upload
-Full-size images are served without resizing. This can be expensive on mobile or slow connections.
+=== 17. Thumbnail-Generierung beim Upload
+Bilder werden in Originalgröße gespeichert und ausgeliefert. Bei großen DSLR-Fotos kann das in der Listenansicht langsam sein.
+
+Ziel: Beim Upload automatisch eine Thumbnail-Version erzeugen (z.B. 400px breit) mit ImageMagick (bereits im Projekt für Rotation vorhanden).
+
+Konzept:
+* Upload speichert Original (`/20240101_abc.jpg`) und Thumbnail (`/20240101_abc_thumb.jpg`)
+* `ExterneBilderResource` bekommt optionalen Query-Parameter `?thumb=true`
+* Frontend: Listenansicht (`Bilder.js`, `Story.js`) lädt Thumbnail, Detailansicht (`EditBild`) lädt Original
+
+Betroffene Klassen: `BilderUploadResource.java`, `ExterneBilderResource.java`, `Bilder.js`, `Story.js`, `AuthImage.js`.
 
 === 18. No pagination
 `listForUser()` returns all Bilder/Texte at once. Performance will degrade as content grows.
