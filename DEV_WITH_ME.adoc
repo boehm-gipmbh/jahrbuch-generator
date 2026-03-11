@@ -72,16 +72,16 @@ docker run --rm --network=host \
 # Das ist bei einem Full Dump unkritisch — die Warnung kann ignoriert werden.
 ----
 
-Danach in `.env` den Port auf `5432` setzen (Zeile einkommentieren):
-
-[source]
-----
-DEV_DB_PORT=5432
-----
-
-`application.properties` liest den Port aus `${DEV_DB_PORT:5433}` — Standard bleibt 5433 (Fly.io Proxy), kein manuelles Anfassen der Datei nötig.
+Keine Änderung an `.env` oder `application.properties` nötig — stattdessen das `local`-Profil verwenden:
 
 === Quarkus Dev-Mode starten (mit lokaler DB)
+
+[source,bash]
+----
+./mvnw compile quarkus:dev -Dquarkus.profile=local
+----
+
+Mit Fly.io Proxy statt lokaler DB (Standard):
 
 [source,bash]
 ----
