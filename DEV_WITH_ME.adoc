@@ -14,17 +14,24 @@ DEV_DB_USERNAME=postgres
 DEV_DB_PASSWORD=<passwort aus Passwortmanager>
 ----
 
+IMPORTANT: Die Produktions-DB läuft auf PostgreSQL 17. Das lokale `pg_dump` (16) ist inkompatibel.
+Daher wird `pg_dump` aus einem PostgreSQL-17-Docker-Container ausgeführt (`--network=host` damit der Container den Fly.io-Proxy auf localhost:5433 erreicht).
+
+In allen folgenden Befehlen `$DEV_DB_PASSWORD` durch den Wert aus `.env` ersetzen.
+
 === Option A: Nur Dump erstellen
 
 [source,bash]
 ----
-# 1. Proxy öffnen (im Hintergrund laufen lassen)
+# 1. Proxy öffnen (separates Terminal, offen lassen)
 fly proxy 5433:5432 -a jahrbuch-generator-pg
 
-# 2. Dump erstellen
-PGPASSWORD=$DEV_DB_PASSWORD pg_dump \
-  -h localhost -p 5433 -U postgres -d postgres \
-  -f prod_dump_$(date +%Y%m%d).sql
+# 2. Dump via PostgreSQL-17-Container erstellen
+docker run --rm --network=host \
+  -e PGPASSWORD=$DEV_DB_PASSWORD \
+  postgres:17 \
+  pg_dump -h localhost -p 5433 -U postgres -d postgres \
+  > prod_dump_$(date +%Y%m%d).sql
 ----
 
 Die SQL-Datei ggf. außerhalb des Repos ablegen (`.gitignore` enthält nur `data_dump.sql` / `schema_dump.sql`).
@@ -33,21 +40,22 @@ Die SQL-Datei ggf. außerhalb des Repos ablegen (`.gitignore` enthält nur `data
 
 [source,bash]
 ----
-# 1. Lokale PostgreSQL starten
+# 1. Lokale PostgreSQL 17 starten
 docker run -d --rm --name postgres-dev \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
   -p 5432:5432 \
-  postgres:latest
+  postgres:17
 
 # 2. Proxy öffnen (separates Terminal)
 fly proxy 5433:5432 -a jahrbuch-generator-pg
 
-# 3. Dump direkt einspielen
-PGPASSWORD=$DEV_DB_PASSWORD pg_dump \
-  -h localhost -p 5433 -U postgres -d postgres \
-  | PGPASSWORD=postgres psql \
-  -h localhost -p 5432 -U postgres -d postgres
+# 3. Dump direkt einspielen (alles in einem Schritt)
+docker run --rm --network=host \
+  -e PGPASSWORD=$DEV_DB_PASSWORD \
+  postgres:17 \
+  pg_dump -h localhost -p 5433 -U postgres -d postgres \
+  | PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres
 ----
 
 Danach in `application.properties` den Dev-Port von `5433` auf `5432` ändern:
