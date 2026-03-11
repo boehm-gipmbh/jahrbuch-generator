@@ -28,6 +28,8 @@ In allen folgenden Befehlen `$DEV_DB_PASSWORD` durch den Wert aus `.env` ersetze
 fly proxy 5433:5432 -a jahrbuch-generator-pg
 
 # 2. Dump via PostgreSQL-17-Container erstellen
+export $(cat .env | xargs)
+
 docker run --rm --network=host \
   -e PGPASSWORD=$DEV_DB_PASSWORD \
   postgres:17 \
@@ -58,6 +60,8 @@ docker run -d --name postgres-dev \
 fly proxy 5433:5432 -a jahrbuch-generator-pg
 
 # 3. Dump direkt einspielen (alles in einem Schritt)
+export $(cat .env | xargs)
+
 docker run --rm --network=host \
   -e PGPASSWORD=$DEV_DB_PASSWORD \
   postgres:17 \
