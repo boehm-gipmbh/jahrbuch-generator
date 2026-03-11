@@ -1,6 +1,89 @@
-= DEV_WITH_ME: Native Image lokal testen
+= DEV_WITH_ME: Lokale Entwicklungsumgebung
 :toc:
 :toc-title: Inhalt
+:toclevels: 2
+
+== Produktions-DB lokal spiegeln / dumpen
+
+Vor Arbeiten an der Datenbank empfiehlt es sich, die Produktion lokal zu spiegeln oder einen Dump zu erstellen.
+Credentials liegen in `.env` (gitignored):
+
+[source]
+----
+DEV_DB_USERNAME=postgres
+DEV_DB_PASSWORD=<passwort aus Passwortmanager>
+----
+
+=== Option A: Nur Dump erstellen
+
+[source,bash]
+----
+# 1. Proxy öffnen (im Hintergrund laufen lassen)
+fly proxy 5433:5432 -a jahrbuch-generator-pg
+
+# 2. Dump erstellen
+PGPASSWORD=$DEV_DB_PASSWORD pg_dump \
+  -h localhost -p 5433 -U postgres -d postgres \
+  -f prod_dump_$(date +%Y%m%d).sql
+----
+
+Die SQL-Datei ggf. außerhalb des Repos ablegen (`.gitignore` enthält nur `data_dump.sql` / `schema_dump.sql`).
+
+=== Option B: Produktion in lokale Docker-DB spiegeln
+
+[source,bash]
+----
+# 1. Lokale PostgreSQL starten
+docker run -d --rm --name postgres-dev \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -p 5432:5432 \
+  postgres:latest
+
+# 2. Proxy öffnen (separates Terminal)
+fly proxy 5433:5432 -a jahrbuch-generator-pg
+
+# 3. Dump direkt einspielen
+PGPASSWORD=$DEV_DB_PASSWORD pg_dump \
+  -h localhost -p 5433 -U postgres -d postgres \
+  | PGPASSWORD=postgres psql \
+  -h localhost -p 5432 -U postgres -d postgres
+----
+
+Danach in `application.properties` den Dev-Port von `5433` auf `5432` ändern:
+
+[source,properties]
+----
+%dev.quarkus.datasource.reactive.url=postgresql://localhost:5432/postgres?ssl=false&sslmode=disable
+----
+
+=== Quarkus Dev-Mode starten (mit lokaler DB)
+
+[source,bash]
+----
+export $(cat .env | xargs)
+./mvnw compile quarkus:dev
+----
+
+Frontend (separates Terminal):
+
+[source,bash]
+----
+cd src/main/frontend && npm start
+----
+
+→ http://localhost:3000 (proxied API auf :8080)
+
+=== Captures lokal verfügbar machen
+
+[source,bash]
+----
+./fly-captures-download.sh
+----
+
+Bilder landen dann in `captures/` (= `%dev.jahrbuch.captures.path`).
+
+== Native Image lokal testen
 
 == 1. Fly.io DB-Proxy starten
 
