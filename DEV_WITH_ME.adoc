@@ -203,3 +203,13 @@ sudo -u postgres psql -c "\password postgres"
 #    und erneut neu laden
 sudo systemctl reload postgresql
 ----
+=== Instanz herunterfahren
+
+[source,bash]
+----
+# Einmalig stoppen
+sudo systemctl stop postgresql
+
+# Autostart beim Systemstart deaktivieren
+sudo systemctl disable postgresql
+----
