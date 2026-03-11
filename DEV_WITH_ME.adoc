@@ -2,6 +2,7 @@
 :toc:
 :toc-title: Inhalt
 :toclevels: 2
+:appendix-caption: Anhang
 
 == Produktions-DB lokal spiegeln / dumpen
 
@@ -162,4 +163,43 @@ Erlaubte Werte für `degrees`: `90`, `180`, `270`.
 ----
 ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push
 flyctl deploy --image drdboehm/jahrbuch-generator:fly
+----
+
+[appendix]
+== Lokale PostgreSQL-Instanz reparieren
+
+Die systemd-verwaltete PostgreSQL 16 auf Port 5432 wird in diesem Projekt nicht verwendet,
+kann aber wie folgt repariert werden.
+
+=== Passwort des postgres-Users zurücksetzen
+
+Da `sudo` direkt als Systemuser `postgres` authentifiziert, ist kein altes Passwort nötig:
+
+[source,bash]
+----
+sudo -u postgres psql -c "\password postgres"
+----
+
+Falls dieser Befehl selbst nach einem Passwort fragt (abhängig von `pg_hba.conf`), zuerst
+die Authentifizierungsmethode temporär auf `peer` umstellen:
+
+[source,bash]
+----
+# 1. pg_hba.conf öffnen
+sudo nano /etc/postgresql/16/main/pg_hba.conf
+
+# Zeile ändern:
+#   local   all   postgres   md5      (oder scram-sha-256)
+# →
+#   local   all   postgres   peer
+
+# 2. Konfiguration neu laden
+sudo systemctl reload postgresql
+
+# 3. Passwort setzen
+sudo -u postgres psql -c "\password postgres"
+
+# 4. pg_hba.conf wieder auf ursprüngliche Methode (md5 / scram-sha-256) zurücksetzen
+#    und erneut neu laden
+sudo systemctl reload postgresql
 ----
