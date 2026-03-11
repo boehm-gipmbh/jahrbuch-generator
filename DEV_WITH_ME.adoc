@@ -41,12 +41,18 @@ Die SQL-Datei ggf. außerhalb des Repos ablegen (`.gitignore` enthält nur `data
 
 [source,bash]
 ----
-# 1. Lokale PostgreSQL 17 starten
-docker run -d --rm --name postgres-dev \
+# 1. Lokale PostgreSQL 17 starten (mit persistentem Volume)
+docker volume create jahrbuch-pgdata
+
+docker run -d --name postgres-dev \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
   -p 5432:5432 \
+  -v jahrbuch-pgdata:/var/lib/postgresql/data \
   postgres:17
+
+# Beim nächsten Mal nur noch starten (Daten bleiben erhalten):
+# docker start postgres-dev
 
 # 2. Proxy öffnen (separates Terminal)
 fly proxy 5433:5432 -a jahrbuch-generator-pg
