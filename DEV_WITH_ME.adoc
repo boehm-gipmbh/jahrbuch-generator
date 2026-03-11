@@ -100,12 +100,27 @@ cd src/main/frontend && npm start
 
 === Captures lokal verfügbar machen
 
+Die Bilddateien sind nicht im DB-Dump enthalten — sie liegen auf Fly.io unter `/data/captures`.
+Das Skript `fly-captures-download.sh` lädt sie per SFTP herunter nach `captures/` (gitignored).
+
+==== Voraussetzung: Fly.io API Token
+
+Die Datei `jahrbuch-generator.token.ssh` muss im Projektroot liegen (gitignored).
+Token erzeugen:
+
+[source,bash]
+----
+flyctl tokens create deploy -x 999999h > jahrbuch-generator.token.ssh
+----
+
+==== Captures herunterladen
+
 [source,bash]
 ----
 ./fly-captures-download.sh
 ----
 
-Bilder landen dann in `captures/` (= `%dev.jahrbuch.captures.path`).
+Bilder landen in `captures/` — das ist das `%local.jahrbuch.captures.path`-Verzeichnis.
 
 == Native Image lokal testen
 
