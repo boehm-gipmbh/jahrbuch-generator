@@ -12,6 +12,8 @@ import org.hibernate.ObjectNotFoundException;
 
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class TextService {
@@ -73,6 +75,25 @@ public class TextService {
     public Uni<Void> delete(long id) {
         return findById(id)
                 .chain(Text::delete);
+    }
+
+    @WithTransaction
+    public Uni<List<Text>> reorder(Long storyId, List<Long> textIds) {
+        return userService.getCurrentUser()
+                .chain(user -> Text.<Text>find("story.id = ?1 and user = ?2", storyId, user).list()
+                        .chain(texte -> {
+                            Map<Long, Text> byId = texte.stream()
+                                    .collect(Collectors.toMap(t -> t.id, t -> t));
+                            for (int i = 0; i < textIds.size(); i++) {
+                                Text t = byId.get(textIds.get(i));
+                                if (t != null) {
+                                    t.position = i;
+                                }
+                            }
+                            return Text.getSession()
+                                    .chain(s -> s.flush())
+                                    .replaceWith(texte);
+                        }));
     }
 
     @WithTransaction

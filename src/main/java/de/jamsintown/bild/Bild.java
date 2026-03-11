@@ -27,6 +27,9 @@ public class Bild extends PanacheEntity {
     @Column
     public Integer priority;
 
+    @Column
+    public Integer position;
+
     @ManyToOne(optional = false)
     public User user;
 

@@ -55,4 +55,11 @@ public class TextResource {
         return textService.setComplete(id, complete);
     }
 
+    @PUT
+    @Path("/reorder/{storyId}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Uni<List<Text>> reorder(@PathParam("storyId") Long storyId, List<Long> textIds) {
+        return textService.reorder(storyId, textIds);
+    }
+
 }

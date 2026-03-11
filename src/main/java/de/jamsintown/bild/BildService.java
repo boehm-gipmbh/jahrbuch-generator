@@ -14,6 +14,8 @@ import java.io.IOException;
 
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class BildService {
@@ -82,6 +84,25 @@ public Uni<Void> delete(long id) {
                 return bild.delete();
             });
 }
+
+    @WithTransaction
+    public Uni<List<Bild>> reorder(Long storyId, List<Long> bildIds) {
+        return userService.getCurrentUser()
+                .chain(user -> Bild.<Bild>find("story.id = ?1 and user = ?2", storyId, user).list()
+                        .chain(bilder -> {
+                            Map<Long, Bild> byId = bilder.stream()
+                                    .collect(Collectors.toMap(b -> b.id, b -> b));
+                            for (int i = 0; i < bildIds.size(); i++) {
+                                Bild b = byId.get(bildIds.get(i));
+                                if (b != null) {
+                                    b.position = i;
+                                }
+                            }
+                            return Bild.getSession()
+                                    .chain(s -> s.flush())
+                                    .replaceWith(bilder);
+                        }));
+    }
 
     @WithTransaction
     public Uni<Boolean> setComplete(long id, boolean complete) {
