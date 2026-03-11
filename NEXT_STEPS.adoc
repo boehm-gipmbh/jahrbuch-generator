@@ -49,17 +49,12 @@ Siehe Punkt 11.
 
 == Missing Features / UX Gaps
 
-=== 17. Thumbnail-Generierung beim Upload
-Bilder werden in Originalgröße gespeichert und ausgeliefert. Bei großen DSLR-Fotos kann das in der Listenansicht langsam sein.
-
-Ziel: Beim Upload automatisch eine Thumbnail-Version erzeugen (z.B. 400px breit) mit ImageMagick (bereits im Projekt für Rotation vorhanden).
-
-Konzept:
-* Upload speichert Original (`/20240101_abc.jpg`) und Thumbnail (`/20240101_abc_thumb.jpg`)
-* `ExterneBilderResource` bekommt optionalen Query-Parameter `?thumb=true`
-* Frontend: Listenansicht (`Bilder.js`, `Story.js`) lädt Thumbnail, Detailansicht (`EditBild`) lädt Original
-
-Betroffene Klassen: `BilderUploadResource.java`, `ExterneBilderResource.java`, `Bilder.js`, `Story.js`, `AuthImage.js`.
+=== 17. Thumbnail-Generierung beim Upload ✅ ERLEDIGT
+Thumbnails (400px, JPEG) werden automatisch erzeugt bei Upload, uploadcapture und nach Rotation.
+`ExterneBilderResource` liefert Thumbnail via `?thumb=true` mit Fallback auf Original.
+Frontend (`AuthImage.js`, `Bilder.js`) lädt in der Listenansicht Thumbnails.
+`POST /generate-thumbs` generiert fehlende Thumbnails für bestehende Bilder nach.
+`BildService.delete()` löscht Thumbnail mit. `SortableBildCard.js` (nur `feature-dnd`) bekommt `thumb` beim Merge.
 
 === 18. Virtuelles Scrollen statt Pagination
 Klassische Pagination passt nicht zum Polling-Konzept (alle 10s) und würde DnD (Punkt 20) behindern, da alle Elemente im DOM verfügbar sein müssen.
