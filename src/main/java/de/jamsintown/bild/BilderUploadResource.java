@@ -221,7 +221,10 @@ public class BilderUploadResource {
                                 }
                                 return bild;
                             })
-                            .onItem().transformToUni(b -> bildService.bumpVersion(b.id));
+                            .onItem().transformToUni(b -> {
+                                b.setLastRotated(System.currentTimeMillis());
+                                return bildService.update(b);
+                            });
                 });
     }
 
