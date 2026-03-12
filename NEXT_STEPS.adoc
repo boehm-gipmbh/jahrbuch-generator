@@ -189,5 +189,41 @@ Neue Dateien: `StoryLayoutSwitcher.js`, `SortableStoryItem.js`
 . Frontend: Listen zusammenführen, einheitlicher DnD-Kontext, `SortableStoryItem`, optimistisches Update
 . Frontend: Layout-Umschalter (rein additiv sobald Schritt 2 funktioniert)
 
+=== 26. Flyway-Migrationen einführen
+
+Aktuell werden DB-Schemaänderungen manuell als SQL-Skripte ausgeführt (z.B. `migration_add_last_rotated.sql`). Flyway würde das automatisieren: Migrationen laufen beim App-Start automatisch, sind versioniert und eingecheckt.
+
+==== Aufwand
+
+Da das Projekt Hibernate Reactive nutzt, braucht Flyway eine zusätzliche synchrone JDBC-Datasource (Flyway unterstützt kein Reactive). Das bedeutet zwei Dependencies:
+
+[source,xml]
+----
+<dependency>quarkus-flyway</dependency>
+<dependency>quarkus-jdbc-postgresql</dependency>
+----
+
+Und zwei Datasources in `application.properties`:
+
+[source,properties]
+----
+# Reaktiv (bestehend, für die App)
+quarkus.datasource.reactive.url=...
+# JDBC (neu, nur für Flyway)
+quarkus.datasource.jdbc.url=jdbc:postgresql://...
+----
+
+==== Schritte
+
+. `pom.xml` — `quarkus-flyway` + `quarkus-jdbc-postgresql` hinzufügen
+. `application.properties` — JDBC-Datasource ergänzen, Hibernate DDL auf `validate` setzen
+. `V1__initial_schema.sql` — aktuelles Schema aus Prod dumpen (`pg_dump --schema-only`)
+. `V2__add_last_rotated.sql` — bisherige manuelle Migration einchecken
+. Künftige Schemaänderungen als `V3__...`, `V4__...` fortführen
+
+==== Nutzen
+
+Kein manuelles SQL mehr vor dem Deploy — Flyway prüft beim Start welche Migrationen noch fehlen und führt sie automatisch aus.
+
 === 22. CI-Workflow fixen
 `.github/workflows/ci.yml` ruft `./gradlew build` auf — das Projekt verwendet aber Maven. Da GitHub Actions aktuell nicht aktiv genutzt wird und ein Wechsel zu GitLab geplant ist, hat dies niedrige Priorität. Bei GitLab-Migration eine neue Pipeline auf Basis von `./mvnw` erstellen.
