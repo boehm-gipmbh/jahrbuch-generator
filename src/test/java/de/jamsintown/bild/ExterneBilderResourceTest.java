@@ -63,7 +63,7 @@ class ExterneBilderResourceTest {
 
     @Test
     void getBild_existierendeDatei_liefertOkResponse() {
-        Response response = resource.getBild("testbild.jpg").await().indefinitely();
+        Response response = resource.getBild("testbild.jpg", false).await().indefinitely();
 
         assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
         assertNotNull(response.getEntity());
@@ -72,7 +72,7 @@ class ExterneBilderResourceTest {
 
     @Test
     void getBild_nichtExistierendeDatei_liefert404() {
-        Response response = resource.getBild("nichtvorhanden.jpg").await().indefinitely();
+        Response response = resource.getBild("nichtvorhanden.jpg", false).await().indefinitely();
 
         assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
         assertEquals("Datei nicht gefunden", response.getEntity());
@@ -80,7 +80,7 @@ class ExterneBilderResourceTest {
 
     @Test
     void getBild_unterverzeichnis_liefertOkResponse() {
-        Response response = resource.getBild("verzeichnis/unterbild.png").await().indefinitely();
+        Response response = resource.getBild("verzeichnis/unterbild.png", false).await().indefinitely();
 
         assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
         assertTrue(response.getEntity() instanceof File);
@@ -88,7 +88,7 @@ class ExterneBilderResourceTest {
 
     @Test
     void getBild_pathTraversal_liefert403() {
-        Response response = resource.getBild("../../../etc/passwd").await().indefinitely();
+        Response response = resource.getBild("../../../etc/passwd", false).await().indefinitely();
 
         assertEquals(Response.Status.FORBIDDEN.getStatusCode(), response.getStatus());
         assertEquals("Zugriff verweigert", response.getEntity());
@@ -101,7 +101,7 @@ class ExterneBilderResourceTest {
         capturesPathField.setAccessible(true);
         capturesPathField.set(unauthorizedResource, tempDir.toString());
 
-        Response response = unauthorizedResource.getBild("testbild.jpg").await().indefinitely();
+        Response response = unauthorizedResource.getBild("testbild.jpg", false).await().indefinitely();
 
         assertEquals(Response.Status.FORBIDDEN.getStatusCode(), response.getStatus());
         assertEquals("Zugriff verweigert", response.getEntity());
@@ -109,7 +109,7 @@ class ExterneBilderResourceTest {
 
     @Test
     void getBild_dateiMitLeerzeichen_kodiertFilenameKorrekt() {
-        Response response = resource.getBild("datei mit leerzeichen.txt").await().indefinitely();
+        Response response = resource.getBild("datei mit leerzeichen.txt", false).await().indefinitely();
 
         assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
 
@@ -121,17 +121,17 @@ class ExterneBilderResourceTest {
 
     @Test
     void getBild_cacheControlHeader_wirdKorrektGesetzt() {
-        Response response = resource.getBild("testbild.jpg").await().indefinitely();
+        Response response = resource.getBild("testbild.jpg", false).await().indefinitely();
 
         MultivaluedMap<String, Object> headers = response.getMetadata();
         Object cacheControl = headers.getFirst("Cache-Control");
         assertNotNull(cacheControl);
-        assertEquals("public, max-age=86400", cacheControl.toString());
+        assertEquals("no-cache", cacheControl.toString());
     }
 
     @Test
     void getBild_contentTypeHeader_wirdGesetzt() {
-        Response response = resource.getBild("testbild.jpg").await().indefinitely();
+        Response response = resource.getBild("testbild.jpg", false).await().indefinitely();
 
         MultivaluedMap<String, Object> headers = response.getMetadata();
         assertNotNull(headers.getFirst("Content-Type"));
