@@ -221,7 +221,7 @@ public class BilderUploadResource {
                                 }
                                 return bild;
                             })
-                            .onItem().transformToUni(b -> bildService.update(b));
+                            .onItem().transformToUni(b -> bildService.bumpVersion(b.id));
                 });
     }
 

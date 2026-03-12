@@ -68,6 +68,12 @@ public class BildService {
                 .chain(s -> s.merge(bild));
     }
 
+    @WithTransaction
+    public Uni<Bild> bumpVersion(Long id) {
+        return Bild.update("version = version + 1 where id = ?1", id)
+                .chain(() -> findById(id));
+    }
+
 @WithTransaction
 public Uni<Void> delete(long id) {
     // Einmaliger DB-Lookup: Bild laden, Datei von Festplatte löschen, dann aus DB löschen

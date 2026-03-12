@@ -67,7 +67,7 @@ public class ExterneBilderResource {
                         return Uni.createFrom().item(Response.ok(file)
                                 .header("Content-Type", mimeType)
                                 .header("Content-Disposition", "attachment; filename=\"" + encodedFilename + "\"")
-                                .header("Cache-Control", "public, max-age=86400")
+                                .header("Cache-Control", "no-cache")
                                 .build());
                     } catch (Exception e) {
                         return Uni.createFrom().item(
