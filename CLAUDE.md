@@ -81,8 +81,12 @@ All database operations are **non-blocking** using Hibernate Reactive Panache. U
 
 - React Router v6 for routing, Redux Toolkit for auth state
 - Material-UI (MUI v5) for UI components
-- `@dnd-kit` for drag-and-drop reordering
+- `@dnd-kit` for drag-and-drop reordering (`SortableBildCard.js`, `SortableTextRow.js`)
 - API calls use `fetch` with JWT bearer token stored in Redux
+- Modules under `src/main/frontend/src/`: `bilder/`, `texte/`, `stories/`, `users/`, `auth/`, `layout/`
+- Each module has an `api.js` (fetch calls) and `index.js` (main view component)
+- `sortUtils.js` — shared sort helpers (`sortBy`, `byPriorityDesc`, `byIdDesc`)
+- Data is polled every 10 seconds for live updates (see `Bilder.js`, `Story.js`)
 
 The SPA is served by `GatewayResource.java`, which routes unknown paths to `index.html`.
 
@@ -118,6 +122,7 @@ The SPA is served by `GatewayResource.java`, which routes unknown paths to `inde
 - `Story` belongs to a `User` (unique constraint on `name + user_id`)
 - `Bild` and `Text` each optionally reference a `Story`; `null` means unassigned ("pending")
 - `Bild.complete` and `Text.complete` are boolean flags for workflow state
+- `Bild.position` and `Text.position` are integer fields for DnD sort order within a Story
 
 ### Entity conventions
 

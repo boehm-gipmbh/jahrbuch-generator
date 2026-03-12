@@ -7,6 +7,7 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -34,7 +35,8 @@ public class ExterneBilderResource {
 
     @GET
     @Path("/{pfad:.*}")
-    public Uni<Response> getBild(@PathParam("pfad") String pfad) {
+    public Uni<Response> getBild(@PathParam("pfad") String pfad,
+                                  @QueryParam("thumb") boolean thumb) {
         // Path-Traversal verhindern
         java.nio.file.Path basePath = Paths.get(capturesPath).normalize();
         java.nio.file.Path filePath = basePath.resolve(pfad).normalize();
@@ -44,10 +46,13 @@ public class ExterneBilderResource {
                     Response.status(Response.Status.FORBIDDEN).entity("Zugriff verweigert").build());
         }
 
-        // Eigentümerschaft prüfen: Bild muss dem authentifizierten User gehören
+        // Eigentümerschaft prüfen: Bild muss dem authentifizierten User gehören (immer via Original-Pfad)
         return bildService.findByPfad("/" + pfad)
                 .chain(bild -> {
-                    File file = filePath.toFile();
+                    // Bei thumb=true: Thumbnail-Datei bevorzugen, Fallback auf Original
+                    File file = thumb
+                            ? resolveThumbWithFallback(filePath)
+                            : filePath.toFile();
                     if (!file.exists() || !file.isFile()) {
                         return Uni.createFrom().item(
                                 Response.status(Response.Status.NOT_FOUND).entity("Datei nicht gefunden").build());
@@ -62,7 +67,7 @@ public class ExterneBilderResource {
                         return Uni.createFrom().item(Response.ok(file)
                                 .header("Content-Type", mimeType)
                                 .header("Content-Disposition", "attachment; filename=\"" + encodedFilename + "\"")
-                                .header("Cache-Control", "public, max-age=86400")
+                                .header("Cache-Control", "no-cache")
                                 .build());
                     } catch (Exception e) {
                         return Uni.createFrom().item(
@@ -71,5 +76,12 @@ public class ExterneBilderResource {
                 })
                 .onFailure(e -> e instanceof ObjectNotFoundException || e instanceof ForbiddenException)
                 .recoverWithItem(Response.status(Response.Status.FORBIDDEN).entity("Zugriff verweigert").build());
+    }
+
+    private File resolveThumbWithFallback(java.nio.file.Path originalPath) {
+        java.nio.file.Path thumbPath = originalPath.getParent()
+                .resolve(BilderUploadResource.toThumbName(originalPath.getFileName().toString()));
+        File thumb = thumbPath.toFile();
+        return thumb.exists() ? thumb : originalPath.toFile();
     }
 }
