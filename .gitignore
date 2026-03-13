@@ -51,5 +51,4 @@ nb-configuration.xml
 data_dump.sql
 schema_dump.sql
 test-output.png
-fly.toml
 pg_migrate.sh

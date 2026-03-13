@@ -1,10 +1,12 @@
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends imagemagick && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends imagemagick postgresql-client && rm -rf /var/lib/apt/lists/*
 
 COPY fly/target/*-runner /deployments/application
+COPY migrate.sh /deployments/migrate.sh
+COPY src/main/resources/db/migration /deployments/migrations
 
-RUN chmod a+x /deployments/*
+RUN chmod a+x /deployments/application /deployments/migrate.sh
 
 CMD ./deployments/application                                               \
          -Dquarkus.http.host=0.0.0.0                                        \

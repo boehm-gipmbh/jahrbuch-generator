@@ -1,0 +1,30 @@
+# fly.toml app configuration file generated for jahrbuch-generator on 2025-08-15T16:53:52+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'jahrbuch-generator'
+primary_region = 'fra'
+
+[build]
+  image = 'drdboehm/jahrbuch-generator:fly'
+
+[deploy]
+  release_command = "/deployments/migrate.sh"
+
+[[mounts]]
+  source = 'capture_data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
