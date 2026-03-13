@@ -3,13 +3,14 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends imagemagick postgresql-client && rm -rf /var/lib/apt/lists/*
 
 COPY fly/target/*-runner /deployments/application
-COPY migrate.sh /deployments/migrate.sh
-COPY src/main/resources/db/migration /deployments/migrations
+COPY fly/target/migrate.sh /deployments/migrate.sh
+COPY fly/target/migrations /deployments/migrations
 
 RUN chmod a+x /deployments/application /deployments/migrate.sh
 
 CMD ./deployments/application                                               \
          -Dquarkus.http.host=0.0.0.0                                        \
          -Dquarkus.datasource.reactive.url=$FREE_DATABASE_URL               \
-         -Dquarkus.datasource.jdbc.url=$JDBC_DATABASE_URL                   \
+         -Dquarkus.datasource.jdbc=false                                    \
+         -Dquarkus.flyway.migrate-at-start=false                            \
          -Dquarkus.hibernate-orm.database.generation=none

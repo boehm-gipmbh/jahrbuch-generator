@@ -1,9 +1,8 @@
 #!/bin/bash
 set -e
 
-# JDBC_DATABASE_URL: jdbc:postgresql://user:pass@host:5432/db
-# psql erwartet:         postgresql://user:pass@host:5432/db
-PSQL_URL="${JDBC_DATABASE_URL#jdbc:}"
+# FREE_DATABASE_URL: postgresql://user:pass@host:5432/db (direkt psql-kompatibel)
+PSQL_URL="$FREE_DATABASE_URL"
 
 echo "=== DB Migration ==="
 echo "  URL: ${PSQL_URL%%:*}://***"
