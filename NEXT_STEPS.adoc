@@ -80,7 +80,7 @@ Umsetzungsoptionen:
 Bilder und Texte innerhalb einer Story sind per Drag-and-Drop sortierbar (`@dnd-kit/core`, `sortable`, `modifiers`). Position wird in der DB gespeichert (`position`-Feld auf `Bild` und `Text`). Optimistisches Update verhindert visuelles Zurückspringen. Drag-Handle über dem Inhalt zentriert (90° rotiertes `DragIndicatorIcon`).
 
 === 21. `.gitignore` ergänzen ✅ ERLEDIGT
-`.wireguard.con`, `data_dump.sql`, `schema_dump.sql`, `test-output.png`, `fly.toml`, `pg_migrate.sh` in `.gitignore` eingetragen.
+`.wireguard.con`, `data_dump.sql`, `schema_dump.sql`, `test-output.png`, `pg_migrate.sh` in `.gitignore` eingetragen. `fly.toml` wurde nachträglich wieder aus `.gitignore` entfernt, da es jetzt wichtige Deployment-Konfiguration (`release_command`) enthält.
 
 === 23. `ImageSettings` in `CaptureService` einbinden
 `ImageSettings.java` modelliert gphoto2-Kameraeinstellungen (Bildformat, ISO, Weißabgleich, Farbtemperatur, Farbraum) vollständig als DTO. Die Klasse ist aktuell ungenutzt — `CaptureService` löst nur blind den Auslöser aus (`gphoto2 --capture-image-and-download`), ohne Einstellungen zu setzen.
@@ -189,41 +189,17 @@ Neue Dateien: `StoryLayoutSwitcher.js`, `SortableStoryItem.js`
 . Frontend: Listen zusammenführen, einheitlicher DnD-Kontext, `SortableStoryItem`, optimistisches Update
 . Frontend: Layout-Umschalter (rein additiv sobald Schritt 2 funktioniert)
 
-=== 26. Flyway-Migrationen einführen
+=== 26. Flyway-Migrationen einführen ✅ ERLEDIGT
 
-Aktuell werden DB-Schemaänderungen manuell als SQL-Skripte ausgeführt (z.B. `migration_add_last_rotated.sql`). Flyway würde das automatisieren: Migrationen laufen beim App-Start automatisch, sind versioniert und eingecheckt.
+DB-Migrationen sind versioniert und automatisiert. Da `quarkus.flyway.migrate-at-start=true` in Quarkus Native nicht zuverlässig feuert, werden Migrationen über den Fly.io `release_command` ausgeführt:
 
-==== Aufwand
+* `migrate.sh` — Shell-Script mit `schema_migrations`-Tracking-Tabelle, läuft vor jedem Deployment
+* `fly.toml` — `[deploy] release_command = "/deployments/migrate.sh"`
+* `src/main/resources/db/migration/V1__initial_schema.sql` — initiales Schema
+* `src/main/resources/db/migration/V2__add_last_rotated.sql` — `last_rotated`-Spalte
+* Flyway bleibt für lokale Entwicklung (JVM-Modus) aktiv via `migrate-at-start=true`
 
-Da das Projekt Hibernate Reactive nutzt, braucht Flyway eine zusätzliche synchrone JDBC-Datasource (Flyway unterstützt kein Reactive). Das bedeutet zwei Dependencies:
-
-[source,xml]
-----
-<dependency>quarkus-flyway</dependency>
-<dependency>quarkus-jdbc-postgresql</dependency>
-----
-
-Und zwei Datasources in `application.properties`:
-
-[source,properties]
-----
-# Reaktiv (bestehend, für die App)
-quarkus.datasource.reactive.url=...
-# JDBC (neu, nur für Flyway)
-quarkus.datasource.jdbc.url=jdbc:postgresql://...
-----
-
-==== Schritte
-
-. `pom.xml` — `quarkus-flyway` + `quarkus-jdbc-postgresql` hinzufügen
-. `application.properties` — JDBC-Datasource ergänzen, Hibernate DDL auf `validate` setzen
-. `V1__initial_schema.sql` — aktuelles Schema aus Prod dumpen (`pg_dump --schema-only`)
-. `V2__add_last_rotated.sql` — bisherige manuelle Migration einchecken
-. Künftige Schemaänderungen als `V3__...`, `V4__...` fortführen
-
-==== Nutzen
-
-Kein manuelles SQL mehr vor dem Deploy — Flyway prüft beim Start welche Migrationen noch fehlen und führt sie automatisch aus.
+Neue Migrationen als `V3__...`, `V4__...` in `db/migration/` ablegen — werden automatisch beim nächsten Deployment angewendet.
 
 === 22. CI-Workflow fixen
 `.github/workflows/ci.yml` ruft `./gradlew build` auf — das Projekt verwendet aber Maven. Da GitHub Actions aktuell nicht aktiv genutzt wird und ein Wechsel zu GitLab geplant ist, hat dies niedrige Priorität. Bei GitLab-Migration eine neue Pipeline auf Basis von `./mvnw` erstellen.
