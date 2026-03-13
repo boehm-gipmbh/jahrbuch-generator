@@ -36,7 +36,7 @@ CREATE TABLE public.bilder (
     description character varying(1000),
     pfad character varying(255) NOT NULL,
     title character varying(255) NOT NULL,
-    "position" integer,
+    "position" integer
 );
 
 

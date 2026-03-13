@@ -199,6 +199,47 @@
             <build>
                 <plugins>
                     <plugin>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-migration-files</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}/migrations</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/src/main/resources/db/migration</directory>
+                                            <includes>
+                                                <include>*.sql</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>copy-migrate-sh</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}</outputDirectory>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}</directory>
+                                            <includes>
+                                                <include>migrate.sh</include>
+                                            </includes>
+                                        </resource>
+                                    </resources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
                         <groupId>org.eclipse.jkube</groupId>
                         <artifactId>kubernetes-maven-plugin</artifactId>
                         <configuration>
@@ -209,6 +250,25 @@
                                         <dockerFile>${project.basedir}/Dockerfile.fly</dockerFile>
                                         <assembly>
                                             <name>fly</name>
+                                            <inline>
+                                                <fileSets>
+                                                    <fileSet>
+                                                        <directory>${project.basedir}</directory>
+                                                        <includes>
+                                                            <include>migrate.sh</include>
+                                                        </includes>
+                                                        <outputDirectory>target</outputDirectory>
+                                                        <fileMode>0755</fileMode>
+                                                    </fileSet>
+                                                    <fileSet>
+                                                        <directory>${project.basedir}/src/main/resources/db/migration</directory>
+                                                        <includes>
+                                                            <include>*.sql</include>
+                                                        </includes>
+                                                        <outputDirectory>target/migrations</outputDirectory>
+                                                    </fileSet>
+                                                </fileSets>
+                                            </inline>
                                         </assembly>
                                     </build>
                                 </image>
