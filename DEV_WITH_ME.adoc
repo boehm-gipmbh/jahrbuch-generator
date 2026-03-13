@@ -1,6 +1,128 @@
-= DEV_WITH_ME: Native Image lokal testen
+= DEV_WITH_ME: Lokale Entwicklungsumgebung
 :toc:
 :toc-title: Inhalt
+:toclevels: 2
+:appendix-caption: Anhang
+
+== Produktions-DB lokal spiegeln / dumpen
+
+Vor Arbeiten an der Datenbank empfiehlt es sich, die Produktion lokal zu spiegeln oder einen Dump zu erstellen.
+Credentials liegen in `.env` (gitignored):
+
+[source]
+----
+DEV_DB_USERNAME=postgres
+DEV_DB_PASSWORD=<passwort aus Passwortmanager>
+----
+
+IMPORTANT: Die Produktions-DB läuft auf PostgreSQL 17. Das lokale `pg_dump` (16) ist inkompatibel.
+Daher wird `pg_dump` aus einem PostgreSQL-17-Docker-Container ausgeführt (`--network=host` damit der Container den Fly.io-Proxy auf localhost:5433 erreicht).
+
+In allen folgenden Befehlen `$DEV_DB_PASSWORD` durch den Wert aus `.env` ersetzen.
+
+=== Option A: Nur Dump erstellen
+
+[source,bash]
+----
+# 1. Proxy öffnen (separates Terminal, offen lassen)
+fly proxy 5433:5432 -a jahrbuch-generator-pg
+
+# 2. Dump via PostgreSQL-17-Container erstellen
+export $(cat .env | xargs)
+
+docker run --rm --network=host \
+  -e PGPASSWORD=$DEV_DB_PASSWORD \
+  postgres:17 \
+  pg_dump -h localhost -p 5433 -U postgres -d postgres \
+  > prod_dump_$(date +%Y%m%d).sql
+----
+
+Die SQL-Datei ggf. außerhalb des Repos ablegen (`.gitignore` enthält nur `data_dump.sql` / `schema_dump.sql`).
+
+=== Option B: Produktion in lokale Docker-DB spiegeln
+
+[source,bash]
+----
+# 1. Lokale PostgreSQL 17 starten (mit persistentem Volume)
+docker volume create jahrbuch-pgdata
+
+docker run -d --name postgres-dev \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -p 5432:5432 \
+  -v jahrbuch-pgdata:/var/lib/postgresql/data \
+  postgres:17
+
+# Beim nächsten Mal nur noch starten (Daten bleiben erhalten):
+# docker start postgres-dev
+
+# 2. Proxy öffnen (separates Terminal)
+fly proxy 5433:5432 -a jahrbuch-generator-pg
+
+# 3. Dump direkt einspielen (alles in einem Schritt)
+export $(cat .env | xargs)
+
+docker run --rm --network=host \
+  -e PGPASSWORD=$DEV_DB_PASSWORD \
+  postgres:17 \
+  pg_dump -h localhost -p 5433 -U postgres -d postgres \
+  | PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres
+
+# Hinweis: pg_dump gibt ggf. eine Warnung über zirkuläre Foreign Keys (Tabelle "nodes").
+# Das ist bei einem Full Dump unkritisch — die Warnung kann ignoriert werden.
+----
+
+Keine Änderung an `.env` oder `application.properties` nötig — stattdessen das `local`-Profil verwenden:
+
+=== Quarkus Dev-Mode starten (mit lokaler DB)
+
+[source,bash]
+----
+./mvnw compile quarkus:dev -Dquarkus.profile=local
+----
+
+Mit Fly.io Proxy statt lokaler DB (Standard):
+
+[source,bash]
+----
+export $(cat .env | xargs)
+./mvnw compile quarkus:dev
+----
+
+Frontend (separates Terminal):
+
+[source,bash]
+----
+cd src/main/frontend && npm start
+----
+
+→ http://localhost:3000 (proxied API auf :8080)
+
+=== Captures lokal verfügbar machen
+
+Die Bilddateien sind nicht im DB-Dump enthalten — sie liegen auf Fly.io unter `/data/captures`.
+Das Skript `fly-captures-download.sh` lädt sie per SFTP herunter nach `captures/` (gitignored).
+
+==== Voraussetzung: Fly.io API Token
+
+Die Datei `jahrbuch-generator.token.ssh` muss im Projektroot liegen (gitignored).
+Token erzeugen:
+
+[source,bash]
+----
+flyctl tokens create deploy -x 999999h > jahrbuch-generator.token.ssh
+----
+
+==== Captures herunterladen
+
+[source,bash]
+----
+./fly-captures-download.sh
+----
+
+Bilder landen in `captures/` — das ist das `%local.jahrbuch.captures.path`-Verzeichnis.
+
+== Native Image lokal testen
 
 == 1. Fly.io DB-Proxy starten
 
@@ -68,4 +190,53 @@ Erlaubte Werte für `degrees`: `90`, `180`, `270`.
 ----
 ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push
 flyctl deploy --image drdboehm/jahrbuch-generator:fly
+----
+
+[appendix]
+== Lokale PostgreSQL-Instanz reparieren
+
+Die systemd-verwaltete PostgreSQL 16 auf Port 5432 wird in diesem Projekt nicht verwendet,
+kann aber wie folgt repariert werden.
+
+=== Passwort des postgres-Users zurücksetzen
+
+Da `sudo` direkt als Systemuser `postgres` authentifiziert, ist kein altes Passwort nötig:
+
+[source,bash]
+----
+sudo -u postgres psql -c "\password postgres"
+----
+
+Falls dieser Befehl selbst nach einem Passwort fragt (abhängig von `pg_hba.conf`), zuerst
+die Authentifizierungsmethode temporär auf `peer` umstellen:
+
+[source,bash]
+----
+# 1. pg_hba.conf öffnen
+sudo nano /etc/postgresql/16/main/pg_hba.conf
+
+# Zeile ändern:
+#   local   all   postgres   md5      (oder scram-sha-256)
+# →
+#   local   all   postgres   peer
+
+# 2. Konfiguration neu laden
+sudo systemctl reload postgresql
+
+# 3. Passwort setzen
+sudo -u postgres psql -c "\password postgres"
+
+# 4. pg_hba.conf wieder auf ursprüngliche Methode (md5 / scram-sha-256) zurücksetzen
+#    und erneut neu laden
+sudo systemctl reload postgresql
+----
+=== Instanz herunterfahren
+
+[source,bash]
+----
+# Einmalig stoppen
+sudo systemctl stop postgresql
+
+# Autostart beim Systemstart deaktivieren
+sudo systemctl disable postgresql
 ----
