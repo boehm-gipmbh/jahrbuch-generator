@@ -201,17 +201,18 @@ DB-Migrationen sind versioniert und automatisiert. Da `quarkus.flyway.migrate-at
 
 Neue Migrationen als `V3__...`, `V4__...` in `db/migration/` ablegen — werden automatisch beim nächsten Deployment angewendet.
 
-=== 27. Papierkorb-Icon zum Löschen eines Bildes
+=== 27. Papierkorb-Icon zum Löschen von Bildern und Texten ✅ ERLEDIGT
 
-Analog zu den Rotations-Buttons soll in der Bildansicht (und ggf. in `EditBild`) ein `DeleteIcon` (`@mui/icons-material/Delete`) angezeigt werden.
+`DeleteIcon` in allen relevanten Ansichten ergänzt:
 
-Backend-Endpunkt (`DELETE /api/bilder/{id}`) und Frontend-API-Client (`deleteBild` in `bilder/api.js`) sind bereits vorhanden.
+* `Bilder.js` — Papierkorb-Icon unten rechts pro Bild-Karte
+* `EditBild.js` — Papierkorb-Icon links neben den Rotations-Buttons
+* `Texte.js` — Papierkorb-Icon unten rechts in der Inhaltszelle
+* `EditText.js` — Papierkorb-Icon links neben `SelectStory`
+* `SortableBildCard.js` — Papierkorb-Icon unten rechts auf der Karte (Story-Ansicht)
+* `SortableTextRow.js` — Papierkorb-Icon unten rechts in der Inhaltszelle (Story-Ansicht)
 
-Aufwand: nur UI — `IconButton` mit `DeleteIcon` und Aufruf von `deleteBild` ergänzen, analog zu `rotateBild` in `EditBild.js` bzw. `Bilder.js`.
-
-Optional: Bestätigungs-Dialog vor dem Löschen (`window.confirm` oder MUI `Dialog`).
-
-Betroffene Dateien: `Bilder.js` und/oder `EditBild.js`
+Button ist disabled wenn `complete=true` (gesperrt). Nach dem Löschen verschwindet das Element sofort aus der Liste via `invalidateTags` (kein Warten auf den nächsten Poll).
 
 === 22. CI-Workflow fixen
 `.github/workflows/ci.yml` ruft `./gradlew build` auf — das Projekt verwendet aber Maven. Da GitHub Actions aktuell nicht aktiv genutzt wird und ein Wechsel zu GitLab geplant ist, hat dies niedrige Priorität. Bei GitLab-Migration eine neue Pipeline auf Basis von `./mvnw` erstellen.
