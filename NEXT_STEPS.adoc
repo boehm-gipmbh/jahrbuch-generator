@@ -1,218 +1,39 @@
-= Next Steps: Codebase Improvements
+= Next Steps
 :toc:
-:toc-title: Table of Contents
-:toclevels: 2
-
-== Bugs / Correctness Issues
-
-=== 5. Double DB lookup on delete ✅ ERLEDIGT
-`BildService.java` — `delete()` lud das Bild zweimal (via `findFullPathById` + `findById`). Jetzt einmaliger `findById`-Aufruf; Pfadberechnung und DB-Löschung im selben `chain`-Schritt. Tote Hilfsmethode `findFullPathById()` und leerer Stub `rotateBild()` entfernt. Unit-Tests in `BildServiceTest` ergänzt.
-
-=== 6. `imageVersion` is shared across all images ✅ ERLEDIGT
-`Bilder.js` — `imageVersion` war ein globaler Zähler; auf pro-Bild-Map `imageVersions[bild.id]` umgestellt, sodass bei Rotation nur das betroffene Bild neu lädt.
-
-=== 7. `bildSort` in `Bilder.js:23-30` ✅ ERLEDIGT
-`sortUtils.js` extrahiert mit `sortBy`, `byPriorityDesc`, `byIdDesc`. `bildSort = sortBy(byPriorityDesc, byIdDesc)` in `Bilder.js` und `Story.js`.
-
-== Dead Code / Leftovers
-
-=== 8. `console.log` in production ✅ ERLEDIGT
-`Story.js` — zwei Debug-Logs entfernt.
-
-=== 9. `SHOW_ROTATION_BUTTONS = false` ✅ ERLEDIGT
-Konstante war bereits auf `true` gesetzt (Buttons aktiv). Konstante und bedingten `{SHOW_ROTATION_BUTTONS && ...}` Wrapper entfernt — `<Box>` ist jetzt direktes JSX-Child.
-
-=== 10. Empty stub methods in `BildService` ✅ ERLEDIGT
-`rotateBild()` war bereits entfernt. `takeBild()` entfernt, ungenutzter `ImageSettings`-Import bereinigt.
-
-=== 11. Commented-out code blocks ✅ ERLEDIGT
-* `StoryService` — kommentierter Block entfernt, `BildService`/`TextService` Injection entfernt (Punkt 15 mit erledigt)
-* `TextService` — zwei kommentierte Blöcke + `BildService` Injection entfernt (Punkt 14 mit erledigt)
-* `Bild.java` — auskommentierte Getter/Setter entfernt (durch Lombok ersetzt)
-
-=== 12. Wrong default filter params in `Story.js` — KEIN BUG
-`Story` wird ausschließlich über `/bilder/story/:storyId` aufgerufen, daher greift `if (Boolean(story))` immer. `() => false` als Default zeigt während des Ladens eine leere Liste — das ist korrekt.
-
-== Code Quality
-
-=== 13. Duplicate `bildSort` function ✅ ERLEDIGT
-Beide Dateien verwenden jetzt `sortBy(byPriorityDesc, byIdDesc)` aus `sortUtils.js`.
-
-=== 14. `TextService` constructor injects `BildService` but comments it out ✅ ERLEDIGT
-Siehe Punkt 11.
-
-=== 15. `StoryService` imports `BildService`/`TextService` for dead code only ✅ ERLEDIGT
-Siehe Punkt 11.
-
-=== 16. Redundant annotation in `Text.java` ✅ ERLEDIGT
-`@Column(nullable = true)` auf `@Column` reduziert.
-
-== Missing Features / UX Gaps
-
-=== 17. Thumbnail-Generierung beim Upload ✅ ERLEDIGT
-Thumbnails (400px, JPEG) werden automatisch erzeugt bei Upload, uploadcapture und nach Rotation.
-`ExterneBilderResource` liefert Thumbnail via `?thumb=true` mit Fallback auf Original.
-Frontend (`AuthImage.js`, `Bilder.js`) lädt in der Listenansicht Thumbnails.
-`POST /generate-thumbs` generiert fehlende Thumbnails für bestehende Bilder nach.
-`BildService.delete()` löscht Thumbnail mit. `SortableBildCard.js` (nur `feature-dnd`) bekommt `thumb` beim Merge.
-
-=== 18. Virtuelles Scrollen statt Pagination
-Klassische Pagination passt nicht zum Polling-Konzept (alle 10s) und würde DnD (Punkt 20) behindern, da alle Elemente im DOM verfügbar sein müssen.
-
-Besserer Ansatz: **Virtuelles Scrollen** — alle Daten werden geladen, aber nur die sichtbaren Elemente werden gerendert. Die Render-Performance bleibt damit auch bei vielen Bildern gut.
-
-Mögliche Bibliothek: `@tanstack/react-virtual` oder MUI `VirtualList`.
-
-Betroffene Komponenten: `Bilder.js`, `Story.js`.
-
-=== 19. Idee: Story-Fortschrittsanzeige
-Jedes `Bild` und `Text` hat ein `complete`-Flag, aber die `Story`-Entity kennt keinen aggregierten Fortschritt.
-
-Idee: Fortschrittsbalken oder Badge auf der Story-Karte in der Übersicht, z.B. "3 von 5 Bildern fertig".
-
-Umsetzungsoptionen:
-* Client-seitig: Bilder/Texte der Story filtern und `complete`-Flags zählen (keine Backend-Änderung nötig)
-* Server-seitig: Neuer Endpunkt oder berechnetes Feld in der Story-Response
-
-== Repository / Infrastruktur
-
-=== 20. DnD-Funktionalität implementieren ✅ ERLEDIGT
-Bilder und Texte innerhalb einer Story sind per Drag-and-Drop sortierbar (`@dnd-kit/core`, `sortable`, `modifiers`). Position wird in der DB gespeichert (`position`-Feld auf `Bild` und `Text`). Optimistisches Update verhindert visuelles Zurückspringen. Drag-Handle über dem Inhalt zentriert (90° rotiertes `DragIndicatorIcon`).
-
-=== 21. `.gitignore` ergänzen ✅ ERLEDIGT
-`.wireguard.con`, `data_dump.sql`, `schema_dump.sql`, `test-output.png`, `pg_migrate.sh` in `.gitignore` eingetragen. `fly.toml` wurde nachträglich wieder aus `.gitignore` entfernt, da es jetzt wichtige Deployment-Konfiguration (`release_command`) enthält.
-
-=== 23. `ImageSettings` in `CaptureService` einbinden
-`ImageSettings.java` modelliert gphoto2-Kameraeinstellungen (Bildformat, ISO, Weißabgleich, Farbtemperatur, Farbraum) vollständig als DTO. Die Klasse ist aktuell ungenutzt — `CaptureService` löst nur blind den Auslöser aus (`gphoto2 --capture-image-and-download`), ohne Einstellungen zu setzen.
-
-Ziel: Vor dem Snapshot per `gphoto2 --set-config` die gewünschten Einstellungen aus `ImageSettings` auf die Kamera schreiben. Entweder als feste Konfiguration in `application.properties` oder als API-Parameter beim Capture-Aufruf.
-
-Betroffene Klassen: `CaptureService.java`, `BildService.java` (oder neue `takeBild()`-Implementierung), `ImageSettings.java`.
-
-=== 24. DB-Passwort in Fly.io rotieren
-Das Passwort `yKTSyH4aXUsrB9e` ist in der Git-History von `application.properties` enthalten (inzwischen durch `.env`-Variablen ersetzt). Das Passwort sollte rotiert werden.
-
-Schritte:
-
-[source,bash]
-----
-# 1. Verbinde mit der Postgres-App
-flyctl postgres connect -a jahrbuch-generator-pg
-----
-
-[source,sql]
-----
--- 2. Passwort in der DB ändern
-ALTER USER postgres WITH PASSWORD 'neues_passwort';
-\q
-----
-
-[source,bash]
-----
-# 3. Fly.io Secret aktualisieren (wird in Dockerfile.fly als $FREE_DATABASE_URL verwendet)
-flyctl secrets set FREE_DATABASE_URL=postgres://postgres:neues_passwort@jahrbuch-generator-pg.flycast:5432 -a jahrbuch-generator
-
-# 4. App neu starten
-flyctl restart -a jahrbuch-generator
-----
-
-Danach lokal `.env` aktualisieren:
-----
-DEV_DB_PASSWORD=neues_passwort
-----
-
-=== 25. Gemischte Bild+Text-Sortierung mit Layout-Modi
-
-Bilder und Texte innerhalb einer Story sollen in einer gemeinsamen, per DnD frei sortierbaren Liste gemischt werden können. Zusätzlich soll die Story-Ansicht zwischen verschiedenen Layout-Modi umschaltbar sein (1-spaltig, Zeitungsstil 2-/3-spaltig, Grid).
-
-==== Phase 1 – Backend: Gemeinsamer Reorder-Endpunkt
-
-Neuer Endpunkt `PUT /api/stories/{storyId}/reorder` in `StoryResource`/`StoryService`.
-
-Request-Body: geordnete Liste mit Typ-Tags:
-[source,json]
-----
-[{"type": "bild", "id": 3}, {"type": "text", "id": 7}, {"type": "bild", "id": 5}]
-----
-
-`StoryService.reorder()` weist jedem referenzierten `Bild` bzw. `Text` `position = index` zu (gemeinsamer Namespace). Die bestehenden Einzel-Endpunkte (`/bilder/reorder/{storyId}`, `/texte/reorder/{storyId}`) bleiben für die Einzel-Ansichten erhalten.
-
-Betroffene Klassen: `StoryResource.java`, `StoryService.java`
-
-==== Phase 2 – Frontend: Einheitlicher DnD-Kontext
-
-In `Story.js` werden Bilder und Texte zu einer gemeinsamen Liste zusammengeführt und nach `position` sortiert:
-
-[source,js]
-----
-const items = [
-  ...sortedBilder.map(b => ({ type: 'bild', id: `bild-${b.id}`, item: b })),
-  ...sortedTexte.map(t => ({ type: 'text', id: `text-${t.id}`, item: t })),
-].sort((a, b) => a.item.position - b.item.position);
-----
-
-Ein einzelner `DndContext` ersetzt die zwei getrennten. `handleDragEnd` ruft den neuen gemeinsamen Endpunkt auf (mit optimistischem Update auf beide Caches).
-
-Neue Komponente `SortableStoryItem.js` — rendert je nach Typ entweder `SortableBildCard` oder eine Card-Variante des Textes. Beide benötigen dieselbe äußere Container-Form (Box/Paper statt TableRow) damit alle Layout-Modi funktionieren.
-
-Neuer API-Endpunkt in `stories/api.js`: `reorderStory` mit optimistischem Update auf `getBilder`- und `getTexte`-Cache.
-
-Betroffene Dateien: `Story.js`, `SortableBildCard.js`, `SortableTextRow.js`, `stories/api.js`, neu: `SortableStoryItem.js`
-
-==== Phase 3 – Layout-Umschalter
-
-`ToggleButtonGroup` oben in der Story-Ansicht, Präferenz per `storyId` in `localStorage` gespeichert (kein Backend nötig).
-
-[cols="1,3,2"]
-|===
-|Modus |Darstellung |DnD-Strategie
-
-|`1col` |Einzelspalte, gestapelt |`verticalListSortingStrategy`
-|`2col` |CSS `columns: 2`, `break-inside: avoid` |`rectSortingStrategy`
-|`3col` |CSS `columns: 3` |`rectSortingStrategy`
-|`grid` |MUI Grid xs=12 sm=6 md=4 |`rectSortingStrategy`
-|===
-
-DnD operiert immer auf der flachen logischen Liste — die Spalten sind reines CSS-Display.
-
-Neue Dateien: `StoryLayoutSwitcher.js`, `SortableStoryItem.js`
-
-==== Offene Fragen (vor Umsetzung klären)
-
-* *TextRow-Form:* Kompakte TableRow als eigenen Layout-Modus behalten, oder im gemischten Modus immer Cards verwenden?
-* *Alter 2-Spalten-Split:* Als zusätzlichen Layout-Modus behalten (Texte links / Bilder rechts) oder vollständig ersetzen?
-* *Position-Konflikt beim ersten Speichern:* Bestehende Bilder und Texte haben alle `position=0` — erst beim ersten Speichern nach dem Deployment wird die Reihenfolge korrekt gesetzt. Akzeptabel?
-
-==== Umsetzungsreihenfolge
-
-. Backend: `StoryService.reorder()` + `StoryResource`-Endpunkt
-. Frontend: Listen zusammenführen, einheitlicher DnD-Kontext, `SortableStoryItem`, optimistisches Update
-. Frontend: Layout-Umschalter (rein additiv sobald Schritt 2 funktioniert)
-
-=== 26. Flyway-Migrationen einführen ✅ ERLEDIGT
-
-DB-Migrationen sind versioniert und automatisiert. Da `quarkus.flyway.migrate-at-start=true` in Quarkus Native nicht zuverlässig feuert, werden Migrationen über den Fly.io `release_command` ausgeführt:
-
-* `migrate.sh` — Shell-Script mit `schema_migrations`-Tracking-Tabelle, läuft vor jedem Deployment
-* `fly.toml` — `[deploy] release_command = "/deployments/migrate.sh"`
-* `src/main/resources/db/migration/V1__initial_schema.sql` — initiales Schema
-* `src/main/resources/db/migration/V2__add_last_rotated.sql` — `last_rotated`-Spalte
-* Flyway bleibt für lokale Entwicklung (JVM-Modus) aktiv via `migrate-at-start=true`
-
-Neue Migrationen als `V3__...`, `V4__...` in `db/migration/` ablegen — werden automatisch beim nächsten Deployment angewendet.
-
-=== 27. Papierkorb-Icon zum Löschen von Bildern und Texten ✅ ERLEDIGT
-
-`DeleteIcon` in allen relevanten Ansichten ergänzt:
-
-* `Bilder.js` — Papierkorb-Icon unten rechts pro Bild-Karte
-* `EditBild.js` — Papierkorb-Icon links neben den Rotations-Buttons
-* `Texte.js` — Papierkorb-Icon unten rechts in der Inhaltszelle
-* `EditText.js` — Papierkorb-Icon links neben `SelectStory`
-* `SortableBildCard.js` — Papierkorb-Icon unten rechts auf der Karte (Story-Ansicht)
-* `SortableTextRow.js` — Papierkorb-Icon unten rechts in der Inhaltszelle (Story-Ansicht)
-
-Button ist disabled wenn `complete=true` (gesperrt). Nach dem Löschen verschwindet das Element sofort aus der Liste via `invalidateTags` (kein Warten auf den nächsten Poll).
-
-=== 22. CI-Workflow fixen
-`.github/workflows/ci.yml` ruft `./gradlew build` auf — das Projekt verwendet aber Maven. Da GitHub Actions aktuell nicht aktiv genutzt wird und ein Wechsel zu GitLab geplant ist, hat dies niedrige Priorität. Bei GitLab-Migration eine neue Pipeline auf Basis von `./mvnw` erstellen.
+:toc-title: Inhalt
+
+Tasks werden in ClickUp verwaltet: https://app.clickup.com/90151752324
+
+== Sprint 4 (13.03 – 03.04.2026)
+
+* https://app.clickup.com/t/86c8uerrv[#24 DB-Passwort in Fly.io rotieren] — `high`
+* https://app.clickup.com/t/86c8uerpf[#29 Story: Löschen durch "Aus Story entfernen" ersetzen] — `high`
+* https://app.clickup.com/t/86c8uertk[#28 Papierkorb-Funktion für Bilder und Texte] — `normal`
+
+== Backlog
+
+* https://app.clickup.com/t/86c8ue7w5[#25 Gemischte Bild+Text-Sortierung mit Layout-Modi] — `normal`
+* https://app.clickup.com/t/86c8ue7ux[#23 ImageSettings in CaptureService einbinden] — `normal`
+* https://app.clickup.com/t/86c8ueada[#28 Papierkorb-Funktion (Backlog-Eintrag)] — `normal`
+* https://app.clickup.com/t/86c8ue7u5[#18 Virtuelles Scrollen statt Pagination] — `low`
+* https://app.clickup.com/t/86c8ue7ud[#19 Story-Fortschrittsanzeige] — `low`
+* https://app.clickup.com/t/86c8ue7ut[#22 CI-Workflow fixen] — `low`
+
+== Erledigt
+
+* https://app.clickup.com/t/86c8ue88r[#27 Papierkorb-Icon zum Löschen von Bildern und Texten]
+* https://app.clickup.com/t/86c8ue88e[#26 Flyway-Migrationen über Fly.io release_command]
+* https://app.clickup.com/t/86c8ue87x[#20 DnD-Funktionalität in Story]
+* https://app.clickup.com/t/86c8ue87d[#17 Thumbnail-Generierung beim Upload]
+* https://app.clickup.com/t/86c8ue888[#21 .gitignore ergänzen]
+* https://app.clickup.com/t/86c8ue875[#16 Redundante Annotation in Text.java]
+* https://app.clickup.com/t/86c8ue871[#15 StoryService importiert BildService/TextService für toten Code]
+* https://app.clickup.com/t/86c8ue86u[#14 TextService injiziert BildService ohne Verwendung]
+* https://app.clickup.com/t/86c8ue86n[#13 Duplicate bildSort function]
+* https://app.clickup.com/t/86c8ue86g[#11 Commented-out code blocks entfernen]
+* https://app.clickup.com/t/86c8ue868[#10 Empty stub methods in BildService]
+* https://app.clickup.com/t/86c8ue85v[#9 SHOW_ROTATION_BUTTONS Konstante entfernen]
+* https://app.clickup.com/t/86c8ue85f[#8 console.log in production entfernen]
+* https://app.clickup.com/t/86c8ue859[#7 bildSort in Bilder.js extrahieren]
+* https://app.clickup.com/t/86c8ue852[#6 imageVersion shared across all images]
+* https://app.clickup.com/t/86c8ue84t[#5 Double DB lookup on delete]
