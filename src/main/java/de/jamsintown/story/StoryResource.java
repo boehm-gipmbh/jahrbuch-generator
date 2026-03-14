@@ -52,4 +52,11 @@ public class StoryResource {
     return storyService.delete(id);
   }
 
+  @PUT
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Path("/{id}/reorder")
+  public Uni<Void> reorder(@PathParam("id") long id, List<ReorderItem> items) {
+    return storyService.reorder(id, items);
+  }
+
 }

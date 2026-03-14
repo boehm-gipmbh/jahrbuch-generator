@@ -24,6 +24,12 @@ public class Text extends PanacheEntity {
     @Column
     public Integer position;
 
+    @Column(name = "story_position")
+    public Integer storyPosition = 0;
+
+    @Column(name = "story_column")
+    public Integer storyColumn = 0;
+
     public Text() {
     }
 
