@@ -1,5 +1,7 @@
 package de.jamsintown.story;
 
+import de.jamsintown.bild.Bild;
+import de.jamsintown.text.Text;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.security.UnauthorizedException;
@@ -8,7 +10,10 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.hibernate.ObjectNotFoundException;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @ApplicationScoped
 public class StoryService {
@@ -57,5 +62,22 @@ public class StoryService {
         return findById(id)
                 .chain(s -> Story.update("story = null where story = ?1", s)
                         .chain(i -> s.delete()));
+    }
+
+    @WithTransaction
+    public Uni<Void> reorder(long storyId, List<ReorderItem> items) {
+        return findById(storyId).chain(story -> {
+            List<Uni<?>> updates = new ArrayList<>();
+            Map<Integer, Integer> colCounters = new HashMap<>();
+            for (ReorderItem item : items) {
+                int pos = colCounters.merge(item.column, 0, (old, x) -> old + 1);
+                if ("bild".equals(item.type)) {
+                    updates.add(Bild.update("storyPosition = ?1, storyColumn = ?2 where id = ?3", pos, item.column, item.id));
+                } else {
+                    updates.add(Text.update("storyPosition = ?1, storyColumn = ?2 where id = ?3", pos, item.column, item.id));
+                }
+            }
+            return Uni.combine().all().unis(updates).discardItems();
+        });
     }
 }
