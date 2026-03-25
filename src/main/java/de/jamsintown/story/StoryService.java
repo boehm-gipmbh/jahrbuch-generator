@@ -1,8 +1,13 @@
 package de.jamsintown.story;
 
 import de.jamsintown.bild.Bild;
+import de.jamsintown.bild.BilderUploadResource;
 import de.jamsintown.text.Text;
 import de.jamsintown.user.UserService;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.security.UnauthorizedException;
 import io.smallrye.mutiny.Uni;
@@ -17,6 +22,9 @@ import java.util.Map;
 
 @ApplicationScoped
 public class StoryService {
+
+    @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
+    private String capturesPath;
 
     private final UserService userService;
 
@@ -62,6 +70,27 @@ public class StoryService {
         return findById(id)
                 .chain(s -> Story.update("story = null where story = ?1", s)
                         .chain(i -> s.delete()));
+    }
+
+    @WithTransaction
+    public Uni<Void> deleteWithContent(long id) {
+        return findById(id)
+                .chain(s -> Bild.<Bild>find("story", s).list()
+                        .chain(bilder -> {
+                            for (Bild bild : bilder) {
+                                String fullPath = capturesPath + bild.pfad.replaceFirst("^/", "");
+                                try {
+                                    Files.deleteIfExists(Paths.get(fullPath));
+                                    String fileName = Paths.get(fullPath).getFileName().toString();
+                                    Files.deleteIfExists(Paths.get(capturesPath).resolve(BilderUploadResource.toThumbName(fileName)));
+                                } catch (IOException e) {
+                                    // best effort, continue
+                                }
+                            }
+                            return Bild.delete("story", s)
+                                    .chain(i -> Text.delete("story", s))
+                                    .chain(i -> s.delete());
+                        }));
     }
 
     @WithTransaction

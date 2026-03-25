@@ -52,6 +52,12 @@ public class StoryResource {
     return storyService.delete(id);
   }
 
+  @DELETE
+  @Path("/{id}/cascade")
+  public Uni<Void> deleteWithContent(@PathParam("id") long id) {
+    return storyService.deleteWithContent(id);
+  }
+
   @PUT
   @Consumes(MediaType.APPLICATION_JSON)
   @Path("/{id}/reorder")
