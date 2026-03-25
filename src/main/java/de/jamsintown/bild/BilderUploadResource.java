@@ -252,7 +252,7 @@ public class BilderUploadResource {
                 .map(count -> Response.ok("Thumbnails generiert: " + count).build());
     }
 
-    static String toThumbName(String fileName) {
+    public static String toThumbName(String fileName) {
         int dot = fileName.lastIndexOf('.');
         String base = dot > 0 ? fileName.substring(0, dot) : fileName;
         return base + "_thumb.jpg";
