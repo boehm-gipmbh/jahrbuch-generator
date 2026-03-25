@@ -43,10 +43,28 @@ public class TextResource {
         return textService.update(text);
     }
 
+    @GET
+    @Path("/papierkorb")
+    public Uni<List<Text>> getDeleted() {
+        return textService.listDeleted();
+    }
+
     @DELETE
     @Path("/{id}")
     public Uni<Void> delete(@PathParam("id") long id) {
-        return textService.delete(id);
+        return textService.softDelete(id);
+    }
+
+    @PUT
+    @Path("/{id}/restore")
+    public Uni<Text> restore(@PathParam("id") long id) {
+        return textService.restore(id);
+    }
+
+    @DELETE
+    @Path("/{id}/hard")
+    public Uni<Void> hardDelete(@PathParam("id") long id) {
+        return textService.hardDelete(id);
     }
 
     @PUT

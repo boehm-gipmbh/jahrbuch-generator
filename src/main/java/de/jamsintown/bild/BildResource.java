@@ -55,10 +55,28 @@ public class BildResource {
         return bildService.update(text);
     }
 
+    @GET
+    @Path("/papierkorb")
+    public Uni<List<Bild>> getDeleted() {
+        return bildService.listDeleted();
+    }
+
     @DELETE
     @Path("/{id}")
     public Uni<Void> delete(@PathParam("id") long id) {
-        return bildService.delete(id);
+        return bildService.softDelete(id);
+    }
+
+    @PUT
+    @Path("/{id}/restore")
+    public Uni<Bild> restore(@PathParam("id") long id) {
+        return bildService.restore(id);
+    }
+
+    @DELETE
+    @Path("/{id}/hard")
+    public Uni<Void> hardDelete(@PathParam("id") long id) {
+        return bildService.hardDelete(id);
     }
 
     @PUT

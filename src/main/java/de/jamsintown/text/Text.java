@@ -47,4 +47,7 @@ public class Text extends PanacheEntity {
 
     @Version
     public int version;
+
+    @Column(nullable = false)
+    public boolean deleted = false;
 }

@@ -54,4 +54,7 @@ public class Bild extends PanacheEntity {
 
     @Column(name = "last_rotated", nullable = false)
     public long lastRotated = 0;
+
+    @Column(nullable = false)
+    public boolean deleted = false;
 }
