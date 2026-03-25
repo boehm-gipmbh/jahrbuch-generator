@@ -44,11 +44,11 @@ class BildServiceTest {
         return bild;
     }
 
-    /** Erstellt einen BildService, der findById mit einem festen Bild beantwortet */
+    /** Erstellt einen BildService, der findByIdIncludeDeleted mit einem festen Bild beantwortet */
     private BildService serviceWithBild(Bild bild) throws Exception {
         BildService s = new BildService(null) {
             @Override
-            public Uni<Bild> findById(Long id) {
+            protected Uni<Bild> findByIdIncludeDeleted(Long id) {
                 return Uni.createFrom().item(bild);
             }
         };
@@ -56,11 +56,11 @@ class BildServiceTest {
         return s;
     }
 
-    /** Erstellt einen BildService, der findById mit einem Fehler beantwortet */
+    /** Erstellt einen BildService, der findByIdIncludeDeleted mit einem Fehler beantwortet */
     private BildService serviceWithNotFound(long id) throws Exception {
         BildService s = new BildService(null) {
             @Override
-            public Uni<Bild> findById(Long bildId) {
+            protected Uni<Bild> findByIdIncludeDeleted(Long bildId) {
                 return Uni.createFrom().failure(new ObjectNotFoundException(bildId, "Bild"));
             }
         };
@@ -75,7 +75,7 @@ class BildServiceTest {
         assertTrue(Files.exists(datei));
 
         BildService s = serviceWithBild(bildStub("/testbild.jpg"));
-        s.delete(1L).await().indefinitely();
+        s.hardDelete(1L).await().indefinitely();
 
         assertFalse(Files.exists(datei), "Datei muss von Festplatte gelöscht worden sein");
     }
@@ -85,7 +85,7 @@ class BildServiceTest {
         // Datei existiert nicht auf Festplatte — deleteIfExists soll trotzdem nicht werfen
         BildService s = serviceWithBild(bildStub("/nichtvorhanden.jpg"));
 
-        assertDoesNotThrow(() -> s.delete(1L).await().indefinitely());
+        assertDoesNotThrow(() -> s.hardDelete(1L).await().indefinitely());
     }
 
     @Test
@@ -96,7 +96,7 @@ class BildServiceTest {
         Files.write(datei, "Daten".getBytes(StandardCharsets.UTF_8));
 
         BildService s = serviceWithBild(bildStub("/unterordner/bild.jpg"));
-        s.delete(1L).await().indefinitely();
+        s.hardDelete(1L).await().indefinitely();
 
         assertFalse(Files.exists(datei), "Datei in Unterordner muss gelöscht worden sein");
     }
@@ -106,6 +106,6 @@ class BildServiceTest {
         BildService s = serviceWithNotFound(42L);
 
         assertThrows(ObjectNotFoundException.class,
-                () -> s.delete(42L).await().indefinitely());
+                () -> s.hardDelete(42L).await().indefinitely());
     }
 }

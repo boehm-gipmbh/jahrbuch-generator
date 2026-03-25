@@ -122,7 +122,7 @@ public class BildService {
                 });
     }
 
-    private Uni<Bild> findByIdIncludeDeleted(Long id) {
+    protected Uni<Bild> findByIdIncludeDeleted(Long id) {
         return userService.getCurrentUser()
                 .chain(user -> Bild.<Bild>findById(id)
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Bild"))
