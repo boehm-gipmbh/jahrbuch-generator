@@ -1,0 +1,1 @@
+ALTER TABLE stories ADD COLUMN layout VARCHAR(10) DEFAULT '2col';
