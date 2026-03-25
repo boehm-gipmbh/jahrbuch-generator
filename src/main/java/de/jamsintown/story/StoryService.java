@@ -2,6 +2,7 @@ package de.jamsintown.story;
 
 import de.jamsintown.bild.Bild;
 import de.jamsintown.text.Text;
+import de.jamsintown.user.User;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.security.UnauthorizedException;
@@ -71,6 +72,27 @@ public class StoryService {
                 .chain(s -> Bild.update("deleted = true, deletedFromStoryName = ?2, story = null where story = ?1", s, s.name)
                         .chain(i -> Text.update("deleted = true, deletedFromStoryName = ?2, story = null where story = ?1", s, s.name))
                         .chain(i -> s.delete()));
+    }
+
+    @WithTransaction
+    public Uni<Story> restoreByName(String name, boolean withContent) {
+        return userService.getCurrentUser()
+                .chain(user -> {
+                    Story story = new Story();
+                    story.name = name;
+                    story.user = user;
+                    return story.<Story>persistAndFlush()
+                            .chain(saved -> {
+                                if (!withContent) return Uni.createFrom().item(saved);
+                                return Bild.update(
+                                        "deleted = false, deletedFromStoryName = null, story = ?1 where user = ?2 and deletedFromStoryName = ?3",
+                                        saved, user, name)
+                                    .chain(i -> Text.update(
+                                        "deleted = false, deletedFromStoryName = null, story = ?1 where user = ?2 and deletedFromStoryName = ?3",
+                                        saved, user, name))
+                                    .replaceWith(saved);
+                            });
+                });
     }
 
     @WithTransaction

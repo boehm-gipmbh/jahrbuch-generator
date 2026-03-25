@@ -1,6 +1,5 @@
 package de.jamsintown.story;
 
-import de.jamsintown.bild.Bild;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -56,6 +55,14 @@ public class StoryResource {
   @Path("/{id}/cascade")
   public Uni<Void> deleteWithContent(@PathParam("id") long id) {
     return storyService.deleteWithContent(id);
+  }
+
+  @POST
+  @Path("/restore")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @ResponseStatus(201)
+  public Uni<Story> restoreByName(RestoreStoryRequest request) {
+    return storyService.restoreByName(request.name, request.withContent);
   }
 
   @PUT
