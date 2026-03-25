@@ -68,7 +68,8 @@ public class StoryService {
     @WithTransaction
     public Uni<Void> delete(long id) {
         return findById(id)
-                .chain(s -> Story.update("story = null where story = ?1", s)
+                .chain(s -> Bild.update("story = null where story = ?1", s)
+                        .chain(i -> Text.update("story = null where story = ?1", s))
                         .chain(i -> s.delete()));
     }
 
