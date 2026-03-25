@@ -31,6 +31,9 @@ public class Story extends PanacheEntity {
     @Column(updatable = false, nullable = false)
     public ZonedDateTime created;
 
+    @Column(name = "layout", length = 10)
+    public String layout = "2col";
+
     @Version
     public int version;
 }
