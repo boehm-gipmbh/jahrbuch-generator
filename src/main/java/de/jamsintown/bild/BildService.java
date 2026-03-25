@@ -87,12 +87,23 @@ public class BildService {
 
     @WithTransaction
     public Uni<Bild> restore(long id) {
-        return findByIdIncludeDeleted(id)
-                .chain(bild -> {
-                    bild.deleted = false;
-                    bild.deletedFromStoryName = null;
-                    return bild.persistAndFlush();
-                });
+        return userService.getCurrentUser()
+                .chain(user -> findByIdIncludeDeleted(id)
+                        .chain(bild -> {
+                            bild.deleted = false;
+                            String storyName = bild.deletedFromStoryName;
+                            bild.deletedFromStoryName = null;
+                            if (storyName == null) {
+                                return bild.persistAndFlush();
+                            }
+                            return de.jamsintown.story.Story
+                                    .<de.jamsintown.story.Story>find("user = ?1 and name = ?2", user, storyName)
+                                    .firstResult()
+                                    .chain(story -> {
+                                        bild.story = story; // null wenn nicht gefunden → bleibt unzugeordnet
+                                        return bild.persistAndFlush();
+                                    });
+                        }));
     }
 
     @WithTransaction

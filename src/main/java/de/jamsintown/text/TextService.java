@@ -89,12 +89,23 @@ public class TextService {
 
     @WithTransaction
     public Uni<Text> restore(long id) {
-        return findByIdIncludeDeleted(id)
-                .chain(text -> {
-                    text.deleted = false;
-                    text.deletedFromStoryName = null;
-                    return text.persistAndFlush();
-                });
+        return userService.getCurrentUser()
+                .chain(user -> findByIdIncludeDeleted(id)
+                        .chain(text -> {
+                            text.deleted = false;
+                            String storyName = text.deletedFromStoryName;
+                            text.deletedFromStoryName = null;
+                            if (storyName == null) {
+                                return text.persistAndFlush();
+                            }
+                            return de.jamsintown.story.Story
+                                    .<de.jamsintown.story.Story>find("user = ?1 and name = ?2", user, storyName)
+                                    .firstResult()
+                                    .chain(story -> {
+                                        text.story = story; // null wenn nicht gefunden → bleibt unzugeordnet
+                                        return text.persistAndFlush();
+                                    });
+                        }));
     }
 
     @WithTransaction
