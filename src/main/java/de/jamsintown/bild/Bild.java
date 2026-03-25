@@ -57,4 +57,7 @@ public class Bild extends PanacheEntity {
 
     @Column(nullable = false)
     public boolean deleted = false;
+
+    @Column(name = "deleted_from_story_name")
+    public String deletedFromStoryName;
 }

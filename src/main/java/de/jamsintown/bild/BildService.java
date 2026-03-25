@@ -78,7 +78,9 @@ public class BildService {
     public Uni<Void> softDelete(long id) {
         return findById(id)
                 .chain(bild -> {
+                    bild.deletedFromStoryName = bild.story != null ? bild.story.name : null;
                     bild.deleted = true;
+                    bild.story = null;
                     return bild.persistAndFlush().replaceWithVoid();
                 });
     }
@@ -88,6 +90,7 @@ public class BildService {
         return findByIdIncludeDeleted(id)
                 .chain(bild -> {
                     bild.deleted = false;
+                    bild.deletedFromStoryName = null;
                     return bild.persistAndFlush();
                 });
     }

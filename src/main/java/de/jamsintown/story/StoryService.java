@@ -68,8 +68,8 @@ public class StoryService {
     @WithTransaction
     public Uni<Void> deleteWithContent(long id) {
         return findById(id)
-                .chain(s -> Bild.update("deleted = true, story = null where story = ?1", s)
-                        .chain(i -> Text.update("deleted = true, story = null where story = ?1", s))
+                .chain(s -> Bild.update("deleted = true, deletedFromStoryName = ?2, story = null where story = ?1", s, s.name)
+                        .chain(i -> Text.update("deleted = true, deletedFromStoryName = ?2, story = null where story = ?1", s, s.name))
                         .chain(i -> s.delete()));
     }
 

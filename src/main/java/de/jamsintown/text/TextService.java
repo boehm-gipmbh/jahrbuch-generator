@@ -80,7 +80,9 @@ public class TextService {
     public Uni<Void> softDelete(long id) {
         return findById(id)
                 .chain(text -> {
+                    text.deletedFromStoryName = text.story != null ? text.story.name : null;
                     text.deleted = true;
+                    text.story = null;
                     return text.persistAndFlush().replaceWithVoid();
                 });
     }
@@ -90,6 +92,7 @@ public class TextService {
         return findByIdIncludeDeleted(id)
                 .chain(text -> {
                     text.deleted = false;
+                    text.deletedFromStoryName = null;
                     return text.persistAndFlush();
                 });
     }
