@@ -52,3 +52,7 @@ data_dump.sql
 schema_dump.sql
 test-output.png
 pg_migrate.sh
+
+# Playwright
+playwright-report/
+test-results/
