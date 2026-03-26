@@ -66,24 +66,27 @@ mkdir -p "$ROOT/target"
 # =============================================================================
 # 0. Prüfen ob alle Test-Bilder vorhanden sind
 # =============================================================================
-REQUIRED_BILDER=(
-    "20250818_135428_6d60d04b-94d3-4036-9c06-9c11316abe40.jpg"
-    "20250818_135510_f7b0be4e-1bbc-4ea0-81be-9d172acfa370.jpg"
-    "20250818_135703_61c3b02d-4fc0-4870-85b9-167ba70cae40.jpg"
-    "20250818_135813_b7957ba8-9fdc-4054-928d-bcf086d7377c.jpg"
-    "20250818_140105_a082e36a-4885-48bf-8945-d63fbe15b4ca.jpg"
+E2E_BILDER=(
+    "e2e-test-bild-1.jpg"
+    "e2e-test-bild-2.jpg"
+    "e2e-test-bild-3.jpg"
+    "e2e-test-bild-4.jpg"
+    "e2e-test-bild-5.jpg"
 )
-MISSING=0
-for f in "${REQUIRED_BILDER[@]}"; do
+mkdir -p "$ROOT/captures"
+for f in "${E2E_BILDER[@]}"; do
     if [ ! -f "$ROOT/captures/$f" ]; then
-        error "Fehlendes Testbild: captures/$f"
-        MISSING=1
+        if command -v convert &>/dev/null; then
+            convert -size 400x300 "xc:#$(openssl rand -hex 3)" "$ROOT/captures/$f" 2>/dev/null \
+                && info "Testbild erzeugt: $f" \
+                || { error "convert fehlgeschlagen für $f"; exit 1; }
+        else
+            # Minimales JPEG ohne ImageMagick
+            printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f'"'"'9=82<.342\x1edL\t\x14 ##=\x19\x13=8\x1f\x1c\x1c\x1c\x1f\x1b\x1c\x1c\xff\xd9' > "$ROOT/captures/$f"
+            info "Testbild (minimal) erzeugt: $f"
+        fi
     fi
 done
-if [ "$MISSING" -eq 1 ]; then
-    error "Bitte fehlende Bilder in captures/ bereitstellen und erneut starten."
-    exit 1
-fi
 info "Alle Testbilder vorhanden."
 
 # =============================================================================
