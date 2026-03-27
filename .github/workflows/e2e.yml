@@ -62,7 +62,7 @@ jobs:
 
       - name: Backend starten
         run: |
-          mkdir -p target
+          mkdir -p target/classes/frontend
           ./mvnw compile quarkus:dev \
             -Dquarkus.profile=local \
             -Djahrbuch.captures.path="$GITHUB_WORKSPACE/captures/" \
