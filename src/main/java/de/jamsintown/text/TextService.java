@@ -37,7 +37,12 @@ public class TextService {
 
     public Uni<List<Text>> listForUser() {
         return userService.getCurrentUser()
-                .chain(user -> Text.find("user", user).list());
+                .chain(user -> Text.<Text>find("user = ?1 and deleted = false", user).list());
+    }
+
+    public Uni<List<Text>> listDeleted() {
+        return userService.getCurrentUser()
+                .chain(user -> Text.<Text>find("user = ?1 and deleted = true", user).list());
     }
 
     public Uni<List<Text>> listAll() {
@@ -72,9 +77,52 @@ public class TextService {
     }
 
     @WithTransaction
-    public Uni<Void> delete(long id) {
+    public Uni<Void> softDelete(long id) {
         return findById(id)
+                .chain(text -> {
+                    text.deletedFromStoryName = text.story != null ? text.story.name : null;
+                    text.deleted = true;
+                    text.story = null;
+                    return text.persistAndFlush().replaceWithVoid();
+                });
+    }
+
+    @WithTransaction
+    public Uni<Text> restore(long id) {
+        return userService.getCurrentUser()
+                .chain(user -> findByIdIncludeDeleted(id)
+                        .chain(text -> {
+                            text.deleted = false;
+                            String storyName = text.deletedFromStoryName;
+                            text.deletedFromStoryName = null;
+                            if (storyName == null) {
+                                return text.persistAndFlush();
+                            }
+                            return de.jamsintown.story.Story
+                                    .<de.jamsintown.story.Story>find("user = ?1 and name = ?2", user, storyName)
+                                    .firstResult()
+                                    .chain(story -> {
+                                        text.story = story; // null wenn nicht gefunden → bleibt unzugeordnet
+                                        return text.persistAndFlush();
+                                    });
+                        }));
+    }
+
+    @WithTransaction
+    public Uni<Void> hardDelete(long id) {
+        return findByIdIncludeDeleted(id)
                 .chain(Text::delete);
+    }
+
+    private Uni<Text> findByIdIncludeDeleted(long id) {
+        return userService.getCurrentUser()
+                .chain(user -> Text.<Text>findById(id)
+                        .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Text"))
+                        .onItem().invoke(text -> {
+                            if (!user.equals(text.user)) {
+                                throw new ForbiddenException("Access denied to text with id: " + id);
+                            }
+                        }));
     }
 
     @WithTransaction

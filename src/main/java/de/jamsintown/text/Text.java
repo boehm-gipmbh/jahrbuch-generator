@@ -47,4 +47,10 @@ public class Text extends PanacheEntity {
 
     @Version
     public int version;
+
+    @Column(nullable = false)
+    public boolean deleted = false;
+
+    @Column(name = "deleted_from_story_name")
+    public String deletedFromStoryName;
 }

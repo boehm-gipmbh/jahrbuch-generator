@@ -32,7 +32,12 @@ public class BildService {
 
     public Uni<List<Bild>> listForUser() {
         return userService.getCurrentUser()
-                .chain(user -> Bild.find("user", user).list());
+                .chain(user -> Bild.<Bild>find("user = ?1 and deleted = false", user).list());
+    }
+
+    public Uni<List<Bild>> listDeleted() {
+        return userService.getCurrentUser()
+                .chain(user -> Bild.<Bild>find("user = ?1 and deleted = true", user).list());
     }
 
     public Uni<Bild> findByPfad(String pfad) {
@@ -69,22 +74,64 @@ public class BildService {
     }
 
 
-@WithTransaction
-public Uni<Void> delete(long id) {
-    // Einmaliger DB-Lookup: Bild laden, Datei von Festplatte löschen, dann aus DB löschen
-    return findById(id)
-            .chain(bild -> {
-                String fullPath = capturesPath + bild.pfad.replaceFirst("^/", "");
-                try {
-                    Files.deleteIfExists(Paths.get(fullPath));
-                    String fileName = Paths.get(fullPath).getFileName().toString();
-                    Files.deleteIfExists(Paths.get(capturesPath).resolve(de.jamsintown.bild.BilderUploadResource.toThumbName(fileName)));
-                } catch (IOException e) {
-                    return Uni.<Void>createFrom().failure(new RuntimeException("Fehler beim Löschen der Datei: " + e.getMessage(), e));
-                }
-                return bild.delete();
-            });
-}
+    @WithTransaction
+    public Uni<Void> softDelete(long id) {
+        return findById(id)
+                .chain(bild -> {
+                    bild.deletedFromStoryName = bild.story != null ? bild.story.name : null;
+                    bild.deleted = true;
+                    bild.story = null;
+                    return bild.persistAndFlush().replaceWithVoid();
+                });
+    }
+
+    @WithTransaction
+    public Uni<Bild> restore(long id) {
+        return userService.getCurrentUser()
+                .chain(user -> findByIdIncludeDeleted(id)
+                        .chain(bild -> {
+                            bild.deleted = false;
+                            String storyName = bild.deletedFromStoryName;
+                            bild.deletedFromStoryName = null;
+                            if (storyName == null) {
+                                return bild.persistAndFlush();
+                            }
+                            return de.jamsintown.story.Story
+                                    .<de.jamsintown.story.Story>find("user = ?1 and name = ?2", user, storyName)
+                                    .firstResult()
+                                    .chain(story -> {
+                                        bild.story = story; // null wenn nicht gefunden → bleibt unzugeordnet
+                                        return bild.persistAndFlush();
+                                    });
+                        }));
+    }
+
+    @WithTransaction
+    public Uni<Void> hardDelete(long id) {
+        return findByIdIncludeDeleted(id)
+                .chain(bild -> {
+                    String fullPath = capturesPath + bild.pfad.replaceFirst("^/", "");
+                    try {
+                        Files.deleteIfExists(Paths.get(fullPath));
+                        String fileName = Paths.get(fullPath).getFileName().toString();
+                        Files.deleteIfExists(Paths.get(capturesPath).resolve(BilderUploadResource.toThumbName(fileName)));
+                    } catch (IOException e) {
+                        return Uni.<Void>createFrom().failure(new RuntimeException("Fehler beim Löschen der Datei: " + e.getMessage(), e));
+                    }
+                    return bild.delete();
+                });
+    }
+
+    protected Uni<Bild> findByIdIncludeDeleted(Long id) {
+        return userService.getCurrentUser()
+                .chain(user -> Bild.<Bild>findById(id)
+                        .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Bild"))
+                        .onItem().invoke(bild -> {
+                            if (!user.equals(bild.user)) {
+                                throw new ForbiddenException("Access denied to bild with id: " + id);
+                            }
+                        }));
+    }
 
     @WithTransaction
     public Uni<List<Bild>> reorder(Long storyId, List<Long> bildIds) {
