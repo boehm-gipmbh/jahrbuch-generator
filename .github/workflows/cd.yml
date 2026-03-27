@@ -38,8 +38,8 @@ jobs:
       - name: Image mit Git-SHA taggen
         run: |
           SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:$SHA
-          docker push drdboehm/jahrbuch-generator:$SHA
+          docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:fly-$SHA
+          docker push drdboehm/jahrbuch-generator:fly-$SHA
 
       - name: flyctl einrichten
         uses: superfly/flyctl-actions/setup-flyctl@master
