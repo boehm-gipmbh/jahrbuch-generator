@@ -84,6 +84,16 @@ jobs:
         run: npm ci
         working-directory: src/main/frontend/e2e
 
+      - name: Frontend starten
+        run: |
+          npm start > /tmp/frontend.log 2>&1 &
+          echo "Warte auf Frontend..."
+          for i in $(seq 1 120); do
+            curl -sf http://localhost:3000 -o /dev/null 2>/dev/null && echo "Frontend bereit nach ${i}s" && break
+            sleep 1
+          done
+        working-directory: src/main/frontend
+
       - name: Playwright Browsers installieren
         run: npx playwright install --with-deps chromium
         working-directory: src/main/frontend/e2e
