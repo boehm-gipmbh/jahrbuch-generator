@@ -35,6 +35,12 @@ jobs:
       - name: Native Image bauen und zu Docker Hub pushen
         run: ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B -Dquarkus.native.container-build=true
 
+      - name: Image mit Git-SHA taggen
+        run: |
+          SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:$SHA
+          docker push drdboehm/jahrbuch-generator:$SHA
+
       - name: flyctl einrichten
         uses: superfly/flyctl-actions/setup-flyctl@master
 
