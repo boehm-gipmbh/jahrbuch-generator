@@ -1,0 +1,39 @@
+name: CD — Deploy to Fly.io
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 17 einrichten
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+          cache: maven
+
+      - name: Docker Hub Login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Native Image bauen und zu Docker Hub pushen
+        run: ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B -Dquarkus.native.container-build=true
+
+      - name: flyctl einrichten
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --image drdboehm/jahrbuch-generator:fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
