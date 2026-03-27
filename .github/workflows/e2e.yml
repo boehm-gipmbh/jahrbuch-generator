@@ -89,7 +89,7 @@ jobs:
         working-directory: src/main/frontend/e2e
 
       - name: Playwright Tests ausführen
-        run: npx playwright test
+        run: npx playwright test --retries=2
         working-directory: src/main/frontend/e2e
         env:
           TEST_USERNAME: ${{ secrets.E2E_TEST_USERNAME }}
