@@ -67,6 +67,7 @@ jobs:
             -Dquarkus.profile=local \
             -Djahrbuch.captures.path="$GITHUB_WORKSPACE/captures/" \
             -Dquarkus.hibernate-orm.database.generation=none \
+            -Dquarkus.devservices.enabled=false \
             > target/e2e-backend.log 2>&1 &
           echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
           echo "Warte auf Backend..."
