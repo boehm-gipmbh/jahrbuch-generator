@@ -25,18 +25,22 @@ public class AuthService {
     this.userService = userService;
   }
     @WithSession
-    public Uni<String> authenticate(AuthRequest authRequest) {
+  public Uni<String> authenticate(AuthRequest authRequest) {
     return userService.findByName(authRequest.name())
       .onItem()
       .transform(user -> {
         if (user == null || !UserService.matches(user, authRequest.password())) {
           throw new AuthenticationFailedException("Invalid credentials");
         }
-        return Jwt.issuer(issuer)
-          .upn(user.name)
-          .groups(new HashSet<>(user.roles))
-          .expiresIn(Duration.ofHours(1L))
-          .sign();
+        return generateToken(user);
       });
+  }
+
+  public String generateToken(de.jamsintown.user.User user) {
+    return Jwt.issuer(issuer)
+      .upn(user.name)
+      .groups(new HashSet<>(user.roles))
+      .expiresIn(Duration.ofHours(1L))
+      .sign();
   }
 }
