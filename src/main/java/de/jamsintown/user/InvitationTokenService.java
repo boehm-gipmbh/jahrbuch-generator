@@ -85,12 +85,13 @@ public class InvitationTokenService {
         return t;
       })
       .chain(t -> {
-        if (name == null || name.isBlank() || name.contains(" ")) {
-          throw new ClientErrorException("Benutzername darf keine Leerzeichen enthalten",
+        if (name == null || !name.matches("^[a-zA-Z0-9_-]{3,30}$")) {
+          throw new ClientErrorException(
+            "Benutzername muss 3–30 Zeichen lang sein und darf nur Buchstaben, Ziffern, - und _ enthalten",
             Response.Status.BAD_REQUEST);
         }
         User user = new User();
-        user.name = name.strip();
+        user.name = name;
         user.email = email;
         user.setPassword(BcryptUtil.bcryptHash(password));
         user.roles = List.of(t.role);
