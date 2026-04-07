@@ -85,8 +85,12 @@ public class InvitationTokenService {
         return t;
       })
       .chain(t -> {
+        if (name == null || name.isBlank() || name.contains(" ")) {
+          throw new ClientErrorException("Benutzername darf keine Leerzeichen enthalten",
+            Response.Status.BAD_REQUEST);
+        }
         User user = new User();
-        user.name = name;
+        user.name = name.strip();
         user.email = email;
         user.setPassword(BcryptUtil.bcryptHash(password));
         user.roles = List.of(t.role);
