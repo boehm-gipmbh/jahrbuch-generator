@@ -13,6 +13,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.ZonedDateTime;
 import java.util.UUID;
 
 @ApplicationScoped
@@ -78,13 +79,18 @@ public class EmailVerificationService {
     return User.<User>find("emailVerificationToken", token).firstResult()
       .chain(user -> {
         if (user == null) {
-          throw new ClientErrorException("Ungültiger oder abgelaufener Verifikationslink",
-            Response.Status.GONE);
+          // Token bereits verbraucht (idempotent) — kein Fehler
+          return Uni.createFrom().voidItem();
+        }
+        if (user.created.isBefore(ZonedDateTime.now().minusHours(24))) {
+          user.emailVerificationToken = null;
+          return user.persistAndFlush()
+            .chain(() -> Uni.createFrom().failure(
+              new ClientErrorException("Verifikationslink abgelaufen", Response.Status.GONE)));
         }
         user.emailVerified = true;
         user.emailVerificationToken = null;
-        return user.persistAndFlush();
-      })
-      .replaceWithVoid();
+        return user.persistAndFlush().replaceWithVoid();
+      });
   }
 }
