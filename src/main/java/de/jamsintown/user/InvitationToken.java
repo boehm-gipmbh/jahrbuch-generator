@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -36,4 +37,7 @@ public class InvitationToken extends PanacheEntity {
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "created_by", nullable = false)
   public User createdBy;
+
+  @OneToMany(mappedBy = "usedInvitation", fetch = FetchType.EAGER)
+  public List<User> registeredUsers;
 }

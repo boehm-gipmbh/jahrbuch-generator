@@ -192,6 +192,94 @@ Erlaubte Werte für `degrees`: `90`, `180`, `270`.
 flyctl deploy --image drdboehm/jahrbuch-generator:fly
 ----
 
+== Integrativ lokal testen (manuell)
+
+Vollständiger Stack lokal hochfahren: PostgreSQL in Docker, Migrationen, Seed-Daten, Backend, Frontend.
+
+=== Schritt 1: PostgreSQL starten
+
+[source,bash]
+----
+docker run -d --rm --name postgres-dev \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -p 5432:5432 \
+  postgres:latest
+----
+
+Beim nächsten Mal (Container noch vorhanden, aber gestoppt):
+
+[source,bash]
+----
+docker start postgres-dev
+----
+
+=== Schritt 2: Migrationen ausführen (nur bei frischer DB oder neuen Migrations-Dateien)
+
+`migrate.sh` prüft anhand der `schema_migrations`-Tabelle, was schon angewendet wurde — bereits eingespieltes wird mit `[skip]` übersprungen.
+Bei einer laufenden, aktuellen DB ist dieser Schritt ein No-op.
+
+[source,bash]
+----
+export FREE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
+export MIGRATIONS_DIR="$(pwd)/src/main/resources/db/migration"
+bash migrate.sh
+----
+
+=== Schritt 3: Seed-Daten einspielen
+
+Legt folgende Basis-User an (alle mit demselben Passwort — siehe `DEV_ADMIN_PASSWORD` in `.env`):
+
+[cols="1,1,1"]
+|===
+|Name |E-Mail |Rolle
+
+|`admin` |admin@jamsintown.de |admin, user
+|`user` |user@jamsintown.de |user
+|`detlef` |drdboehm@jamsintown.de |user
+|===
+
+Idempotent — kann mehrfach ausgeführt werden.
+
+[source,bash]
+----
+PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres \
+  -f src/main/resources/import-dev.sql
+----
+
+NOTE: `psql "$FREE_DATABASE_URL"` funktioniert nur, wenn die Variable im aktuellen Terminal gesetzt ist.
+Ohne sie versucht psql eine Verbindung über den lokalen Unix-Socket, was fehlschlägt.
+
+=== Schritt 4: Backend starten
+
+[source,bash]
+----
+export DEV_DB_USERNAME=postgres
+export DEV_DB_PASSWORD=postgres
+./mvnw compile quarkus:dev -Dquarkus.profile=local
+----
+
+Das Backend läuft auf http://localhost:8080.
+
+=== Schritt 5: Frontend starten (separates Terminal)
+
+[source,bash]
+----
+cd src/main/frontend && npm start
+----
+
+Das Frontend läuft auf http://localhost:3000 und proxied API-Calls auf :8080.
+
+=== Kurzfassung via dev-local.sh
+
+`dev-local.sh` fasst Schritte 2–4 zusammen (ohne Docker-Start):
+
+[source,bash]
+----
+docker start postgres-dev   # falls Container bereits vorhanden
+./dev-local.sh
+----
+
 [appendix]
 == Lokale PostgreSQL-Instanz reparieren
 

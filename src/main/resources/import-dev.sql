@@ -3,22 +3,22 @@
 -- It should be run after the schema has been created.
 
 -- Create initial user "admin" with email and roles "admin" and "user"
-INSERT INTO "users" ("id", "name", "email", "password", "created", "version")
-VALUES (0, 'admin', 'admin@jamsintown.de', '$2a$10$7b.9iLgXFVh.r1u9HEbMv.EDL3JcJgldsWHUg4etSUh4wCNGuExye', NOW(), 0)
+INSERT INTO "users" ("id", "name", "email", "password", "created", "version", "email_verified", "active")
+VALUES (0, 'admin', 'admin@jamsintown.de', '$2a$10$LDvEIg68fkbdmrJjtDRlNOVImzgC3hM28JI3i69jcbE/57L74lijW', NOW(), 0, TRUE, TRUE)
     ON CONFLICT DO NOTHING;
 INSERT INTO "user_roles" ("id", "role") VALUES (0, 'admin')
     ON CONFLICT DO NOTHING;
 INSERT INTO "user_roles" ("id", "role") VALUES (0, 'user')
     ON CONFLICT DO NOTHING;
 -- Create initial user "user" with email and role "user"
-INSERT INTO "users" ("id", "name", "email", "password", "created", "version")
-VALUES (1, 'user', 'user@jamsintown.de', '$2a$10$7b.9iLgXFVh.r1u9HEbMv.EDL3JcJgldsWHUg4etSUh4wCNGuExye', NOW(), 0)
+INSERT INTO "users" ("id", "name", "email", "password", "created", "version", "email_verified", "active")
+VALUES (1, 'user', 'user@jamsintown.de', '$2a$10$LDvEIg68fkbdmrJjtDRlNOVImzgC3hM28JI3i69jcbE/57L74lijW', NOW(), 0, TRUE, TRUE)
     ON CONFLICT DO NOTHING;
 INSERT INTO "user_roles" ("id", "role") VALUES (1, 'user')
     ON CONFLICT DO NOTHING;
 -- Create initial user "detlef" with email and role "user"
-INSERT INTO "users" ("id", "name", "email", "password", "created", "version")
-VALUES (2, 'detlef', 'drdboehm@jamsintown.de', '$2a$10$7b.9iLgXFVh.r1u9HEbMv.EDL3JcJgldsWHUg4etSUh4wCNGuExye', NOW(), 0)
+INSERT INTO "users" ("id", "name", "email", "password", "created", "version", "email_verified", "active")
+VALUES (2, 'detlef', 'drdboehm@jamsintown.de', '$2a$10$LDvEIg68fkbdmrJjtDRlNOVImzgC3hM28JI3i69jcbE/57L74lijW', NOW(), 0, TRUE, TRUE)
     ON CONFLICT DO NOTHING;
 INSERT INTO "user_roles" ("id", "role") VALUES (2, 'user')
     ON CONFLICT DO NOTHING;

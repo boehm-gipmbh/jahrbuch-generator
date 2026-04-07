@@ -18,10 +18,12 @@ import java.util.UUID;
 public class InvitationTokenService {
 
   private final JsonWebToken jwt;
+  private final EmailVerificationService emailVerificationService;
 
   @Inject
-  public InvitationTokenService(JsonWebToken jwt) {
+  public InvitationTokenService(JsonWebToken jwt, EmailVerificationService emailVerificationService) {
     this.jwt = jwt;
+    this.emailVerificationService = emailVerificationService;
   }
 
   @WithSession
@@ -88,11 +90,14 @@ public class InvitationTokenService {
         user.email = email;
         user.setPassword(BcryptUtil.bcryptHash(password));
         user.roles = List.of(t.role);
+        user.usedInvitation = t;
+        user.emailVerificationToken = UUID.randomUUID();
         return user.<User>persistAndFlush()
           .chain(savedUser -> {
             t.lastUsedAt = ZonedDateTime.now();
             return t.persistAndFlush().replaceWith(savedUser);
-          });
+          })
+          .call(savedUser -> emailVerificationService.sendVerificationMail(savedUser));
       });
   }
 }

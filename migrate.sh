@@ -28,7 +28,7 @@ AND NOT EXISTS (
 
 # Alle V*.sql Dateien in Reihenfolge anwenden
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-/deployments/migrations}"
-for sql_file in $(ls "$MIGRATIONS_DIR"/V*.sql | sort); do
+for sql_file in $(ls "$MIGRATIONS_DIR"/V*.sql | sort -V); do
     version=$(basename "$sql_file" .sql)
     if psql "$PSQL_URL" -tAc "SELECT 1 FROM schema_migrations WHERE version = '$version'" | grep -q 1; then
         echo "  [skip] $version"

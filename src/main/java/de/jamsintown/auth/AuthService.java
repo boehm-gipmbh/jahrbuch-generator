@@ -32,6 +32,12 @@ public class AuthService {
         if (user == null || !UserService.matches(user, authRequest.password())) {
           throw new AuthenticationFailedException("Invalid credentials");
         }
+        if (!user.active) {
+          throw new AuthenticationFailedException("Account deactivated");
+        }
+        if (!user.emailVerified) {
+          throw new AuthenticationFailedException("Email not verified");
+        }
         return generateToken(user);
       });
   }

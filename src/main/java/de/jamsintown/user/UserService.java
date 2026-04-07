@@ -60,6 +60,27 @@ public class UserService {
   }
 
   @WithTransaction
+  public Uni<Void> delete(long id) {
+    return findById(id).chain(u -> u.delete());
+  }
+
+  @WithTransaction
+  public Uni<User> deactivate(long id) {
+    return findById(id).chain(u -> {
+      u.active = false;
+      return u.persistAndFlush();
+    });
+  }
+
+  @WithTransaction
+  public Uni<User> reactivate(long id) {
+    return findById(id).chain(u -> {
+      u.active = true;
+      return u.persistAndFlush();
+    });
+  }
+
+  @WithTransaction
   public Uni<User> changePassword(String currentPassword, String newPassword) {
     return getCurrentUser()
       .chain(u -> {
