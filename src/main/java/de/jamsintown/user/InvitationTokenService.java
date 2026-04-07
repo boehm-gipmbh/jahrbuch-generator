@@ -90,6 +90,15 @@ public class InvitationTokenService {
             "Benutzername muss 3–30 Zeichen lang sein und darf nur Buchstaben, Ziffern, - und _ enthalten",
             Response.Status.BAD_REQUEST);
         }
+        if (password == null || password.length() < 8
+            || !password.matches(".*[A-Z].*")
+            || !password.matches(".*[a-z].*")
+            || !password.matches(".*[0-9].*")
+            || !password.matches(".*[^a-zA-Z0-9].*")) {
+          throw new ClientErrorException(
+            "Passwort muss mindestens 8 Zeichen, einen Großbuchstaben, einen Kleinbuchstaben, eine Zahl und ein Sonderzeichen enthalten",
+            Response.Status.BAD_REQUEST);
+        }
         User user = new User();
         user.name = name;
         user.email = email;
