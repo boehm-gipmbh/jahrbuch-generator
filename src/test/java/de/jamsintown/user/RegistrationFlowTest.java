@@ -102,22 +102,21 @@ class RegistrationFlowTest {
 
     @Test
     @org.junit.jupiter.api.Order(3)
-    void register_gueltigesToken_gibtJwtZurueck() {
+    void register_gueltigesToken_gibt201() {
         given()
             .contentType(ContentType.JSON)
             .queryParam("token", createdTokenUuid)
             .body("""
                 {
-                  "name": "Max Mustermann",
+                  "name": "MaxMustermann",
                   "email": "max@test.de",
-                  "password": "sicheresPasswort"
+                  "password": "Sicher1!Passwort"
                 }
                 """)
         .when()
             .post("/api/v1/auth/register")
         .then()
-            .statusCode(200)
-            .body(not(emptyString())); // JWT-String
+            .statusCode(201);
     }
 
     @Test
@@ -128,9 +127,9 @@ class RegistrationFlowTest {
             .queryParam("token", createdTokenUuid)
             .body("""
                 {
-                  "name": "Andere Person",
+                  "name": "AnderePerson",
                   "email": "max@test.de",
-                  "password": "anderesPw"
+                  "password": "Andere1!Passwort"
                 }
                 """)
         .when()
