@@ -61,15 +61,7 @@ public class UserService {
 
   @WithTransaction
   public Uni<Void> delete(long id) {
-    return User.<User>find("FROM User u LEFT JOIN FETCH u.groups WHERE u.id = ?1", id)
-        .firstResult()
-        .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "User"))
-        .chain(u -> {
-          u.groups.clear();
-          u.activeGroup = null;
-          return u.<User>persistAndFlush();
-        })
-        .chain(u -> u.delete());
+    return findById(id).chain(u -> u.delete());
   }
 
   @WithTransaction
