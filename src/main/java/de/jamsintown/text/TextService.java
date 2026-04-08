@@ -46,10 +46,9 @@ public class TextService {
                 .chain(user -> {
                     Gruppe g = user.activeGroup;
                     if (g != null) {
-                        return Text.<Text>find(
-                            "user.id IN (SELECT u.id FROM User u JOIN u.groups gr WHERE gr = ?1) AND deleted = false", g).list();
+                        return Text.<Text>find("group = ?1 and deleted = false", g).list();
                     }
-                    return Text.<Text>find("user = ?1 and deleted = false", user).list();
+                    return Text.<Text>find("user = ?1 and group is null and deleted = false", user).list();
                 });
     }
 
@@ -58,10 +57,9 @@ public class TextService {
                 .chain(user -> {
                     Gruppe g = user.activeGroup;
                     if (g != null) {
-                        return Text.<Text>find(
-                            "user.id IN (SELECT u.id FROM User u JOIN u.groups gr WHERE gr = ?1) AND deleted = true", g).list();
+                        return Text.<Text>find("group = ?1 and deleted = true", g).list();
                     }
-                    return Text.<Text>find("user = ?1 and deleted = true", user).list();
+                    return Text.<Text>find("user = ?1 and group is null and deleted = true", user).list();
                 });
     }
 
@@ -74,6 +72,7 @@ public class TextService {
         return userService.getCurrentUser()
                 .chain(user -> {
                     text.user = user;
+                    text.group = user.activeGroup;
                     return text.persistAndFlush();
                 });
     }

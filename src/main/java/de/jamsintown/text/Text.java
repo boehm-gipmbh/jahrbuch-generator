@@ -1,6 +1,7 @@
 package de.jamsintown.text;
 
 import de.jamsintown.story.Story;
+import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.User;
 import jakarta.persistence.*;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
@@ -37,6 +38,10 @@ public class Text extends PanacheEntity {
 
     @ManyToOne(optional = false)
     public User user;
+
+    @ManyToOne
+    @JoinColumn(name = "group_id")
+    public Gruppe group;
 
     @ManyToOne
     public Story story;

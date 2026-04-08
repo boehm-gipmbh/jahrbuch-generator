@@ -2,6 +2,7 @@ package de.jamsintown.story;
 
 import de.jamsintown.bild.Bild;
 import de.jamsintown.text.Text;
+import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.User;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
@@ -26,6 +27,10 @@ public class Story extends PanacheEntity {
 
     @ManyToOne(optional = false)
     public User user;
+
+    @ManyToOne
+    @JoinColumn(name = "group_id")
+    public Gruppe group;
 
     @CreationTimestamp
     @Column(updatable = false, nullable = false)

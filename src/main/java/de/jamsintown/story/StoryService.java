@@ -47,10 +47,9 @@ public class StoryService {
                 .chain(user -> {
                     Gruppe g = user.activeGroup;
                     if (g != null) {
-                        return Story.<Story>find(
-                            "user.id IN (SELECT u.id FROM User u JOIN u.groups gr WHERE gr = ?1)", g).list();
+                        return Story.<Story>find("group = ?1", g).list();
                     }
-                    return Story.find("user", user).list();
+                    return Story.<Story>find("user = ?1 and group is null", user).list();
                 });
     }
 
@@ -59,6 +58,7 @@ public class StoryService {
         return userService.getCurrentUser()
                 .chain(user -> {
                     story.user = user;
+                    story.group = user.activeGroup;
                     return story.persistAndFlush();
                 });
     }
