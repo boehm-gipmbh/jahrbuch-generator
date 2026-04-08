@@ -52,6 +52,16 @@ public class InvitationTokenService {
   }
 
   @WithTransaction
+  public Uni<InvitationToken> reactivate(long id) {
+    return InvitationToken.<InvitationToken>findById(id)
+      .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
+      .chain(t -> {
+        t.active = true;
+        return t.persistAndFlush();
+      });
+  }
+
+  @WithTransaction
   public Uni<Void> delete(long id) {
     return InvitationToken.deleteById(id).replaceWithVoid();
   }

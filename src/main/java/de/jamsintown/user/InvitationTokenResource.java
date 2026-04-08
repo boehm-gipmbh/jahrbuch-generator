@@ -38,6 +38,12 @@ public class InvitationTokenResource {
     return service.deactivate(id);
   }
 
+  @PUT
+  @Path("{id}/reactivate")
+  public Uni<InvitationToken> reactivate(@PathParam("id") long id) {
+    return service.reactivate(id);
+  }
+
   @DELETE
   @Path("{id}")
   @ResponseStatus(204)
