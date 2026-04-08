@@ -28,20 +28,29 @@ public class GruppeService {
       user.groups.add(gruppe);
     }
     user.activeGroup = gruppe;
+    return persistUser(user);
+  }
+
+  protected Uni<Gruppe> findGruppeById(long groupId) {
+    return Gruppe.findById(groupId);
+  }
+
+  protected Uni<User> persistUser(User user) {
     return user.persistAndFlush();
   }
 
   /** Wechselt die aktive Gruppe — User muss Mitglied sein. */
   @WithTransaction
   public Uni<User> setActiveGroup(User user, long groupId) {
-    return Gruppe.<Gruppe>findById(groupId)
+    return findGruppeById(groupId)
       .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
       .chain(gruppe -> {
-        if (!user.groups.contains(gruppe)) {
+        boolean isMember = user.groups.stream().anyMatch(g -> g.id != null && g.id.equals(gruppe.id));
+        if (!isMember) {
           throw new ClientErrorException("User ist kein Mitglied dieser Gruppe", Response.Status.FORBIDDEN);
         }
         user.activeGroup = gruppe;
-        return user.persistAndFlush();
+        return persistUser(user);
       });
   }
 
@@ -49,6 +58,6 @@ public class GruppeService {
   @WithTransaction
   public Uni<User> clearActiveGroup(User user) {
     user.activeGroup = null;
-    return user.persistAndFlush();
+    return persistUser(user);
   }
 }
