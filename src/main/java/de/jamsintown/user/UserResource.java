@@ -46,6 +46,24 @@ public class UserResource {
     return userService.update(user);
   }
 
+  @DELETE
+  @Path("{id}")
+  @ResponseStatus(204)
+  public Uni<Void> delete(@PathParam("id") long id) {
+    return userService.delete(id);
+  }
+
+  @PUT
+  @Path("{id}/deactivate")
+  public Uni<User> deactivate(@PathParam("id") long id) {
+    return userService.deactivate(id);
+  }
+
+  @PUT
+  @Path("{id}/reactivate")
+  public Uni<User> reactivate(@PathParam("id") long id) {
+    return userService.reactivate(id);
+  }
 
   @GET
   @Path("self")
