@@ -7,6 +7,7 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.reactive.ResponseStatus;
 
 import java.util.UUID;
@@ -67,10 +68,13 @@ public class AuthResource {
   @RolesAllowed("user")
   @POST
   @Path("/join-group")
+  @io.quarkus.hibernate.reactive.panache.common.WithTransaction
   public Uni<Void> joinGroup(@QueryParam("token") UUID token) {
     return invitationTokenService.validate(token)
       .chain(invitation -> {
-        if (invitation.group == null) return Uni.createFrom().voidItem();
+        if (invitation.group == null) {
+          throw new ClientErrorException("Einladungslink hat keine Gruppe", Response.Status.NOT_FOUND);
+        }
         return userService.getCurrentUser()
           .chain(user -> gruppeService.addToGroup(user, invitation.group))
           .replaceWithVoid();
