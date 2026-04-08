@@ -29,7 +29,7 @@ class InvitationTokenServiceTest {
 
     /** Baut einen Service, der findByToken mit dem gegebenen Token antwortet. */
     private InvitationTokenService serviceWith(InvitationToken token) {
-        return new InvitationTokenService(null, null) {
+        return new InvitationTokenService(null, null, null) {
             @Override
             protected Uni<InvitationToken> findByToken(UUID tokenValue) {
                 return Uni.createFrom().item(token);
@@ -39,7 +39,7 @@ class InvitationTokenServiceTest {
 
     /** Baut einen Service, der findByToken mit null antwortet (Token nicht gefunden). */
     private InvitationTokenService serviceWithNotFound() {
-        return new InvitationTokenService(null, null) {
+        return new InvitationTokenService(null, null, null) {
             @Override
             protected Uni<InvitationToken> findByToken(UUID tokenValue) {
                 return Uni.createFrom().nullItem();
