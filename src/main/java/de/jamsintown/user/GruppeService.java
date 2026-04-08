@@ -21,14 +21,28 @@ public class GruppeService {
       });
   }
 
-  /** Fügt einen User einer Gruppe hinzu und setzt sie als aktive Gruppe. */
+  /** Fügt einen User einer Gruppe hinzu und setzt sie als aktive Gruppe.
+   *  Lädt User und Gruppe frisch innerhalb der Transaktion, damit Hibernate
+   *  die groups-Collection korrekt als PersistentCollection trackt. */
   @WithTransaction
   public Uni<User> addToGroup(User user, Gruppe gruppe) {
-    if (!user.groups.contains(gruppe)) {
-      user.groups.add(gruppe);
-    }
-    user.activeGroup = gruppe;
-    return persistUser(user);
+    return findUserWithGroups(user.id)
+      .chain(freshUser -> findGruppeById(gruppe.id)
+        .chain(freshGruppe -> {
+          boolean alreadyMember = freshUser.groups.stream()
+              .anyMatch(g -> g.id != null && g.id.equals(freshGruppe.id));
+          if (!alreadyMember) {
+            freshUser.groups.add(freshGruppe);
+          }
+          freshUser.activeGroup = freshGruppe;
+          return persistUser(freshUser);
+        }));
+  }
+
+  protected Uni<User> findUserWithGroups(long userId) {
+    return User.<User>find("FROM User u LEFT JOIN FETCH u.groups WHERE u.id = ?1", userId)
+        .list()
+        .map(users -> users.isEmpty() ? null : users.get(0));
   }
 
   protected Uni<Gruppe> findGruppeById(long groupId) {
