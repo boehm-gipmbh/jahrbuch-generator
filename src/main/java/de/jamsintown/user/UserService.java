@@ -29,7 +29,9 @@ public class UserService {
   }
 
   public Uni<User> findByName(String name) {
-    return User.<User>find("FROM User u LEFT JOIN FETCH u.groups WHERE u.name = ?1", name).firstResult();
+    return User.<User>find("FROM User u LEFT JOIN FETCH u.groups WHERE u.name = ?1", name)
+        .list()
+        .map(users -> users.isEmpty() ? null : users.get(0));
   }
 
   public Uni<List<User>> list() {
