@@ -20,7 +20,7 @@ import java.util.UUID;
 public class EmailVerificationService {
 
   private static final Logger LOG = Logger.getLogger(EmailVerificationService.class);
-  private static final HttpClient HTTP = HttpClient.newHttpClient();
+  private final HttpClient http = HttpClient.newHttpClient();
 
   private final String appUrl;
   private final String resendApiKey;
@@ -62,7 +62,7 @@ public class EmailVerificationService {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
-            HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
               LOG.infof("Verifikationsmail an %s gesendet", user.email);
             } else {
