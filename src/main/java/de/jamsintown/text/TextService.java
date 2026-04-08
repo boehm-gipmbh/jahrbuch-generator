@@ -27,12 +27,15 @@ public class TextService {
 
     private Uni<Text> findById(long id) {
         return userService.getCurrentUser()
-                .chain(user -> Text.<Text>findById(id)
+                .chain(user -> Text.<Text>find(
+                        "FROM Text t JOIN FETCH t.user u LEFT JOIN FETCH u.groups WHERE t.id = ?1", id)
+                        .firstResult()
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Text"))
                         .onItem().invoke(text -> {
                             Gruppe g = user.activeGroup;
-                            boolean inGroup = g != null && text.user.groups.contains(g);
-                            if (!user.equals(text.user) && !inGroup) {
+                            boolean inGroup = g != null && text.user.groups.stream()
+                                    .anyMatch(gr -> g.id != null && g.id.equals(gr.id));
+                            if (!user.id.equals(text.user.id) && !inGroup) {
                                 throw new UnauthorizedException("You are not allowed to update this text");
                             }
                         }));

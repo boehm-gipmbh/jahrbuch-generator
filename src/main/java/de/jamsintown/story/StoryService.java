@@ -28,12 +28,15 @@ public class StoryService {
 
     public Uni<Story> findById(long id) {
         return userService.getCurrentUser()
-                .chain(user -> Story.<Story>findById(id)
+                .chain(user -> Story.<Story>find(
+                        "FROM Story s JOIN FETCH s.user u LEFT JOIN FETCH u.groups WHERE s.id = ?1", id)
+                        .firstResult()
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Story"))
                         .onItem().invoke(story -> {
                             Gruppe g = user.activeGroup;
-                            boolean inGroup = g != null && story.user.groups.contains(g);
-                            if (!user.equals(story.user) && !inGroup) {
+                            boolean inGroup = g != null && story.user.groups.stream()
+                                    .anyMatch(gr -> g.id != null && g.id.equals(gr.id));
+                            if (!user.id.equals(story.user.id) && !inGroup) {
                                 throw new UnauthorizedException("You are not allowed to update this story");
                             }
                         }));

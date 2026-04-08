@@ -63,12 +63,15 @@ public class BildService {
 
     public Uni<Bild> findById(Long id) {
         return userService.getCurrentUser()
-                .chain(user -> Bild.<Bild>findById(id)
+                .chain(user -> Bild.<Bild>find(
+                        "FROM Bild b JOIN FETCH b.user u LEFT JOIN FETCH u.groups WHERE b.id = ?1", id)
+                        .firstResult()
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Bild"))
                         .onItem().invoke(bild -> {
                             Gruppe g = user.activeGroup;
-                            boolean inGroup = g != null && bild.user.groups.contains(g);
-                            if (!user.equals(bild.user) && !inGroup) {
+                            boolean inGroup = g != null && bild.getUser().groups.stream()
+                                    .anyMatch(gr -> g.id != null && g.id.equals(gr.id));
+                            if (!user.id.equals(bild.getUser().id) && !inGroup) {
                                 throw new ForbiddenException("Access denied to bild with id: " + id);
                             }
                         }));
