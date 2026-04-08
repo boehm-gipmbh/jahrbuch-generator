@@ -40,7 +40,8 @@ public class GruppeService {
   }
 
   protected Uni<User> findUserWithGroups(long userId) {
-    return User.<User>find("FROM User u LEFT JOIN FETCH u.groups WHERE u.id = ?1", userId)
+    return User.<User>find(
+        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup WHERE u.id = ?1", userId)
         .list()
         .map(users -> users.isEmpty() ? null : users.get(0));
   }
