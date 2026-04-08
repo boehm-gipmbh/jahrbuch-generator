@@ -19,11 +19,14 @@ public class InvitationTokenService {
 
   private final JsonWebToken jwt;
   private final EmailVerificationService emailVerificationService;
+  private final GruppeService gruppeService;
 
   @Inject
-  public InvitationTokenService(JsonWebToken jwt, EmailVerificationService emailVerificationService) {
+  public InvitationTokenService(JsonWebToken jwt, EmailVerificationService emailVerificationService,
+      GruppeService gruppeService) {
     this.jwt = jwt;
     this.emailVerificationService = emailVerificationService;
+    this.gruppeService = gruppeService;
   }
 
   @WithSession
@@ -37,6 +40,13 @@ public class InvitationTokenService {
     return findUserByName(jwt.getName())
       .chain(createdBy -> {
         token.createdBy = createdBy;
+        if (token.label != null && !token.label.isBlank()) {
+          return gruppeService.findOrCreate(token.label)
+            .chain(gruppe -> {
+              token.group = gruppe;
+              return token.persistAndFlush();
+            });
+        }
         return token.persistAndFlush();
       });
   }
@@ -120,6 +130,12 @@ public class InvitationTokenService {
           .chain(savedUser -> {
             t.lastUsedAt = ZonedDateTime.now();
             return t.persistAndFlush().replaceWith(savedUser);
+          })
+          .chain(savedUser -> {
+            if (t.group != null) {
+              return gruppeService.addToGroup(savedUser, t.group);
+            }
+            return Uni.createFrom().item(savedUser);
           })
           .call(savedUser -> emailVerificationService.sendVerificationMail(savedUser));
       });

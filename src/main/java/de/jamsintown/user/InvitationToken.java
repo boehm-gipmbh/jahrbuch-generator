@@ -40,4 +40,8 @@ public class InvitationToken extends PanacheEntity {
 
   @OneToMany(mappedBy = "usedInvitation", fetch = FetchType.EAGER)
   public List<User> registeredUsers;
+
+  @ManyToOne(fetch = FetchType.EAGER)
+  @JoinColumn(name = "group_id")
+  public Gruppe group;
 }

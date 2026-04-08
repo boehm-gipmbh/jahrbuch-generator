@@ -1,5 +1,6 @@
 package de.jamsintown.text;
 
+import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.panache.common.Sort;
@@ -29,7 +30,9 @@ public class TextService {
                 .chain(user -> Text.<Text>findById(id)
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Text"))
                         .onItem().invoke(text -> {
-                            if (!user.equals(text.user)) {
+                            Gruppe g = user.activeGroup;
+                            boolean inGroup = g != null && text.user.groups.contains(g);
+                            if (!user.equals(text.user) && !inGroup) {
                                 throw new UnauthorizedException("You are not allowed to update this text");
                             }
                         }));
@@ -37,12 +40,26 @@ public class TextService {
 
     public Uni<List<Text>> listForUser() {
         return userService.getCurrentUser()
-                .chain(user -> Text.<Text>find("user = ?1 and deleted = false", user).list());
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    if (g != null) {
+                        return Text.<Text>find(
+                            "user.id IN (SELECT u.id FROM User u JOIN u.groups gr WHERE gr = ?1) AND deleted = false", g).list();
+                    }
+                    return Text.<Text>find("user = ?1 and deleted = false", user).list();
+                });
     }
 
     public Uni<List<Text>> listDeleted() {
         return userService.getCurrentUser()
-                .chain(user -> Text.<Text>find("user = ?1 and deleted = true", user).list());
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    if (g != null) {
+                        return Text.<Text>find(
+                            "user.id IN (SELECT u.id FROM User u JOIN u.groups gr WHERE gr = ?1) AND deleted = true", g).list();
+                    }
+                    return Text.<Text>find("user = ?1 and deleted = true", user).list();
+                });
     }
 
     public Uni<List<Text>> listAll() {

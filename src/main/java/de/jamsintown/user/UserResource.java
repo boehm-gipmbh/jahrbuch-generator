@@ -14,10 +14,12 @@ import java.util.List;
 public class UserResource {
 
   private final UserService userService;
+  private final GruppeService gruppeService;
 
   @Inject
-  public UserResource(UserService userService) {
+  public UserResource(UserService userService, GruppeService gruppeService) {
     this.userService = userService;
+    this.gruppeService = gruppeService;
   }
 
   @GET
@@ -78,6 +80,22 @@ public class UserResource {
   public Uni<User> changePassword(PasswordChange passwordChange) {
     return userService
       .changePassword(passwordChange.currentPassword(), passwordChange.newPassword());
+  }
+
+  @PUT
+  @Path("self/active-group/{groupId}")
+  @RolesAllowed("user")
+  public Uni<User> setActiveGroup(@PathParam("groupId") long groupId) {
+    return userService.getCurrentUser()
+      .chain(user -> gruppeService.setActiveGroup(user, groupId));
+  }
+
+  @DELETE
+  @Path("self/active-group")
+  @RolesAllowed("user")
+  public Uni<User> clearActiveGroup() {
+    return userService.getCurrentUser()
+      .chain(user -> gruppeService.clearActiveGroup(user));
   }
 
 }

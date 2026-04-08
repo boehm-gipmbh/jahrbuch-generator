@@ -1,5 +1,6 @@
 package de.jamsintown.bild;
 
+import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.security.ForbiddenException;
@@ -32,12 +33,26 @@ public class BildService {
 
     public Uni<List<Bild>> listForUser() {
         return userService.getCurrentUser()
-                .chain(user -> Bild.<Bild>find("user = ?1 and deleted = false", user).list());
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    if (g != null) {
+                        return Bild.<Bild>find(
+                            "user.id IN (SELECT u.id FROM User u JOIN u.groups gr WHERE gr = ?1) AND deleted = false", g).list();
+                    }
+                    return Bild.<Bild>find("user = ?1 and deleted = false", user).list();
+                });
     }
 
     public Uni<List<Bild>> listDeleted() {
         return userService.getCurrentUser()
-                .chain(user -> Bild.<Bild>find("user = ?1 and deleted = true", user).list());
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    if (g != null) {
+                        return Bild.<Bild>find(
+                            "user.id IN (SELECT u.id FROM User u JOIN u.groups gr WHERE gr = ?1) AND deleted = true", g).list();
+                    }
+                    return Bild.<Bild>find("user = ?1 and deleted = true", user).list();
+                });
     }
 
     public Uni<Bild> findByPfad(String pfad) {
@@ -51,7 +66,9 @@ public class BildService {
                 .chain(user -> Bild.<Bild>findById(id)
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Bild"))
                         .onItem().invoke(bild -> {
-                            if (!user.equals(bild.user)) {
+                            Gruppe g = user.activeGroup;
+                            boolean inGroup = g != null && bild.user.groups.contains(g);
+                            if (!user.equals(bild.user) && !inGroup) {
                                 throw new ForbiddenException("Access denied to bild with id: " + id);
                             }
                         }));

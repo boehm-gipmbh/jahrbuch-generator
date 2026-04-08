@@ -50,6 +50,18 @@ public class User extends PanacheEntity {
   @JoinColumn(name = "used_invitation_id")
   public InvitationToken usedInvitation;
 
+  @ManyToMany(fetch = FetchType.EAGER)
+  @JoinTable(
+    name = "user_groups",
+    joinColumns = @JoinColumn(name = "user_id"),
+    inverseJoinColumns = @JoinColumn(name = "group_id")
+  )
+  public List<Gruppe> groups = new java.util.ArrayList<>();
+
+  @ManyToOne(fetch = FetchType.EAGER)
+  @JoinColumn(name = "active_group_id")
+  public Gruppe activeGroup;
+
   @JsonProperty("password")
   public void setPassword(String password) {
     this.password = password;
