@@ -61,7 +61,18 @@ public class UserService {
 
   @WithTransaction
   public Uni<Void> delete(long id) {
-    return findById(id).chain(u -> u.delete());
+    return findById(id)
+        .chain(u -> de.jamsintown.bild.Bild.count("user", u)
+            .flatMap(bilder -> de.jamsintown.text.Text.count("user", u)
+                .flatMap(texte -> de.jamsintown.story.Story.count("user", u)
+                    .chain(stories -> {
+                        if (bilder > 0 || texte > 0 || stories > 0) {
+                            throw new ClientErrorException(
+                                "User hat noch Inhalte (" + bilder + " Bilder, " + texte + " Texte, " + stories + " Stories). Bitte zuerst deaktivieren.",
+                                Response.Status.CONFLICT);
+                        }
+                        return u.delete();
+                    }))));
   }
 
   @WithTransaction
