@@ -1,5 +1,6 @@
 package de.jamsintown.bild;
 
+import de.jamsintown.config.AppConfigService;
 import de.jamsintown.dtos.RotationDTO;
 import de.jamsintown.dtos.UploadConfigDTO;
 import de.jamsintown.story.StoryService;
@@ -11,7 +12,6 @@ import jakarta.ws.rs.core.MediaType;
 
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.reactive.server.multipart.FormValue;
 import org.jboss.resteasy.reactive.server.multipart.MultipartFormDataInput;
 
@@ -35,27 +35,40 @@ public class BilderUploadResource {
     private final BildService bildService;
     private final StoryService storyService;
     private final io.vertx.mutiny.core.Vertx vertx;
+    private final AppConfigService appConfigService;
 
     @Inject
-    public BilderUploadResource(BildService bildService, StoryService storyService, io.vertx.mutiny.core.Vertx vertx) {
+    public BilderUploadResource(BildService bildService, StoryService storyService, io.vertx.mutiny.core.Vertx vertx,
+                                AppConfigService appConfigService) {
         this.bildService = bildService;
         this.storyService = storyService;
         this.vertx = vertx;
+        this.appConfigService = appConfigService;
     }
-
-    @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
-    private String capturesPath;
-
-    @ConfigProperty(name = "jahrbuch.upload.max-size", defaultValue = "5242880") // 5MB Standardwert
-    private long maxUploadSize;
-
-    @ConfigProperty(name = "jahrbuch.upload.allowed-types", defaultValue = ".jpg,.jpeg,.png,.gif")
-    private String allowedFileTypes;
 
     @POST
     @Path("/upload")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     public Uni<Bild> uploadBild(MultipartFormDataInput input) {
+        // Config-Werte vorab laden
+        return loadUploadConfig()
+                .chain(config -> doUploadBild(input, config));
+    }
+
+    private Uni<UploadConfig> loadUploadConfig() {
+        return appConfigService.getValue("jahrbuch.upload.max-size")
+                .chain(maxSizeStr -> appConfigService.getValue("jahrbuch.upload.allowed-types")
+                        .chain(allowedStr -> appConfigService.getValue("jahrbuch.captures.path")
+                                .map(pathStr -> new UploadConfig(
+                                        Long.parseLong(maxSizeStr != null ? maxSizeStr : "2097152"),
+                                        allowedStr != null ? allowedStr : ".jpg,.jpeg,.png,.gif,.bmp,.webp,.tiff,.tif",
+                                        pathStr != null ? pathStr : "/data/captures/"
+                                ))
+                        )
+                );
+    }
+
+    private Uni<Bild> doUploadBild(MultipartFormDataInput input, UploadConfig config) {
         try {
             Map<String, Collection<FormValue>> formValues = input.getValues();
             // Konvertierung zu einer Map mit List statt Collection
@@ -93,10 +106,10 @@ public class BilderUploadResource {
             String fileExtension = getFileExtension(fileName);
 
             // Überprüfung des Dateiformats
-            if (!isAllowedFileType(fileExtension)) {
+            if (!isAllowedFileType(fileExtension, config.allowedFileTypes)) {
                 return Uni.createFrom().failure(
                         new WebApplicationException(
-                                "Nicht unterstütztes Dateiformat. Erlaubte Formate: " + allowedFileTypes,
+                                "Nicht unterstütztes Dateiformat. Erlaubte Formate: " + config.allowedFileTypes,
                                 Response.Status.BAD_REQUEST
                         )
                 );
@@ -104,10 +117,10 @@ public class BilderUploadResource {
 
             // Überprüfung der Dateigröße
             long fileSize = filePart.getFileItem().getFileSize();
-            if (fileSize > maxUploadSize) {
+            if (fileSize > config.maxUploadSize) {
                 return Uni.createFrom().failure(
                         new WebApplicationException(
-                                "Datei zu groß. Maximale Größe: " + (maxUploadSize / 1024 / 1024) + "MB",
+                                "Datei zu groß. Maximale Größe: " + (config.maxUploadSize / 1024 / 1024) + "MB",
                                 Response.Status.BAD_REQUEST
                         )
                 );
@@ -118,7 +131,7 @@ public class BilderUploadResource {
             String uniqueFileName = timestamp + "_" + UUID.randomUUID().toString() + fileExtension;
 
             // Sicherstellen, dass das Zielverzeichnis existiert
-            java.nio.file.Path dirPath = Paths.get(capturesPath);
+            java.nio.file.Path dirPath = Paths.get(config.capturesPath);
             Files.createDirectories(dirPath);
 
             // Datei speichern
@@ -166,38 +179,43 @@ public class BilderUploadResource {
     @GET
     @Path("/uploadconfig")
     @Produces(MediaType.APPLICATION_JSON)
-    public UploadConfigDTO getUploadConfig() {
-        // Konvertiere String mit erlaubten Dateitypen in eine Liste
-        List<String> allowedTypesList = Arrays.asList(allowedFileTypes.split(","));
-
-        return new UploadConfigDTO(maxUploadSize, allowedTypesList);
+    public Uni<UploadConfigDTO> getUploadConfig() {
+        return loadUploadConfig()
+                .map(config -> {
+                    List<String> allowedTypesList = Arrays.asList(config.allowedFileTypes.split(","));
+                    return new UploadConfigDTO(config.maxUploadSize, allowedTypesList);
+                });
     }
 
     /**
-     * Einfacher Datei-Upload-Endpunkt, der eine Datei entgegennimmt und im Verzeichnis /data/captures speichert.
+     * Einfacher Datei-Upload-Endpunkt, der eine Datei entgegennimmt und im Verzeichnis speichert.
      * Der Dateiname wird beibehalten.
      */
     @POST
     @Path("/uploadcapture")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
-    public Response uploadFile(MultipartFormDataInput input) {
-        try {
-            Map<String, Collection<FormValue>> formValues = input.getValues();
-            List<FormValue> fileParts = new ArrayList<>(formValues.get("file"));
-            if (fileParts.isEmpty()) {
-                return Response.status(Response.Status.BAD_REQUEST).entity("Keine Datei gefunden").build();
-            }
-            FormValue filePart = fileParts.get(0);
-            String fileName = filePart.getFileName();
-            try (InputStream fileInputStream = filePart.getFileItem().getInputStream()) {
-                java.nio.file.Path target = java.nio.file.Paths.get(capturesPath, fileName);
-                java.nio.file.Files.copy(fileInputStream, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                generateThumbnail(target);
-            }
-            return Response.ok("File uploaded").build();
-        } catch (Exception e) {
-            return Response.serverError().entity("Upload failed: " + e.getMessage()).build();
-        }
+    public Uni<Response> uploadFile(MultipartFormDataInput input) {
+        return appConfigService.getValue("jahrbuch.captures.path")
+                .map(pathStr -> pathStr != null ? pathStr : "/data/captures/")
+                .onItem().transform(capturesPath -> {
+                    try {
+                        Map<String, Collection<FormValue>> formValues = input.getValues();
+                        List<FormValue> fileParts = new ArrayList<>(formValues.get("file"));
+                        if (fileParts.isEmpty()) {
+                            return Response.status(Response.Status.BAD_REQUEST).entity("Keine Datei gefunden").build();
+                        }
+                        FormValue filePart = fileParts.get(0);
+                        String fileName = filePart.getFileName();
+                        try (InputStream fileInputStream = filePart.getFileItem().getInputStream()) {
+                            java.nio.file.Path target = java.nio.file.Paths.get(capturesPath, fileName);
+                            java.nio.file.Files.copy(fileInputStream, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            generateThumbnail(target);
+                        }
+                        return Response.ok("File uploaded").build();
+                    } catch (Exception e) {
+                        return Response.serverError().entity("Upload failed: " + e.getMessage()).build();
+                    }
+                });
     }
 
 
@@ -207,49 +225,53 @@ public class BilderUploadResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Uni<Bild> rotateBild(@PathParam("id") Long id, RotationDTO rotation) {
-        return bildService.findById(id)
-                .onItem().transformToUni(bild -> {
-                    java.nio.file.Path imagePath = Paths.get(capturesPath).resolve(bild.getPfad().substring(1));
-                    // Datei-I/O auf Vert.x Worker-Thread auslagern, DB-Operationen bleiben auf dem EventLoop
-                    return vertx.<Bild>executeBlocking(() -> {
-                                try {
-                                    rotateImageFile(imagePath, rotation.getDegrees());
-                                    generateThumbnail(imagePath);
-                                } catch (Exception e) {
-                                    throw new WebApplicationException("Fehler beim Rotieren: " + e.getMessage(),
-                                            Response.Status.INTERNAL_SERVER_ERROR);
-                                }
-                                return bild;
-                            })
-                            .onItem().transformToUni(b -> {
-                                b.setLastRotated(System.currentTimeMillis());
-                                return bildService.update(b);
-                            });
-                });
+        return appConfigService.getValue("jahrbuch.captures.path")
+                .map(pathStr -> pathStr != null ? pathStr : "/data/captures/")
+                .chain(capturesPath -> bildService.findById(id)
+                        .onItem().transformToUni(bild -> {
+                            java.nio.file.Path imagePath = Paths.get(capturesPath).resolve(bild.getPfad().substring(1));
+                            // Datei-I/O auf Vert.x Worker-Thread auslagern, DB-Operationen bleiben auf dem EventLoop
+                            return vertx.<Bild>executeBlocking(() -> {
+                                        try {
+                                            rotateImageFile(imagePath, rotation.getDegrees());
+                                            generateThumbnail(imagePath);
+                                        } catch (Exception e) {
+                                            throw new WebApplicationException("Fehler beim Rotieren: " + e.getMessage(),
+                                                    Response.Status.INTERNAL_SERVER_ERROR);
+                                        }
+                                        return bild;
+                                    })
+                                    .onItem().transformToUni(b -> {
+                                        b.setLastRotated(System.currentTimeMillis());
+                                        return bildService.update(b);
+                                    });
+                        }));
     }
 
     @POST
     @Path("/generate-thumbs")
     @Produces(MediaType.APPLICATION_JSON)
     public Uni<Response> generateThumbs() {
-        return bildService.listForUser()
-                .chain(bilder -> vertx.<Integer>executeBlocking(() -> {
-                    int count = 0;
-                    for (Bild bild : bilder) {
-                        java.nio.file.Path originalPath = Paths.get(capturesPath).resolve(bild.getPfad().substring(1));
-                        java.nio.file.Path thumbPath = Paths.get(capturesPath).resolve(toThumbName(originalPath.getFileName().toString()));
-                        if (originalPath.toFile().exists() && !thumbPath.toFile().exists()) {
-                            try {
-                                generateThumbnail(originalPath);
-                                count++;
-                            } catch (Exception e) {
-                                log.warn("Thumbnail-Generierung fehlgeschlagen für {}: {}", bild.getPfad(), e.getMessage());
+        return appConfigService.getValue("jahrbuch.captures.path")
+                .map(pathStr -> pathStr != null ? pathStr : "/data/captures/")
+                .chain(capturesPath -> bildService.listForUser()
+                        .chain(bilder -> vertx.<Integer>executeBlocking(() -> {
+                            int count = 0;
+                            for (Bild bild : bilder) {
+                                java.nio.file.Path originalPath = Paths.get(capturesPath).resolve(bild.getPfad().substring(1));
+                                java.nio.file.Path thumbPath = Paths.get(capturesPath).resolve(toThumbName(originalPath.getFileName().toString()));
+                                if (originalPath.toFile().exists() && !thumbPath.toFile().exists()) {
+                                    try {
+                                        generateThumbnail(originalPath);
+                                        count++;
+                                    } catch (Exception e) {
+                                        log.warn("Thumbnail-Generierung fehlgeschlagen für {}: {}", bild.getPfad(), e.getMessage());
+                                    }
+                                }
                             }
-                        }
-                    }
-                    return count;
-                }))
-                .map(count -> Response.ok("Thumbnails generiert: " + count).build());
+                            return count;
+                        }))
+                        .map(count -> Response.ok("Thumbnails generiert: " + count).build()));
     }
 
     public static String toThumbName(String fileName) {
@@ -303,7 +325,7 @@ public class BilderUploadResource {
         return "";
     }
 
-    private boolean isAllowedFileType(String fileExtension) {
+    private boolean isAllowedFileType(String fileExtension, String allowedFileTypes) {
         if (fileExtension.isEmpty()) {
             return false;
         }
@@ -314,5 +336,18 @@ public class BilderUploadResource {
             }
         }
         return false;
+    }
+
+    /** Hilfsklasse für Upload-Konfiguration */
+    private static class UploadConfig {
+        long maxUploadSize;
+        String allowedFileTypes;
+        String capturesPath;
+
+        UploadConfig(long maxUploadSize, String allowedFileTypes, String capturesPath) {
+            this.maxUploadSize = maxUploadSize;
+            this.allowedFileTypes = allowedFileTypes;
+            this.capturesPath = capturesPath;
+        }
     }
 }
