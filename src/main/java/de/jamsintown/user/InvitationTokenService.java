@@ -11,24 +11,64 @@ import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class InvitationTokenService {
 
   private final JsonWebToken jwt;
   private final EmailVerificationService emailVerificationService;
+  private final GruppeService gruppeService;
 
   @Inject
-  public InvitationTokenService(JsonWebToken jwt, EmailVerificationService emailVerificationService) {
+  public InvitationTokenService(JsonWebToken jwt, EmailVerificationService emailVerificationService,
+      GruppeService gruppeService) {
     this.jwt = jwt;
     this.emailVerificationService = emailVerificationService;
+    this.gruppeService = gruppeService;
   }
 
   @WithSession
   public Uni<List<InvitationToken>> list() {
-    return InvitationToken.listAll();
+    // Zwei separate Queries um MultipleBagFetchException zu vermeiden.
+    // 1) Tokens mit registeredUsers laden
+    return InvitationToken.<InvitationToken>find(
+        "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers"
+      ).list()
+      .chain(tokens -> {
+        List<Long> groupIds = tokens.stream()
+            .filter(t -> t.group != null)
+            .map(t -> t.group.id)
+            .distinct()
+            .collect(Collectors.toList());
+        if (groupIds.isEmpty()) {
+          tokens.forEach(t -> t.members = t.registeredUsers != null ? t.registeredUsers : List.of());
+          return Uni.createFrom().item(tokens);
+        }
+        // 2) Gruppen-Mitglieder separat laden und den Gruppen zuordnen
+        return User.<User>find(
+            "FROM User u JOIN FETCH u.groups g WHERE g.id IN ?1", groupIds
+          ).list()
+          .map(groupUsers -> {
+            Map<Long, List<User>> membersByGroupId = new HashMap<>();
+            groupUsers.forEach(u ->
+                u.groups.stream()
+                    .filter(g -> groupIds.contains(g.id))
+                    .forEach(g -> membersByGroupId
+                        .computeIfAbsent(g.id, k -> new ArrayList<>())
+                        .add(u))
+            );
+            tokens.forEach(t -> t.members = t.group != null
+                ? membersByGroupId.getOrDefault(t.group.id, List.of())
+                : t.registeredUsers != null ? t.registeredUsers : List.of());
+            return tokens;
+          });
+      });
   }
 
   @WithTransaction
@@ -37,6 +77,13 @@ public class InvitationTokenService {
     return findUserByName(jwt.getName())
       .chain(createdBy -> {
         token.createdBy = createdBy;
+        if (token.label != null && !token.label.isBlank()) {
+          return gruppeService.findOrCreate(token.label)
+            .chain(gruppe -> {
+              token.group = gruppe;
+              return token.persistAndFlush();
+            });
+        }
         return token.persistAndFlush();
       });
   }
@@ -120,6 +167,12 @@ public class InvitationTokenService {
           .chain(savedUser -> {
             t.lastUsedAt = ZonedDateTime.now();
             return t.persistAndFlush().replaceWith(savedUser);
+          })
+          .chain(savedUser -> {
+            if (t.group != null) {
+              return gruppeService.addToGroup(savedUser, t.group);
+            }
+            return Uni.createFrom().item(savedUser);
           })
           .call(savedUser -> emailVerificationService.sendVerificationMail(savedUser));
       });

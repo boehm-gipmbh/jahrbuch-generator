@@ -1,6 +1,7 @@
 package de.jamsintown.bild;
 
 import de.jamsintown.story.Story;
+import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.User;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
@@ -38,6 +39,10 @@ public class Bild extends PanacheEntity {
 
     @ManyToOne(optional = false)
     public User user;
+
+    @ManyToOne
+    @JoinColumn(name = "group_id")
+    public Gruppe group;
 
     public ZonedDateTime complete;
 

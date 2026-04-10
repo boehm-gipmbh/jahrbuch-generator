@@ -29,7 +29,7 @@ class InvitationTokenServiceTest {
 
     /** Baut einen Service, der findByToken mit dem gegebenen Token antwortet. */
     private InvitationTokenService serviceWith(InvitationToken token) {
-        return new InvitationTokenService(null, null) {
+        return new InvitationTokenService(null, null, null) {
             @Override
             protected Uni<InvitationToken> findByToken(UUID tokenValue) {
                 return Uni.createFrom().item(token);
@@ -39,7 +39,7 @@ class InvitationTokenServiceTest {
 
     /** Baut einen Service, der findByToken mit null antwortet (Token nicht gefunden). */
     private InvitationTokenService serviceWithNotFound() {
-        return new InvitationTokenService(null, null) {
+        return new InvitationTokenService(null, null, null) {
             @Override
             protected Uni<InvitationToken> findByToken(UUID tokenValue) {
                 return Uni.createFrom().nullItem();
@@ -137,5 +137,95 @@ class InvitationTokenServiceTest {
                         .register(token.token, "Max", "max@test.de", "pw")
                         .await().indefinitely());
         assertGone(ex);
+    }
+
+    // -------------------------------------------------------------------------
+    // register() — Username-Validierung
+    // -------------------------------------------------------------------------
+
+    @Test
+    void register_usernameLeer_wirft400() {
+        InvitationToken token = validToken();
+        ClientErrorException ex = assertThrows(ClientErrorException.class,
+                () -> serviceWith(token).register(token.token, "", "a@b.de", "Sicher1!Pw")
+                        .await().indefinitely());
+        assertEquals(400, ex.getResponse().getStatus());
+    }
+
+    @Test
+    void register_usernameZuKurz_wirft400() {
+        InvitationToken token = validToken();
+        ClientErrorException ex = assertThrows(ClientErrorException.class,
+                () -> serviceWith(token).register(token.token, "ab", "a@b.de", "Sicher1!Pw")
+                        .await().indefinitely());
+        assertEquals(400, ex.getResponse().getStatus());
+    }
+
+    @Test
+    void register_usernameMitLeerzeichen_wirft400() {
+        InvitationToken token = validToken();
+        ClientErrorException ex = assertThrows(ClientErrorException.class,
+                () -> serviceWith(token).register(token.token, "Max Mustermann", "a@b.de", "Sicher1!Pw")
+                        .await().indefinitely());
+        assertEquals(400, ex.getResponse().getStatus());
+    }
+
+    @Test
+    void register_usernameZuLang_wirft400() {
+        InvitationToken token = validToken();
+        String zuLang = "a".repeat(31);
+        ClientErrorException ex = assertThrows(ClientErrorException.class,
+                () -> serviceWith(token).register(token.token, zuLang, "a@b.de", "Sicher1!Pw")
+                        .await().indefinitely());
+        assertEquals(400, ex.getResponse().getStatus());
+    }
+
+    // -------------------------------------------------------------------------
+    // register() — Passwort-Validierung
+    // -------------------------------------------------------------------------
+
+    @Test
+    void register_passwortZuKurz_wirft400() {
+        InvitationToken token = validToken();
+        ClientErrorException ex = assertThrows(ClientErrorException.class,
+                () -> serviceWith(token).register(token.token, "MaxMuster", "a@b.de", "Ab1!")
+                        .await().indefinitely());
+        assertEquals(400, ex.getResponse().getStatus());
+    }
+
+    @Test
+    void register_passwortOhneGrossbuchstabe_wirft400() {
+        InvitationToken token = validToken();
+        ClientErrorException ex = assertThrows(ClientErrorException.class,
+                () -> serviceWith(token).register(token.token, "MaxMuster", "a@b.de", "sicher1!pw")
+                        .await().indefinitely());
+        assertEquals(400, ex.getResponse().getStatus());
+    }
+
+    @Test
+    void register_passwortOhneKleinbuchstabe_wirft400() {
+        InvitationToken token = validToken();
+        ClientErrorException ex = assertThrows(ClientErrorException.class,
+                () -> serviceWith(token).register(token.token, "MaxMuster", "a@b.de", "SICHER1!PW")
+                        .await().indefinitely());
+        assertEquals(400, ex.getResponse().getStatus());
+    }
+
+    @Test
+    void register_passwortOhneZahl_wirft400() {
+        InvitationToken token = validToken();
+        ClientErrorException ex = assertThrows(ClientErrorException.class,
+                () -> serviceWith(token).register(token.token, "MaxMuster", "a@b.de", "SicherPw!")
+                        .await().indefinitely());
+        assertEquals(400, ex.getResponse().getStatus());
+    }
+
+    @Test
+    void register_passwortOhneSonderzeichen_wirft400() {
+        InvitationToken token = validToken();
+        ClientErrorException ex = assertThrows(ClientErrorException.class,
+                () -> serviceWith(token).register(token.token, "MaxMuster", "a@b.de", "Sicher1Pw")
+                        .await().indefinitely());
+        assertEquals(400, ex.getResponse().getStatus());
     }
 }

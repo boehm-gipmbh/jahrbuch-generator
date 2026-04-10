@@ -1,5 +1,6 @@
 package de.jamsintown.user;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -40,4 +41,15 @@ public class InvitationToken extends PanacheEntity {
 
   @OneToMany(mappedBy = "usedInvitation", fetch = FetchType.EAGER)
   public List<User> registeredUsers;
+
+  @ManyToOne(fetch = FetchType.EAGER)
+  @JoinColumn(name = "group_id")
+  public Gruppe group;
+
+  /** Effektive Mitglieder — wird in InvitationTokenService.list() befüllt.
+   *  Bei Gruppen-Einladungen: alle Gruppen-Mitglieder.
+   *  Bei einfachen Einladungen: registeredUsers. */
+  @Transient
+  @JsonIgnoreProperties({"groups", "activeGroup", "usedInvitation", "password"})
+  public List<User> members;
 }

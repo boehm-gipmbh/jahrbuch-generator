@@ -2,7 +2,7 @@ package de.jamsintown.story;
 
 import de.jamsintown.bild.Bild;
 import de.jamsintown.text.Text;
-import de.jamsintown.user.User;
+import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.security.UnauthorizedException;
@@ -28,10 +28,15 @@ public class StoryService {
 
     public Uni<Story> findById(long id) {
         return userService.getCurrentUser()
-                .chain(user -> Story.<Story>findById(id)
+                .chain(user -> Story.<Story>find(
+                        "FROM Story s JOIN FETCH s.user u LEFT JOIN FETCH u.groups WHERE s.id = ?1", id)
+                        .firstResult()
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Story"))
                         .onItem().invoke(story -> {
-                            if (!user.equals(story.user)) {
+                            Gruppe g = user.activeGroup;
+                            boolean inGroup = g != null && story.user.groups.stream()
+                                    .anyMatch(gr -> g.id != null && g.id.equals(gr.id));
+                            if (!user.id.equals(story.user.id) && !inGroup) {
                                 throw new UnauthorizedException("You are not allowed to update this story");
                             }
                         }));
@@ -39,7 +44,13 @@ public class StoryService {
 
     public Uni<List<Story>> listForUser() {
         return userService.getCurrentUser()
-                .chain(user -> Story.find("user", user).list());
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    if (g != null) {
+                        return Story.<Story>find("group = ?1", g).list();
+                    }
+                    return Story.<Story>find("user = ?1 and group is null", user).list();
+                });
     }
 
     @WithTransaction
@@ -47,6 +58,7 @@ public class StoryService {
         return userService.getCurrentUser()
                 .chain(user -> {
                     story.user = user;
+                    story.group = user.activeGroup;
                     return story.persistAndFlush();
                 });
     }

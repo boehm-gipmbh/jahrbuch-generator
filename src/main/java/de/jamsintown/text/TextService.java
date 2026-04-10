@@ -1,5 +1,6 @@
 package de.jamsintown.text;
 
+import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.panache.common.Sort;
@@ -26,10 +27,15 @@ public class TextService {
 
     private Uni<Text> findById(long id) {
         return userService.getCurrentUser()
-                .chain(user -> Text.<Text>findById(id)
+                .chain(user -> Text.<Text>find(
+                        "FROM Text t JOIN FETCH t.user u LEFT JOIN FETCH u.groups WHERE t.id = ?1", id)
+                        .firstResult()
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Text"))
                         .onItem().invoke(text -> {
-                            if (!user.equals(text.user)) {
+                            Gruppe g = user.activeGroup;
+                            boolean inGroup = g != null && text.user.groups.stream()
+                                    .anyMatch(gr -> g.id != null && g.id.equals(gr.id));
+                            if (!user.id.equals(text.user.id) && !inGroup) {
                                 throw new UnauthorizedException("You are not allowed to update this text");
                             }
                         }));
@@ -37,12 +43,24 @@ public class TextService {
 
     public Uni<List<Text>> listForUser() {
         return userService.getCurrentUser()
-                .chain(user -> Text.<Text>find("user = ?1 and deleted = false", user).list());
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    if (g != null) {
+                        return Text.<Text>find("group = ?1 and deleted = false", g).list();
+                    }
+                    return Text.<Text>find("user = ?1 and group is null and deleted = false", user).list();
+                });
     }
 
     public Uni<List<Text>> listDeleted() {
         return userService.getCurrentUser()
-                .chain(user -> Text.<Text>find("user = ?1 and deleted = true", user).list());
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    if (g != null) {
+                        return Text.<Text>find("group = ?1 and deleted = true", g).list();
+                    }
+                    return Text.<Text>find("user = ?1 and group is null and deleted = true", user).list();
+                });
     }
 
     public Uni<List<Text>> listAll() {
@@ -54,6 +72,7 @@ public class TextService {
         return userService.getCurrentUser()
                 .chain(user -> {
                     text.user = user;
+                    text.group = user.activeGroup;
                     return text.persistAndFlush();
                 });
     }

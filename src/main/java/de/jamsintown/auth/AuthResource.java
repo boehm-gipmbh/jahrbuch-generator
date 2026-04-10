@@ -1,13 +1,13 @@
 package de.jamsintown.auth;
 
-import de.jamsintown.user.EmailVerificationService;
-import de.jamsintown.user.InvitationToken;
-import de.jamsintown.user.InvitationTokenService;
+import de.jamsintown.user.*;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.PermitAll;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.reactive.ResponseStatus;
 
 import java.util.UUID;
@@ -19,13 +19,18 @@ public class AuthResource {
   private final AuthService authService;
   private final InvitationTokenService invitationTokenService;
   private final EmailVerificationService emailVerificationService;
+  private final GruppeService gruppeService;
+  private final UserService userService;
 
   @Inject
   public AuthResource(AuthService authService, InvitationTokenService invitationTokenService,
-                      EmailVerificationService emailVerificationService) {
+                      EmailVerificationService emailVerificationService,
+                      GruppeService gruppeService, UserService userService) {
     this.authService = authService;
     this.invitationTokenService = invitationTokenService;
     this.emailVerificationService = emailVerificationService;
+    this.gruppeService = gruppeService;
+    this.userService = userService;
   }
 
   @PermitAll
@@ -57,5 +62,22 @@ public class AuthResource {
   @Path("/verify-email")
   public Uni<Void> verifyEmail(@QueryParam("token") UUID token) {
     return emailVerificationService.verify(token);
+  }
+
+  /** Bestehender User tritt einer Gruppe bei (bei E-Mail-Kollision nach Login). */
+  @RolesAllowed("user")
+  @POST
+  @Path("/join-group")
+  @io.quarkus.hibernate.reactive.panache.common.WithTransaction
+  public Uni<Void> joinGroup(@QueryParam("token") UUID token) {
+    return invitationTokenService.validate(token)
+      .chain(invitation -> {
+        if (invitation.group == null) {
+          throw new ClientErrorException("Einladungslink hat keine Gruppe", Response.Status.NOT_FOUND);
+        }
+        return userService.getCurrentUser()
+          .chain(user -> gruppeService.addToGroup(user, invitation.group))
+          .replaceWithVoid();
+      });
   }
 }

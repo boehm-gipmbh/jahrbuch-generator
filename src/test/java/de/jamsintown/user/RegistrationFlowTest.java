@@ -166,14 +166,14 @@ class RegistrationFlowTest {
     @TestSecurity(user = "admin", roles = {"admin", "user"})
     @JwtSecurity(claims = {@Claim(key = "upn", value = "admin")})
     void admin_deaktiviertToken_gibt200() {
-        // Token-ID aus der DB holen (via Liste)
+        // Token-ID per UUID aus der Liste holen (unabhängig von anderen Tests)
         Integer tokenId = given()
         .when()
             .get("/api/v1/users/invitations")
         .then()
             .statusCode(200)
         .extract()
-            .path("[0].id");
+            .body().jsonPath().getInt("find { it.token == '" + createdTokenUuid + "' }.id");
 
         given()
         .when()
