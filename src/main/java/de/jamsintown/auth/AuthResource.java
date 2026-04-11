@@ -22,18 +22,21 @@ public class AuthResource {
   private final GruppeService gruppeService;
   private final UserService userService;
   private final PasswordResetService passwordResetService;
+  private final UsernameReminderEmailService usernameReminderEmailService;
 
   @Inject
   public AuthResource(AuthService authService, InvitationTokenService invitationTokenService,
                       EmailVerificationService emailVerificationService,
                       GruppeService gruppeService, UserService userService,
-                      PasswordResetService passwordResetService) {
+                      PasswordResetService passwordResetService,
+                      UsernameReminderEmailService usernameReminderEmailService) {
     this.authService = authService;
     this.invitationTokenService = invitationTokenService;
     this.emailVerificationService = emailVerificationService;
     this.gruppeService = gruppeService;
     this.userService = userService;
     this.passwordResetService = passwordResetService;
+    this.usernameReminderEmailService = usernameReminderEmailService;
   }
 
   @PermitAll
@@ -65,6 +68,26 @@ public class AuthResource {
   @Path("/verify-email")
   public Uni<Void> verifyEmail(@QueryParam("token") UUID token) {
     return emailVerificationService.verify(token);
+  }
+
+  /**
+   * Schickt den Username per E-Mail. Gibt immer 200 zurück (kein Email-Enumeration).
+   */
+  @PermitAll
+  @POST
+  @Path("/forgot-username")
+  @Consumes(MediaType.APPLICATION_JSON)
+  public Uni<Response> forgotUsername(ForgotUsernameRequest request) {
+    if (request == null || request.email() == null || request.email().isBlank()) {
+      return Uni.createFrom().item(Response.status(Response.Status.BAD_REQUEST).build());
+    }
+    return userService.findByEmail(request.email())
+        .map(user -> {
+          if (user != null) {
+            usernameReminderEmailService.sendUsernameReminder(user.email, user.name);
+          }
+          return Response.ok().build();
+        });
   }
 
   /**
