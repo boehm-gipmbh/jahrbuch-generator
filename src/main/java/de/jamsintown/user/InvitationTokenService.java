@@ -157,7 +157,7 @@ public class InvitationTokenService {
             Response.Status.BAD_REQUEST);
         }
         User user = new User();
-        user.name = name;
+        user.name = name.toLowerCase();
         user.email = email;
         user.setPassword(BcryptUtil.bcryptHash(password));
         user.roles = List.of(t.role);
