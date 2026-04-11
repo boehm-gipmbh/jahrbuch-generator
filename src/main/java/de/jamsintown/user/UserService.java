@@ -36,7 +36,7 @@ public class UserService {
     // activeGroup explizit via LEFT JOIN FETCH laden — Hibernate Reactive
     // ignoriert FetchType.EAGER für @ManyToOne außerhalb einer offenen Session.
     return User.<User>find(
-        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup WHERE u.name = ?1", name)
+        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup WHERE u.name = ?1", name.toLowerCase())
         .list()
         .map(users -> users.isEmpty() ? null : users.get(0));
   }
