@@ -29,7 +29,7 @@ public class UserService {
   }
 
   public Uni<User> findByEmail(String email) {
-    return User.<User>find("email", email).firstResult();
+    return User.<User>find("email", email.toLowerCase()).firstResult();
   }
 
   public Uni<User> findByName(String name) {

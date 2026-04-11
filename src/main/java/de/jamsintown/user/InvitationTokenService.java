@@ -158,7 +158,7 @@ public class InvitationTokenService {
         }
         User user = new User();
         user.name = name.toLowerCase();
-        user.email = email;
+        user.email = email.toLowerCase();
         user.setPassword(BcryptUtil.bcryptHash(password));
         user.roles = List.of(t.role);
         user.usedInvitation = t;
