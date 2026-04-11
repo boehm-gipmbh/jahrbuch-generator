@@ -118,7 +118,7 @@ public class InvitationTokenService {
   }
 
   protected Uni<User> findUserByName(String name) {
-    return User.<User>find("name", name).firstResult();
+    return User.<User>find("name", name.toLowerCase()).firstResult();
   }
 
   @WithSession
@@ -157,8 +157,8 @@ public class InvitationTokenService {
             Response.Status.BAD_REQUEST);
         }
         User user = new User();
-        user.name = name;
-        user.email = email;
+        user.name = name.toLowerCase();
+        user.email = email.toLowerCase();
         user.setPassword(BcryptUtil.bcryptHash(password));
         user.roles = List.of(t.role);
         user.usedInvitation = t;

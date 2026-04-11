@@ -28,11 +28,15 @@ public class UserService {
       .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "User"));
   }
 
+  public Uni<User> findByEmail(String email) {
+    return User.<User>find("email", email.toLowerCase()).firstResult();
+  }
+
   public Uni<User> findByName(String name) {
     // activeGroup explizit via LEFT JOIN FETCH laden — Hibernate Reactive
     // ignoriert FetchType.EAGER für @ManyToOne außerhalb einer offenen Session.
     return User.<User>find(
-        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup WHERE u.name = ?1", name)
+        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup WHERE u.name = ?1", name.toLowerCase())
         .list()
         .map(users -> users.isEmpty() ? null : users.get(0));
   }

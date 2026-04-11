@@ -36,8 +36,8 @@ class GruppenFlowTest {
     // -------------------------------------------------------------------------
 
     @Test
-    @TestSecurity(user = "gruppenUser", roles = {"user"})
-    @JwtSecurity(claims = {@Claim(key = "upn", value = "gruppenUser")})
+    @TestSecurity(user = "gruppenuser", roles = {"user"})
+    @JwtSecurity(claims = {@Claim(key = "upn", value = "gruppenuser")})
     void getSelf_userInGruppe_gibtGruppenZurueck() {
         given()
             .when().get("/api/v1/users/self")
@@ -48,8 +48,8 @@ class GruppenFlowTest {
     }
 
     @Test
-    @TestSecurity(user = "gruppenUser", roles = {"user"})
-    @JwtSecurity(claims = {@Claim(key = "upn", value = "gruppenUser")})
+    @TestSecurity(user = "gruppenuser", roles = {"user"})
+    @JwtSecurity(claims = {@Claim(key = "upn", value = "gruppenuser")})
     void getSelf_aktiveGruppeInitialNull() {
         given()
             .when().get("/api/v1/users/self")
@@ -64,8 +64,8 @@ class GruppenFlowTest {
 
     @Test
     @org.junit.jupiter.api.Order(10)
-    @TestSecurity(user = "gruppenUser", roles = {"user"})
-    @JwtSecurity(claims = {@Claim(key = "upn", value = "gruppenUser")})
+    @TestSecurity(user = "gruppenuser", roles = {"user"})
+    @JwtSecurity(claims = {@Claim(key = "upn", value = "gruppenuser")})
     void setActiveGroup_alsMitglied_setzt_aktiveGruppe() {
         given()
             .when().put("/api/v1/users/self/active-group/1")
@@ -76,8 +76,8 @@ class GruppenFlowTest {
 
     @Test
     @org.junit.jupiter.api.Order(11)
-    @TestSecurity(user = "gruppenUser", roles = {"user"})
-    @JwtSecurity(claims = {@Claim(key = "upn", value = "gruppenUser")})
+    @TestSecurity(user = "gruppenuser", roles = {"user"})
+    @JwtSecurity(claims = {@Claim(key = "upn", value = "gruppenuser")})
     void clearActiveGroup_setzt_auf_null() {
         // Erst setzen
         given().when().put("/api/v1/users/self/active-group/1").then().statusCode(200);
@@ -90,8 +90,8 @@ class GruppenFlowTest {
     }
 
     @Test
-    @TestSecurity(user = "gruppenUser", roles = {"user"})
-    @JwtSecurity(claims = {@Claim(key = "upn", value = "gruppenUser")})
+    @TestSecurity(user = "gruppenuser", roles = {"user"})
+    @JwtSecurity(claims = {@Claim(key = "upn", value = "gruppenuser")})
     void setActiveGroup_nichtExistierendeGruppe_gibt404() {
         given()
             .when().put("/api/v1/users/self/active-group/9999")
