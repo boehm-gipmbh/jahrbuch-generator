@@ -118,7 +118,7 @@ public class InvitationTokenService {
   }
 
   protected Uni<User> findUserByName(String name) {
-    return User.<User>find("name", name).firstResult();
+    return User.<User>find("name", name.toLowerCase()).firstResult();
   }
 
   @WithSession
