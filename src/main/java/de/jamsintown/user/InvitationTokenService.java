@@ -11,10 +11,8 @@ import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -24,68 +22,123 @@ public class InvitationTokenService {
   private final JsonWebToken jwt;
   private final EmailVerificationService emailVerificationService;
   private final GruppeService gruppeService;
+  private final InvitationEmailService invitationEmailService;
 
   @Inject
   public InvitationTokenService(JsonWebToken jwt, EmailVerificationService emailVerificationService,
-      GruppeService gruppeService) {
+      GruppeService gruppeService, InvitationEmailService invitationEmailService) {
     this.jwt = jwt;
     this.emailVerificationService = emailVerificationService;
     this.gruppeService = gruppeService;
+    this.invitationEmailService = invitationEmailService;
   }
 
   @WithSession
   public Uni<List<InvitationToken>> list() {
-    // Zwei separate Queries um MultipleBagFetchException zu vermeiden.
-    // 1) Tokens mit registeredUsers laden
+    boolean isGroupAdmin = jwt.getGroups().contains("group-admin") && !jwt.getGroups().contains("admin");
+    if (isGroupAdmin) {
+      return listForGroupAdmin();
+    }
+    return listForAdmin();
+  }
+
+  private Uni<List<InvitationToken>> listForGroupAdmin() {
+    return findUserByNameWithGroups(jwt.getName())
+        .chain(user -> {
+          if (user == null || user.managedGroup == null) {
+            return Uni.createFrom().item(Collections.<InvitationToken>emptyList());
+          }
+          return InvitationToken.<InvitationToken>find(
+              "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers WHERE t.group.id = ?1",
+              user.managedGroup.id
+          ).list()
+          .chain(tokens -> resolveMembers(tokens));
+        });
+  }
+
+  private Uni<List<InvitationToken>> listForAdmin() {
     return InvitationToken.<InvitationToken>find(
         "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers"
       ).list()
-      .chain(tokens -> {
-        List<Long> groupIds = tokens.stream()
-            .filter(t -> t.group != null)
-            .map(t -> t.group.id)
-            .distinct()
-            .collect(Collectors.toList());
-        if (groupIds.isEmpty()) {
-          tokens.forEach(t -> t.members = t.registeredUsers != null ? t.registeredUsers : List.of());
-          return Uni.createFrom().item(tokens);
-        }
-        // 2) Gruppen-Mitglieder separat laden und den Gruppen zuordnen
-        return User.<User>find(
-            "FROM User u JOIN FETCH u.groups g WHERE g.id IN ?1", groupIds
-          ).list()
-          .map(groupUsers -> {
-            Map<Long, List<User>> membersByGroupId = new HashMap<>();
-            groupUsers.forEach(u ->
-                u.groups.stream()
-                    .filter(g -> groupIds.contains(g.id))
-                    .forEach(g -> membersByGroupId
-                        .computeIfAbsent(g.id, k -> new ArrayList<>())
-                        .add(u))
-            );
-            tokens.forEach(t -> t.members = t.group != null
-                ? membersByGroupId.getOrDefault(t.group.id, List.of())
-                : t.registeredUsers != null ? t.registeredUsers : List.of());
-            return tokens;
-          });
+      .chain(tokens -> resolveMembers(tokens));
+  }
+
+  /**
+   * group-admin-Tokens zeigen alle Gruppenmitglieder (= Gruppenübersicht).
+   * User-Tokens zeigen nur die direkt darüber registrierten User.
+   */
+  private Uni<List<InvitationToken>> resolveMembers(List<InvitationToken> tokens) {
+    List<Long> groupAdminGroupIds = tokens.stream()
+        .filter(t -> "group-admin".equals(t.role) && t.group != null)
+        .map(t -> t.group.id)
+        .distinct()
+        .collect(Collectors.toList());
+
+    if (groupAdminGroupIds.isEmpty()) {
+      tokens.forEach(t -> t.members = t.registeredUsers != null ? t.registeredUsers : List.of());
+      return Uni.createFrom().item(tokens);
+    }
+
+    return User.<User>find(
+        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.managedGroup " +
+        "WHERE u.managedGroup.id IN ?1 AND 'group-admin' MEMBER OF u.roles",
+        groupAdminGroupIds
+      ).list()
+      .map(groupUsers -> {
+        tokens.forEach(t -> {
+          if ("group-admin".equals(t.role) && t.group != null) {
+            // Nur User anzeigen, deren managedGroup genau diese Gruppe ist (Rolle im DB gefiltert)
+            t.members = groupUsers.stream()
+                .filter(u -> u.managedGroup != null && u.managedGroup.id.equals(t.group.id))
+                .collect(Collectors.toList());
+          } else {
+            t.members = t.registeredUsers != null ? t.registeredUsers : List.of();
+          }
+        });
+        return tokens;
       });
   }
 
   @WithTransaction
   public Uni<InvitationToken> create(InvitationToken token) {
     token.token = UUID.randomUUID();
-    return findUserByName(jwt.getName())
+    boolean isGroupAdmin = jwt.getGroups().contains("group-admin") && !jwt.getGroups().contains("admin");
+
+    return findUserByNameWithGroups(jwt.getName())
       .chain(createdBy -> {
         token.createdBy = createdBy;
+
+        if (isGroupAdmin) {
+          // Gruppen-Admin darf nur user-Tokens für die eigene verwaltete Gruppe erstellen
+          if (createdBy.managedGroup == null) {
+            throw new ClientErrorException(
+                "Gruppen-Admin hat keine verwaltete Gruppe zugeordnet", Response.Status.FORBIDDEN);
+          }
+          token.role = "user";
+          token.group = createdBy.managedGroup;
+          token.label = token.group.name;
+          return token.<InvitationToken>persistAndFlush()
+              .invoke(() -> sendInvitationMailIfSet(token));
+        }
+
+        // Admin-Flow: optional E-Mail senden nach Persist
         if (token.label != null && !token.label.isBlank()) {
           return gruppeService.findOrCreate(token.label)
             .chain(gruppe -> {
               token.group = gruppe;
-              return token.persistAndFlush();
+              return token.<InvitationToken>persistAndFlush()
+                  .invoke(() -> sendInvitationMailIfSet(token));
             });
         }
-        return token.persistAndFlush();
+        return token.<InvitationToken>persistAndFlush()
+            .invoke(() -> sendInvitationMailIfSet(token));
       });
+  }
+
+  private void sendInvitationMailIfSet(InvitationToken token) {
+    if (token.recipientEmail != null && !token.recipientEmail.isBlank()) {
+      invitationEmailService.sendInvitationMail(token);
+    }
   }
 
   @WithTransaction
@@ -94,7 +147,7 @@ public class InvitationTokenService {
       .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
       .chain(t -> {
         t.active = false;
-        return t.persistAndFlush();
+        return t.<InvitationToken>persistAndFlush();
       });
   }
 
@@ -104,7 +157,7 @@ public class InvitationTokenService {
       .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
       .chain(t -> {
         t.active = true;
-        return t.persistAndFlush();
+        return t.<InvitationToken>persistAndFlush();
       });
   }
 
@@ -119,6 +172,12 @@ public class InvitationTokenService {
 
   protected Uni<User> findUserByName(String name) {
     return User.<User>find("name", name.toLowerCase()).firstResult();
+  }
+
+  private Uni<User> findUserByNameWithGroups(String name) {
+    return User.<User>find(
+        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup WHERE u.name = ?1", name.toLowerCase()
+    ).list().map(users -> users.isEmpty() ? null : users.get(0));
   }
 
   @WithSession
@@ -160,17 +219,27 @@ public class InvitationTokenService {
         user.name = name.toLowerCase();
         user.email = email.toLowerCase();
         user.setPassword(BcryptUtil.bcryptHash(password));
-        user.roles = List.of(t.role);
+        // group-admin bekommt zusätzlich die user-Rolle, damit er die App nutzen kann
+        user.roles = "group-admin".equals(t.role)
+            ? List.of("group-admin", "user")
+            : List.of(t.role);
         user.usedInvitation = t;
         user.emailVerificationToken = UUID.randomUUID();
         return user.<User>persistAndFlush()
           .chain(savedUser -> {
             t.lastUsedAt = ZonedDateTime.now();
-            return t.persistAndFlush().replaceWith(savedUser);
+            return t.<InvitationToken>persistAndFlush().replaceWith(savedUser);
           })
           .chain(savedUser -> {
             if (t.group != null) {
-              return gruppeService.addToGroup(savedUser, t.group);
+              return gruppeService.addToGroup(savedUser, t.group)
+                  .chain(u -> {
+                    if ("group-admin".equals(t.role)) {
+                      u.managedGroup = t.group;
+                      return u.<User>persistAndFlush();
+                    }
+                    return Uni.createFrom().item(u);
+                  });
             }
             return Uni.createFrom().item(savedUser);
           })

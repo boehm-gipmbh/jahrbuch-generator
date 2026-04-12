@@ -51,18 +51,37 @@ public class UserResource {
   @DELETE
   @Path("{id}")
   @ResponseStatus(204)
+  @RolesAllowed({"admin", "group-admin"})
   public Uni<Void> delete(@PathParam("id") long id) {
     return userService.delete(id);
   }
 
   @PUT
+  @Path("{id}/promote/{groupId}")
+  @RolesAllowed({"admin", "group-admin"})
+  public Uni<User> promoteToGroupAdmin(
+      @PathParam("id") long id,
+      @PathParam("groupId") long groupId) {
+    return userService.promoteToGroupAdmin(id, groupId);
+  }
+
+  @PUT
+  @Path("{id}/demote")
+  @RolesAllowed({"admin", "group-admin"})
+  public Uni<User> demoteFromGroupAdmin(@PathParam("id") long id) {
+    return userService.demoteFromGroupAdmin(id);
+  }
+
+  @PUT
   @Path("{id}/deactivate")
+  @RolesAllowed({"admin", "group-admin"})
   public Uni<User> deactivate(@PathParam("id") long id) {
     return userService.deactivate(id);
   }
 
   @PUT
   @Path("{id}/reactivate")
+  @RolesAllowed({"admin", "group-admin"})
   public Uni<User> reactivate(@PathParam("id") long id) {
     return userService.reactivate(id);
   }

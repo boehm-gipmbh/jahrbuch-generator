@@ -62,6 +62,10 @@ public class User extends PanacheEntity {
   @JoinColumn(name = "active_group_id")
   public Gruppe activeGroup;
 
+  @ManyToOne(fetch = FetchType.EAGER)
+  @JoinColumn(name = "managed_group_id")
+  public Gruppe managedGroup;
+
   @JsonProperty("password")
   public void setPassword(String password) {
     this.password = password;
