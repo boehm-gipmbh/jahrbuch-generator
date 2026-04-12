@@ -3,24 +3,53 @@
 -- It should be run after the schema has been created.
 
 -- Create initial user "admin" with email and roles "admin" and "user"
+-- Password: Admin1234!
 INSERT INTO "users" ("id", "name", "email", "password", "created", "version", "email_verified", "active")
-VALUES (0, 'admin', 'admin@jamsintown.de', '$2a$10$LDvEIg68fkbdmrJjtDRlNOVImzgC3hM28JI3i69jcbE/57L74lijW', NOW(), 0, TRUE, TRUE)
+VALUES (0, 'admin', 'admin@jamsintown.de', '$2a$10$geBz3tkQfSME.ZCPpbPZ4.45.JSNOdcpwbah6lsaZUz4oGf3Ca19K', NOW(), 0, TRUE, TRUE)
     ON CONFLICT DO NOTHING;
 INSERT INTO "user_roles" ("id", "role") VALUES (0, 'admin')
     ON CONFLICT DO NOTHING;
 INSERT INTO "user_roles" ("id", "role") VALUES (0, 'user')
     ON CONFLICT DO NOTHING;
 -- Create initial user "user" with email and role "user"
+-- Password: User9999#
 INSERT INTO "users" ("id", "name", "email", "password", "created", "version", "email_verified", "active")
-VALUES (1, 'user', 'user@jamsintown.de', '$2a$10$LDvEIg68fkbdmrJjtDRlNOVImzgC3hM28JI3i69jcbE/57L74lijW', NOW(), 0, TRUE, TRUE)
+VALUES (1, 'user', 'user@jamsintown.de', '$2a$10$oELFjREnxztejNQ.ZaNW1uzaGRY5UL8SN4SidPdeg5/igxseREcH.', NOW(), 0, TRUE, TRUE)
     ON CONFLICT DO NOTHING;
 INSERT INTO "user_roles" ("id", "role") VALUES (1, 'user')
     ON CONFLICT DO NOTHING;
 -- Create initial user "detlef" with email and role "user"
+-- Password: Detlef9999#
 INSERT INTO "users" ("id", "name", "email", "password", "created", "version", "email_verified", "active")
-VALUES (2, 'detlef', 'drdboehm@jamsintown.de', '$2a$10$LDvEIg68fkbdmrJjtDRlNOVImzgC3hM28JI3i69jcbE/57L74lijW', NOW(), 0, TRUE, TRUE)
+VALUES (2, 'detlef', 'drdboehm@jamsintown.de', '$2a$10$qzTLYniVo5YgFE0NomjP9.rOdEKEv2ITP/4m6eZpFpIXib.agqTGe', NOW(), 0, TRUE, TRUE)
     ON CONFLICT DO NOTHING;
 INSERT INTO "user_roles" ("id", "role") VALUES (2, 'user')
+    ON CONFLICT DO NOTHING;
+
+-- Create test groups
+INSERT INTO "gruppen" ("id", "name") VALUES (1, 'Hochzeitszeitung')
+    ON CONFLICT DO NOTHING;
+INSERT INTO "gruppen" ("id", "name") VALUES (2, 'ABI 1985')
+    ON CONFLICT DO NOTHING;
+INSERT INTO "gruppen" ("id", "name") VALUES (3, 'ABI 1986')
+    ON CONFLICT DO NOTHING;
+
+-- Create group-admin user "ddet" with managedGroup=Hochzeitszeitung
+-- Password: Ddet9999#
+INSERT INTO "users" ("id", "name", "email", "password", "created", "version", "email_verified", "active", "managed_group_id")
+VALUES (3, 'ddet', 'dboehm@arcor.de', '$2a$10$IPSNwwU5ehCTd4XBXARvkOqCXayHNfs5TFLUMs5xghl0GcuP5z2ou', NOW(), 0, TRUE, TRUE, 1)
+    ON CONFLICT DO NOTHING;
+INSERT INTO "user_roles" ("id", "role") VALUES (3, 'group-admin')
+    ON CONFLICT DO NOTHING;
+INSERT INTO "user_roles" ("id", "role") VALUES (3, 'user')
+    ON CONFLICT DO NOTHING;
+
+-- Add ddet to all groups
+INSERT INTO "user_groups" ("user_id", "group_id") VALUES (3, 1)
+    ON CONFLICT DO NOTHING;
+INSERT INTO "user_groups" ("user_id", "group_id") VALUES (3, 2)
+    ON CONFLICT DO NOTHING;
+INSERT INTO "user_groups" ("user_id", "group_id") VALUES (3, 3)
     ON CONFLICT DO NOTHING;
 
 INSERT INTO "texte" ("id", "priority","title", "description", "user_id","created", "version")
@@ -46,8 +75,7 @@ INSERT INTO "bilder" ("id", "priority", "title", "description", "pfad", "user_id
 VALUES (1, 2,'Anderes Bild', 'Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis. ','/test02.jpg', 1, NOW(), 0)
     ON CONFLICT DO NOTHING;
 
-ALTER SEQUENCE IF EXISTS hibernate_sequence RESTART WITH 10;
-ALTER SEQUENCE IF EXISTS bilder_seq RESTART WITH 10;
-ALTER SEQUENCE IF EXISTS users_seq RESTART WITH 10;
-ALTER SEQUENCE IF EXISTS texte_seq RESTART WITH 10;
-ALTER SEQUENCE IF EXISTS gruppen_seq RESTART WITH 10;
+ALTER SEQUENCE IF EXISTS bilder_seq RESTART WITH 100;
+ALTER SEQUENCE IF EXISTS users_seq RESTART WITH 100;
+ALTER SEQUENCE IF EXISTS texte_seq RESTART WITH 100;
+ALTER SEQUENCE IF EXISTS gruppen_seq RESTART WITH 100;

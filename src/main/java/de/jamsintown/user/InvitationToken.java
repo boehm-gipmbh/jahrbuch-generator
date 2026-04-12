@@ -1,6 +1,7 @@
 package de.jamsintown.user;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -53,6 +54,7 @@ public class InvitationToken extends PanacheEntity {
    *  Bei Gruppen-Einladungen: alle Gruppen-Mitglieder.
    *  Bei einfachen Einladungen: registeredUsers. */
   @Transient
-  @JsonIgnoreProperties({"groups", "activeGroup", "usedInvitation", "password"})
+  @JsonProperty
+  @JsonIgnoreProperties({"groups", "activeGroup", "managedGroup", "usedInvitation", "password"})
   public List<User> members;
 }

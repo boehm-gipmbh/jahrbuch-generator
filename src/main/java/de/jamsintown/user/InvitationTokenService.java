@@ -11,11 +11,8 @@ import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -48,53 +45,56 @@ public class InvitationTokenService {
   private Uni<List<InvitationToken>> listForGroupAdmin() {
     return findUserByNameWithGroups(jwt.getName())
         .chain(user -> {
-          if (user == null || user.groups.isEmpty()) {
+          if (user == null || user.managedGroup == null) {
             return Uni.createFrom().item(Collections.<InvitationToken>emptyList());
           }
-          List<Long> userGroupIds = user.groups.stream().map(g -> g.id).collect(Collectors.toList());
           return InvitationToken.<InvitationToken>find(
-              "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers WHERE t.group.id IN ?1",
-              userGroupIds
+              "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers WHERE t.group.id = ?1",
+              user.managedGroup.id
           ).list()
           .chain(tokens -> resolveMembers(tokens));
         });
   }
 
   private Uni<List<InvitationToken>> listForAdmin() {
-    // Zwei separate Queries um MultipleBagFetchException zu vermeiden.
-    // 1) Tokens mit registeredUsers laden
     return InvitationToken.<InvitationToken>find(
         "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers"
       ).list()
       .chain(tokens -> resolveMembers(tokens));
   }
 
+  /**
+   * group-admin-Tokens zeigen alle Gruppenmitglieder (= Gruppenübersicht).
+   * User-Tokens zeigen nur die direkt darüber registrierten User.
+   */
   private Uni<List<InvitationToken>> resolveMembers(List<InvitationToken> tokens) {
-    List<Long> groupIds = tokens.stream()
-        .filter(t -> t.group != null)
+    List<Long> groupAdminGroupIds = tokens.stream()
+        .filter(t -> "group-admin".equals(t.role) && t.group != null)
         .map(t -> t.group.id)
         .distinct()
         .collect(Collectors.toList());
-    if (groupIds.isEmpty()) {
+
+    if (groupAdminGroupIds.isEmpty()) {
       tokens.forEach(t -> t.members = t.registeredUsers != null ? t.registeredUsers : List.of());
       return Uni.createFrom().item(tokens);
     }
-    // 2) Gruppen-Mitglieder separat laden und den Gruppen zuordnen
+
     return User.<User>find(
-        "FROM User u JOIN FETCH u.groups g WHERE g.id IN ?1", groupIds
+        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.managedGroup " +
+        "WHERE u.managedGroup.id IN ?1 AND 'group-admin' MEMBER OF u.roles",
+        groupAdminGroupIds
       ).list()
       .map(groupUsers -> {
-        Map<Long, List<User>> membersByGroupId = new HashMap<>();
-        groupUsers.forEach(u ->
-            u.groups.stream()
-                .filter(g -> groupIds.contains(g.id))
-                .forEach(g -> membersByGroupId
-                    .computeIfAbsent(g.id, k -> new ArrayList<>())
-                    .add(u))
-        );
-        tokens.forEach(t -> t.members = t.group != null
-            ? membersByGroupId.getOrDefault(t.group.id, List.of())
-            : t.registeredUsers != null ? t.registeredUsers : List.of());
+        tokens.forEach(t -> {
+          if ("group-admin".equals(t.role) && t.group != null) {
+            // Nur User anzeigen, deren managedGroup genau diese Gruppe ist (Rolle im DB gefiltert)
+            t.members = groupUsers.stream()
+                .filter(u -> u.managedGroup != null && u.managedGroup.id.equals(t.group.id))
+                .collect(Collectors.toList());
+          } else {
+            t.members = t.registeredUsers != null ? t.registeredUsers : List.of();
+          }
+        });
         return tokens;
       });
   }
@@ -109,16 +109,16 @@ public class InvitationTokenService {
         token.createdBy = createdBy;
 
         if (isGroupAdmin) {
-          // Gruppen-Admin darf nur user-Tokens für die eigene Gruppe erstellen
-          if (createdBy.groups == null || createdBy.groups.isEmpty()) {
+          // Gruppen-Admin darf nur user-Tokens für die eigene verwaltete Gruppe erstellen
+          if (createdBy.managedGroup == null) {
             throw new ClientErrorException(
-                "Gruppen-Admin ist keiner Gruppe zugeordnet", Response.Status.FORBIDDEN);
+                "Gruppen-Admin hat keine verwaltete Gruppe zugeordnet", Response.Status.FORBIDDEN);
           }
           token.role = "user";
-          token.group = createdBy.groups.get(0);
+          token.group = createdBy.managedGroup;
           token.label = token.group.name;
-          token.recipientEmail = null; // Gruppen-Admin teilt Link manuell
-          return token.<InvitationToken>persistAndFlush();
+          return token.<InvitationToken>persistAndFlush()
+              .invoke(() -> sendInvitationMailIfSet(token));
         }
 
         // Admin-Flow: optional E-Mail senden nach Persist
@@ -176,7 +176,7 @@ public class InvitationTokenService {
 
   private Uni<User> findUserByNameWithGroups(String name) {
     return User.<User>find(
-        "FROM User u LEFT JOIN FETCH u.groups WHERE u.name = ?1", name.toLowerCase()
+        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup WHERE u.name = ?1", name.toLowerCase()
     ).list().map(users -> users.isEmpty() ? null : users.get(0));
   }
 
@@ -232,7 +232,14 @@ public class InvitationTokenService {
           })
           .chain(savedUser -> {
             if (t.group != null) {
-              return gruppeService.addToGroup(savedUser, t.group);
+              return gruppeService.addToGroup(savedUser, t.group)
+                  .chain(u -> {
+                    if ("group-admin".equals(t.role)) {
+                      u.managedGroup = t.group;
+                      return u.<User>persistAndFlush();
+                    }
+                    return Uni.createFrom().item(u);
+                  });
             }
             return Uni.createFrom().item(savedUser);
           })
