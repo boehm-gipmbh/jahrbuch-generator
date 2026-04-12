@@ -11,7 +11,9 @@ import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 import org.hibernate.ObjectNotFoundException;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class UserService {
@@ -36,7 +38,7 @@ public class UserService {
     // activeGroup explizit via LEFT JOIN FETCH laden — Hibernate Reactive
     // ignoriert FetchType.EAGER für @ManyToOne außerhalb einer offenen Session.
     return User.<User>find(
-        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup WHERE u.name = ?1", name.toLowerCase())
+        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup WHERE u.name = ?1", name.toLowerCase())
         .list()
         .map(users -> users.isEmpty() ? null : users.get(0));
   }
@@ -68,36 +70,90 @@ public class UserService {
     return BcryptUtil.matches(password, user.password);
   }
 
+  /**
+   * Prüft, ob der eingeloggte group-admin auf den Ziel-User zugreifen darf
+   * (Ziel-User muss Mitglied der aktiven Gruppe des group-admins sein).
+   * Für echte Admins wird die Prüfung übersprungen.
+   */
+  Uni<Void> assertGroupAdminCanActOn(long targetId) {
+    boolean isGroupAdmin = jwt.getGroups().contains("group-admin")
+        && !jwt.getGroups().contains("admin");
+    if (!isGroupAdmin) return Uni.createFrom().voidItem();
+    return getCurrentUser()
+        .chain(admin -> {
+          if (admin == null || admin.managedGroup == null) {
+            throw new ClientErrorException(Response.Status.FORBIDDEN);
+          }
+          return User.count(
+              "SELECT COUNT(u) FROM User u JOIN u.groups g WHERE u.id = ?1 AND g.id = ?2",
+              targetId, admin.managedGroup.id
+          ).map(count -> {
+            if (count == 0) throw new ClientErrorException(Response.Status.FORBIDDEN);
+            return (Void) null;
+          });
+        });
+  }
+
   @WithTransaction
   public Uni<Void> delete(long id) {
-    return findById(id)
-        .chain(u -> de.jamsintown.bild.Bild.count("user", u)
-            .flatMap(bilder -> de.jamsintown.text.Text.count("user", u)
-                .flatMap(texte -> de.jamsintown.story.Story.count("user", u)
-                    .chain(stories -> {
-                        if (bilder > 0 || texte > 0 || stories > 0) {
-                            throw new ClientErrorException(
-                                "User hat noch Inhalte (" + bilder + " Bilder, " + texte + " Texte, " + stories + " Stories). Bitte zuerst deaktivieren.",
-                                Response.Status.CONFLICT);
-                        }
-                        return u.delete();
-                    }))));
+    return assertGroupAdminCanActOn(id)
+        .chain(__ -> findById(id)
+            .chain(u -> de.jamsintown.bild.Bild.count("user", u)
+                .flatMap(bilder -> de.jamsintown.text.Text.count("user", u)
+                    .flatMap(texte -> de.jamsintown.story.Story.count("user", u)
+                        .chain(stories -> {
+                            if (bilder > 0 || texte > 0 || stories > 0) {
+                                throw new ClientErrorException(
+                                    "User hat noch Inhalte (" + bilder + " Bilder, " + texte + " Texte, " + stories + " Stories). Bitte zuerst deaktivieren.",
+                                    Response.Status.CONFLICT);
+                            }
+                            return u.delete();
+                        })))));
   }
 
   @WithTransaction
   public Uni<User> deactivate(long id) {
-    return findById(id).chain(u -> {
-      u.active = false;
-      return u.persistAndFlush();
-    });
+    return assertGroupAdminCanActOn(id)
+        .chain(__ -> findById(id).chain(u -> {
+          u.active = false;
+          return u.persistAndFlush();
+        }));
   }
 
   @WithTransaction
   public Uni<User> reactivate(long id) {
-    return findById(id).chain(u -> {
-      u.active = true;
-      return u.persistAndFlush();
-    });
+    return assertGroupAdminCanActOn(id)
+        .chain(__ -> findById(id).chain(u -> {
+          u.active = true;
+          return u.persistAndFlush();
+        }));
+  }
+
+  @WithTransaction
+  public Uni<User> promoteToGroupAdmin(long id, long groupId) {
+    return assertGroupAdminCanActOn(id)
+        .chain(__ -> Gruppe.<Gruppe>findById(groupId)
+            .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
+            .chain(gruppe -> findById(id).chain(u -> {
+              if (u.roles == null || !u.roles.contains("group-admin")) {
+                u.roles = new ArrayList<>(u.roles != null ? u.roles : List.of());
+                u.roles.add("group-admin");
+              }
+              u.managedGroup = gruppe;
+              return u.persistAndFlush();
+            })));
+  }
+
+  @WithTransaction
+  public Uni<User> demoteFromGroupAdmin(long id) {
+    return assertGroupAdminCanActOn(id)
+        .chain(__ -> findById(id).chain(u -> {
+          u.roles = u.roles == null ? List.of() : u.roles.stream()
+              .filter(r -> !"group-admin".equals(r))
+              .collect(Collectors.toList());
+          u.managedGroup = null;
+          return u.persistAndFlush();
+        }));
   }
 
   @WithTransaction

@@ -10,7 +10,7 @@ import org.jboss.resteasy.reactive.ResponseStatus;
 import java.util.List;
 
 @Path("/api/v1/users/invitations")
-@RolesAllowed("admin")
+@RolesAllowed({"admin", "group-admin"})
 public class InvitationTokenResource {
 
   private final InvitationTokenService service;

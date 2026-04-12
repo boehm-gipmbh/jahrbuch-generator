@@ -4,259 +4,64 @@
 :toclevels: 2
 :appendix-caption: Anhang
 
-== Produktions-DB lokal spiegeln / dumpen
-
-Vor Arbeiten an der Datenbank empfiehlt es sich, die Produktion lokal zu spiegeln oder einen Dump zu erstellen.
-Credentials liegen in `.env` (gitignored):
-
-[source]
-----
-DEV_DB_USERNAME=postgres
-DEV_DB_PASSWORD=<passwort aus Passwortmanager>
-----
-
-IMPORTANT: Die Produktions-DB läuft auf PostgreSQL 17. Das lokale `pg_dump` (16) ist inkompatibel.
-Daher wird `pg_dump` aus einem PostgreSQL-17-Docker-Container ausgeführt (`--network=host` damit der Container den Fly.io-Proxy auf localhost:5433 erreicht).
-
-In allen folgenden Befehlen `$DEV_DB_PASSWORD` durch den Wert aus `.env` ersetzen.
-
-=== Option A: Nur Dump erstellen
-
-[source,bash]
-----
-# 1. Proxy öffnen (separates Terminal, offen lassen)
-fly proxy 5433:5432 -a jahrbuch-generator-pg
-
-# 2. Dump via PostgreSQL-17-Container erstellen
-export $(cat .env | xargs)
-
-docker run --rm --network=host \
-  -e PGPASSWORD=$DEV_DB_PASSWORD \
-  postgres:17 \
-  pg_dump -h localhost -p 5433 -U postgres -d postgres \
-  > prod_dump_$(date +%Y%m%d).sql
-----
-
-Die SQL-Datei ggf. außerhalb des Repos ablegen (`.gitignore` enthält nur `data_dump.sql` / `schema_dump.sql`).
-
-=== Option B: Produktion in lokale Docker-DB spiegeln
-
-[source,bash]
-----
-# 1. Lokale PostgreSQL 17 starten (mit persistentem Volume)
-docker volume create jahrbuch-pgdata
-
-docker run -d --name postgres-dev \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -p 5432:5432 \
-  -v jahrbuch-pgdata:/var/lib/postgresql/data \
-  postgres:17
-
-# Beim nächsten Mal nur noch starten (Daten bleiben erhalten):
-# docker start postgres-dev
-
-# 2. Proxy öffnen (separates Terminal)
-fly proxy 5433:5432 -a jahrbuch-generator-pg
-
-# 3. Dump direkt einspielen (alles in einem Schritt)
-export $(cat .env | xargs)
-
-docker run --rm --network=host \
-  -e PGPASSWORD=$DEV_DB_PASSWORD \
-  postgres:17 \
-  pg_dump -h localhost -p 5433 -U postgres -d postgres \
-  | PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres
-
-# Hinweis: pg_dump gibt ggf. eine Warnung über zirkuläre Foreign Keys (Tabelle "nodes").
-# Das ist bei einem Full Dump unkritisch — die Warnung kann ignoriert werden.
-----
-
-Keine Änderung an `.env` oder `application.properties` nötig — stattdessen das `local`-Profil verwenden:
-
-=== Quarkus Dev-Mode starten (mit lokaler DB)
-
-[source,bash]
-----
-./mvnw compile quarkus:dev -Dquarkus.profile=local
-----
-
-Mit Fly.io Proxy statt lokaler DB (Standard):
-
-[source,bash]
-----
-export $(cat .env | xargs)
-./mvnw compile quarkus:dev
-----
-
-Frontend (separates Terminal):
-
-[source,bash]
-----
-cd src/main/frontend && npm start
-----
-
-→ http://localhost:3000 (proxied API auf :8080)
-
-=== Captures lokal verfügbar machen
-
-Die Bilddateien sind nicht im DB-Dump enthalten — sie liegen auf Fly.io unter `/data/captures`.
-Das Skript `fly-captures-download.sh` lädt sie per SFTP herunter nach `captures/` (gitignored).
-
-==== Voraussetzung: Fly.io API Token
-
-Die Datei `jahrbuch-generator.token.ssh` muss im Projektroot liegen (gitignored).
-Token erzeugen:
-
-[source,bash]
-----
-flyctl tokens create deploy -x 999999h > jahrbuch-generator.token.ssh
-----
-
-==== Captures herunterladen
-
-[source,bash]
-----
-./fly-captures-download.sh
-----
-
-Bilder landen in `captures/` — das ist das `%local.jahrbuch.captures.path`-Verzeichnis.
-
-== Native Image lokal testen
-
-== 1. Fly.io DB-Proxy starten
-
-[source,bash]
-----
-fly proxy 5433:5432 -a jahrbuch-generator-pg
-----
-
-In einem separaten Terminal offen lassen.
-
-== 2. Native Image bauen
-
-Ohne Frontend (schneller):
-[source,bash]
-----
-./mvnw -Pnative clean package
-----
-
-Mit Frontend:
-[source,bash]
-----
-./mvnw -Pfrontend,native clean package
-----
-
-== 3. Native Runner starten
-
-[source,bash]
-----
-./target/*-runner -Dquarkus.datasource.reactive.url=postgresql://localhost:5433/postgres -Dquarkus.datasource.username=postgres -Dquarkus.datasource.password=yKTSyH4aXUsrB9e -Djahrbuch.captures.path=/home/dboehm/git/git.quarkus/jahrbuch-generator.git/captures/ -Djava.awt.headless=true
-----
-
-== 4. API testen mit curl
-
-=== Token holen
-
-[source,bash]
-----
-TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"name":"abi85","password":"abi1985#40years"}')
-----
-
-=== Bilder auflisten (erste ID ermitteln)
-
-[source,bash]
-----
-curl -s http://localhost:8080/api/v1/bilder -H "Authorization: Bearer $TOKEN" | jq '.[0].id'
-----
-
-=== Bild rotieren
-
-[source,bash]
-----
-curl -s -X POST http://localhost:8080/api/v1/bilder/BILD_ID/rotate \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"degrees":90}'
-----
-
-Erlaubte Werte für `degrees`: `90`, `180`, `270`.
-
-== 5. Für Fly.io deployen (nach erfolgreichem Test)
-
-[source,bash]
-----
-./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push
-flyctl deploy --image drdboehm/jahrbuch-generator:fly
-----
-
-== Integrativ lokal testen (manuell)
+== Integrativ lokal testen
 
 Vollständiger Stack lokal hochfahren: PostgreSQL in Docker, Migrationen, Seed-Daten, Backend, Frontend.
 
 === Schritt 1: PostgreSQL starten
 
+==== Neu starten (frische DB — z. B. nach neuen Migrationen)
+
 [source,bash]
 ----
-docker run -d --rm --name postgres-dev \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -p 5432:5432 \
-  postgres:latest
+docker stop postgres-dev && docker rm postgres-dev && docker run -d --name postgres-dev -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:17
 ----
 
-Beim nächsten Mal (Container noch vorhanden, aber gestoppt):
+==== Weitermachen (Container bereits vorhanden, aber gestoppt)
 
 [source,bash]
 ----
 docker start postgres-dev
 ----
 
-=== Schritt 2: Migrationen ausführen (nur bei frischer DB oder neuen Migrations-Dateien)
+=== Schritt 2: Migrationen ausführen
 
-`migrate.sh` prüft anhand der `schema_migrations`-Tabelle, was schon angewendet wurde — bereits eingespieltes wird mit `[skip]` übersprungen.
-Bei einer laufenden, aktuellen DB ist dieser Schritt ein No-op.
+`migrate.sh` prüft anhand der `schema_migrations`-Tabelle, was bereits angewendet wurde — bereits eingespieltes wird mit `[skip]` übersprungen. Bei einer aktuellen DB ist dieser Schritt ein No-op.
 
 [source,bash]
 ----
-export FREE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
-export MIGRATIONS_DIR="$(pwd)/src/main/resources/db/migration"
-bash migrate.sh
+export FREE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres" && export MIGRATIONS_DIR="$(pwd)/src/main/resources/db/migration" && bash migrate.sh
 ----
 
 === Schritt 3: Seed-Daten einspielen
 
-Legt folgende Basis-User an (alle mit demselben Passwort — siehe `DEV_ADMIN_PASSWORD` in `.env`):
+Legt folgende User an. Idempotent — kann mehrfach ausgeführt werden.
 
-[cols="1,1,1"]
+[cols="1,2,1,1,1"]
 |===
-|Name |E-Mail |Rolle
+|Name |E-Mail |Rolle |managedGroup |Passwort
 
-|`admin` |admin@jamsintown.de |admin, user
-|`user` |user@jamsintown.de |user
-|`detlef` |drdboehm@jamsintown.de |user
+|`admin` |admin@jamsintown.de |admin, user |- |Admin1234!
+|`user` |user@jamsintown.de |user |- |User9999#
+|`detlef` |drdboehm@jamsintown.de |user |- |Detlef9999#
+|`ddet` |dboehm@arcor.de |group-admin, user |Hochzeitszeitung |Ddet9999#
 |===
 
-Idempotent — kann mehrfach ausgeführt werden.
+Erstellt auch 3 Test-Gruppen: Hochzeitszeitung, ABI 1985, ABI 1986. +
+ddet ist Mitglied aller 3 Gruppen, verwaltet aber nur Hochzeitszeitung.
+
+IMPORTANT: Erst Schritt 2 (Migrationen) ausführen — `import-dev.sql` benötigt die Spalte `managed_group_id` aus Migration V25.
 
 [source,bash]
 ----
-PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres \
-  -f src/main/resources/import-dev.sql
+PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres -f src/main/resources/import-dev.sql
 ----
-
-NOTE: `psql "$FREE_DATABASE_URL"` funktioniert nur, wenn die Variable im aktuellen Terminal gesetzt ist.
-Ohne sie versucht psql eine Verbindung über den lokalen Unix-Socket, was fehlschlägt.
 
 === Schritt 4: Backend starten
 
 [source,bash]
 ----
-export DEV_DB_USERNAME=postgres
-export DEV_DB_PASSWORD=postgres
-./mvnw compile quarkus:dev -Dquarkus.profile=local
+export DEV_DB_USERNAME=postgres && export DEV_DB_PASSWORD=postgres && ./mvnw compile quarkus:dev -Dquarkus.profile=local
 ----
 
 Das Backend läuft auf http://localhost:8080.
@@ -270,14 +75,129 @@ cd src/main/frontend && npm start
 
 Das Frontend läuft auf http://localhost:3000 und proxied API-Calls auf :8080.
 
-=== Kurzfassung via dev-local.sh
-
-`dev-local.sh` fasst Schritte 2–4 zusammen (ohne Docker-Start):
+=== Kompletter Reset als Einzeiler (Schritte 1+2)
 
 [source,bash]
 ----
-docker start postgres-dev   # falls Container bereits vorhanden
-./dev-local.sh
+docker stop postgres-dev && docker rm postgres-dev && docker run -d --name postgres-dev -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:17 && sleep 5 && export FREE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres" && export MIGRATIONS_DIR="$(pwd)/src/main/resources/db/migration" && bash migrate.sh
+----
+
+== Produktions-DB lokal spiegeln / dumpen
+
+Vor Arbeiten an der Datenbank empfiehlt es sich, die Produktion lokal zu spiegeln oder einen Dump zu erstellen.
+Credentials liegen in `.env` (gitignored):
+
+[source]
+----
+DEV_DB_USERNAME=postgres
+DEV_DB_PASSWORD=<passwort aus Passwortmanager>
+----
+
+IMPORTANT: Die Produktions-DB läuft auf PostgreSQL 17. Das lokale `pg_dump` ist ggf. inkompatibel.
+Daher wird `pg_dump` aus einem PostgreSQL-17-Docker-Container ausgeführt (`--network=host` damit der Container den Fly.io-Proxy auf localhost:5433 erreicht).
+
+=== Option A: Nur Dump erstellen
+
+[source,bash]
+----
+fly proxy 5433:5432 -a jahrbuch-generator-pg
+----
+
+In separatem Terminal offen lassen, dann:
+
+[source,bash]
+----
+export $(cat .env | xargs) && docker run --rm --network=host -e PGPASSWORD=$DEV_DB_PASSWORD postgres:17 pg_dump -h localhost -p 5433 -U postgres -d postgres > prod_dump_$(date +%Y%m%d).sql
+----
+
+NOTE: pg_dump gibt ggf. eine Warnung über zirkuläre Foreign Keys (Tabelle "nodes") — bei einem Full Dump unkritisch.
+
+=== Option B: Produktion in lokale Docker-DB spiegeln
+
+[source,bash]
+----
+fly proxy 5433:5432 -a jahrbuch-generator-pg
+----
+
+In separatem Terminal offen lassen, dann:
+
+[source,bash]
+----
+export $(cat .env | xargs) && docker run --rm --network=host -e PGPASSWORD=$DEV_DB_PASSWORD postgres:17 pg_dump -h localhost -p 5433 -U postgres -d postgres | PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres
+----
+
+Danach Quarkus mit lokalem Profil starten (Schritt 4 oben).
+
+=== Captures lokal verfügbar machen
+
+Die Bilddateien sind nicht im DB-Dump enthalten — sie liegen auf Fly.io unter `/data/captures`.
+Das Skript `fly-captures-download.sh` lädt sie per SFTP herunter nach `captures/` (gitignored).
+
+Voraussetzung: Datei `jahrbuch-generator.token.ssh` im Projektroot (gitignored):
+
+[source,bash]
+----
+flyctl tokens create deploy -x 999999h > jahrbuch-generator.token.ssh
+----
+
+Dann:
+
+[source,bash]
+----
+./fly-captures-download.sh
+----
+
+== Native Image lokal testen
+
+=== 1. Fly.io DB-Proxy starten
+
+[source,bash]
+----
+fly proxy 5433:5432 -a jahrbuch-generator-pg
+----
+
+In separatem Terminal offen lassen.
+
+=== 2. Native Image bauen
+
+Ohne Frontend (schneller):
+
+[source,bash]
+----
+./mvnw -Pnative clean package
+----
+
+Mit Frontend:
+
+[source,bash]
+----
+./mvnw -Pfrontend,native clean package
+----
+
+=== 3. Native Runner starten
+
+[source,bash]
+----
+export $(cat .env | xargs) && ./target/*-runner -Dquarkus.datasource.reactive.url=postgresql://localhost:5433/postgres -Dquarkus.datasource.username=postgres -Dquarkus.datasource.password=$DEV_DB_PASSWORD -Djahrbuch.captures.path=$(pwd)/captures/ -Djava.awt.headless=true
+----
+
+=== 4. API testen mit curl
+
+[source,bash]
+----
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login -H "Content-Type: application/json" -d '{"name":"admin","password":"admin"}')
+----
+
+[source,bash]
+----
+curl -s http://localhost:8080/api/v1/bilder -H "Authorization: Bearer $TOKEN" | jq '.[0].id'
+----
+
+=== 5. Für Fly.io deployen (nach erfolgreichem Test)
+
+[source,bash]
+----
+./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push && flyctl deploy --image drdboehm/jahrbuch-generator:fly
 ----
 
 [appendix]
@@ -288,43 +208,30 @@ kann aber wie folgt repariert werden.
 
 === Passwort des postgres-Users zurücksetzen
 
-Da `sudo` direkt als Systemuser `postgres` authentifiziert, ist kein altes Passwort nötig:
-
 [source,bash]
 ----
 sudo -u postgres psql -c "\password postgres"
 ----
 
-Falls dieser Befehl selbst nach einem Passwort fragt (abhängig von `pg_hba.conf`), zuerst
-die Authentifizierungsmethode temporär auf `peer` umstellen:
+Falls dieser Befehl selbst nach einem Passwort fragt, zuerst die Authentifizierungsmethode temporär auf `peer` umstellen:
 
 [source,bash]
 ----
-# 1. pg_hba.conf öffnen
 sudo nano /etc/postgresql/16/main/pg_hba.conf
-
-# Zeile ändern:
-#   local   all   postgres   md5      (oder scram-sha-256)
-# →
-#   local   all   postgres   peer
-
-# 2. Konfiguration neu laden
-sudo systemctl reload postgresql
-
-# 3. Passwort setzen
-sudo -u postgres psql -c "\password postgres"
-
-# 4. pg_hba.conf wieder auf ursprüngliche Methode (md5 / scram-sha-256) zurücksetzen
-#    und erneut neu laden
-sudo systemctl reload postgresql
 ----
+
+Zeile ändern: `local   all   postgres   md5` → `local   all   postgres   peer`, dann:
+
+[source,bash]
+----
+sudo systemctl reload postgresql && sudo -u postgres psql -c "\password postgres"
+----
+
+Danach `pg_hba.conf` zurücksetzen und neu laden.
+
 === Instanz herunterfahren
 
 [source,bash]
 ----
-# Einmalig stoppen
-sudo systemctl stop postgresql
-
-# Autostart beim Systemstart deaktivieren
-sudo systemctl disable postgresql
+sudo systemctl stop postgresql && sudo systemctl disable postgresql
 ----
