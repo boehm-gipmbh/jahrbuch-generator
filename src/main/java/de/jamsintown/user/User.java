@@ -53,6 +53,9 @@ public class User extends PanacheEntity {
   @Transient
   public ZonedDateTime invitationExpiresAt;
 
+  @Transient
+  public Long usedInvitationId;
+
   @ManyToMany(fetch = FetchType.EAGER)
   @JoinTable(
     name = "user_groups",

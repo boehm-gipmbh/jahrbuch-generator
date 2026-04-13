@@ -85,7 +85,10 @@ public class InvitationTokenService {
       ).list()
       .map(groupUsers -> {
         groupUsers.forEach(u -> {
-          if (u.usedInvitation != null) u.invitationExpiresAt = u.usedInvitation.expiresAt;
+          if (u.usedInvitation != null) {
+            u.invitationExpiresAt = u.usedInvitation.expiresAt;
+            u.usedInvitationId = u.usedInvitation.id;
+          }
         });
         tokens.forEach(t -> {
           if (t.group != null) {
@@ -161,6 +164,16 @@ public class InvitationTokenService {
       .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
       .chain(t -> {
         t.active = true;
+        return t.<InvitationToken>persistAndFlush();
+      });
+  }
+
+  @WithTransaction
+  public Uni<InvitationToken> extend(long id, ZonedDateTime newExpiresAt) {
+    return InvitationToken.<InvitationToken>findById(id)
+      .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
+      .chain(t -> {
+        t.expiresAt = newExpiresAt;
         return t.<InvitationToken>persistAndFlush();
       });
   }

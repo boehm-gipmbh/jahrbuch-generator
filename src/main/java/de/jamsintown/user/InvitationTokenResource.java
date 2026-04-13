@@ -7,7 +7,10 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.jboss.resteasy.reactive.ResponseStatus;
 
+import java.time.ZonedDateTime;
 import java.util.List;
+
+record ExtendRequest(ZonedDateTime expiresAt) {}
 
 @Path("/api/v1/users/invitations")
 @RolesAllowed({"admin", "group-admin"})
@@ -42,6 +45,13 @@ public class InvitationTokenResource {
   @Path("{id}/reactivate")
   public Uni<InvitationToken> reactivate(@PathParam("id") long id) {
     return service.reactivate(id);
+  }
+
+  @PUT
+  @Path("{id}/extend")
+  @Consumes(MediaType.APPLICATION_JSON)
+  public Uni<InvitationToken> extend(@PathParam("id") long id, ExtendRequest body) {
+    return service.extend(id, body.expiresAt());
   }
 
   @DELETE
