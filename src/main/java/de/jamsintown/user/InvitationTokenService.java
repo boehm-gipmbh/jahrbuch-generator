@@ -80,10 +80,13 @@ public class InvitationTokenService {
     }
 
     return User.<User>find(
-        "SELECT DISTINCT u FROM User u JOIN u.groups g WHERE g.id IN ?1",
+        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.usedInvitation JOIN u.groups g WHERE g.id IN ?1",
         groupIds
       ).list()
       .map(groupUsers -> {
+        groupUsers.forEach(u -> {
+          if (u.usedInvitation != null) u.invitationExpiresAt = u.usedInvitation.expiresAt;
+        });
         tokens.forEach(t -> {
           if (t.group != null) {
             t.members = groupUsers.stream()
