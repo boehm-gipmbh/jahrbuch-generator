@@ -2,6 +2,7 @@ package de.jamsintown.user;
 
 import de.jamsintown.bild.Bild;
 import io.quarkus.elytron.security.common.BcryptUtil;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -19,10 +20,12 @@ import java.util.stream.Collectors;
 public class UserService {
 
   private final JsonWebToken jwt;
+  private final ReminderEmailService reminderEmailService;
 
   @Inject
-  public UserService(JsonWebToken jwt) {
+  public UserService(JsonWebToken jwt, ReminderEmailService reminderEmailService) {
     this.jwt = jwt;
+    this.reminderEmailService = reminderEmailService;
   }
 
   public Uni<User> findById(long id) {
@@ -162,6 +165,22 @@ public class UserService {
           u.managedGroup = null;
           return u.persistAndFlush();
         }));
+  }
+
+  @WithSession
+  public Uni<Void> sendReminder(long id) {
+    return assertGroupAdminCanActOn(id)
+        .chain(__ -> getCurrentUser()
+            .chain(admin -> {
+              String groupName = admin.managedGroup != null ? admin.managedGroup.name : null;
+              return findById(id).invoke(target -> {
+                if (target.email == null || target.email.isBlank()) {
+                  throw new ClientErrorException("User hat keine E-Mail-Adresse", Response.Status.BAD_REQUEST);
+                }
+                reminderEmailService.sendReminderMail(target, groupName);
+              });
+            }))
+        .replaceWithVoid();
   }
 
   @WithTransaction

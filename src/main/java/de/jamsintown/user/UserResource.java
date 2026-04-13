@@ -72,6 +72,14 @@ public class UserResource {
     return userService.demoteFromGroupAdmin(id);
   }
 
+  @POST
+  @Path("{id}/remind")
+  @ResponseStatus(204)
+  @RolesAllowed({"admin", "group-admin"})
+  public Uni<Void> sendReminder(@PathParam("id") long id) {
+    return userService.sendReminder(id);
+  }
+
   @PUT
   @Path("{id}/deactivate")
   @RolesAllowed({"admin", "group-admin"})
