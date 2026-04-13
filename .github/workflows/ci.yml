@@ -9,6 +9,7 @@ on:
 jobs:
   submodule-check:
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,7 +28,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: submodule-check
+    needs: [submodule-check]
+    if: always() && (needs.submodule-check.result == 'success' || needs.submodule-check.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
 
