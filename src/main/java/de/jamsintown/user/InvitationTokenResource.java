@@ -11,6 +11,7 @@ import java.time.ZonedDateTime;
 import java.util.List;
 
 record ExtendRequest(ZonedDateTime expiresAt) {}
+record ResendRequest(String recipientEmail) {}
 
 @Path("/api/v1/users/invitations")
 @RolesAllowed({"admin", "group-admin"})
@@ -52,6 +53,14 @@ public class InvitationTokenResource {
   @Consumes(MediaType.APPLICATION_JSON)
   public Uni<InvitationToken> extend(@PathParam("id") long id, ExtendRequest body) {
     return service.extend(id, body.expiresAt());
+  }
+
+  @POST
+  @Path("{id}/resend")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @ResponseStatus(204)
+  public Uni<Void> resend(@PathParam("id") long id, ResendRequest body) {
+    return service.resend(id, body != null ? body.recipientEmail() : null);
   }
 
   @DELETE

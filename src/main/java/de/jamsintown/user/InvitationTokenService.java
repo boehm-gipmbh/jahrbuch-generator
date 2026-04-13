@@ -179,6 +179,23 @@ public class InvitationTokenService {
   }
 
   @WithTransaction
+  public Uni<Void> resend(long id, String recipientEmail) {
+    return InvitationToken.<InvitationToken>findById(id)
+      .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
+      .chain(t -> {
+        String email = (recipientEmail != null && !recipientEmail.isBlank())
+            ? recipientEmail : t.recipientEmail;
+        if (email == null || email.isBlank()) {
+          throw new ClientErrorException("Keine E-Mail-Adresse angegeben", Response.Status.BAD_REQUEST);
+        }
+        t.recipientEmail = email;
+        return t.<InvitationToken>persistAndFlush()
+            .invoke(() -> invitationEmailService.sendInvitationMail(t));
+      })
+      .replaceWithVoid();
+  }
+
+  @WithTransaction
   public Uni<Void> delete(long id) {
     return InvitationToken.deleteById(id).replaceWithVoid();
   }
