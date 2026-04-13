@@ -49,7 +49,7 @@ public class InvitationTokenService {
             return Uni.createFrom().item(Collections.<InvitationToken>emptyList());
           }
           return InvitationToken.<InvitationToken>find(
-              "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers WHERE t.group.id = ?1",
+              "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy WHERE t.group.id = ?1",
               user.managedGroup.id
           ).list()
           .chain(tokens -> resolveMembers(tokens));
@@ -58,7 +58,7 @@ public class InvitationTokenService {
 
   private Uni<List<InvitationToken>> listForAdmin() {
     return InvitationToken.<InvitationToken>find(
-        "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers"
+        "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy"
       ).list()
       .chain(tokens -> resolveMembers(tokens));
   }
@@ -117,6 +117,9 @@ public class InvitationTokenService {
           if (createdBy.managedGroup == null) {
             throw new ClientErrorException(
                 "Gruppen-Admin hat keine verwaltete Gruppe zugeordnet", Response.Status.FORBIDDEN);
+          }
+          if (token.role == null || token.role.isBlank()) {
+            token.role = "user"; // Default-Rolle wenn nicht angegeben
           }
           if (!"user".equals(token.role) && !"group-admin".equals(token.role)) {
             throw new ClientErrorException(
