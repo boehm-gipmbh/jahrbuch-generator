@@ -109,12 +109,15 @@ public class InvitationTokenService {
         token.createdBy = createdBy;
 
         if (isGroupAdmin) {
-          // Gruppen-Admin darf nur user-Tokens für die eigene verwaltete Gruppe erstellen
+          // Gruppen-Admin darf user- und group-admin-Tokens für die eigene Gruppe erstellen
           if (createdBy.managedGroup == null) {
             throw new ClientErrorException(
                 "Gruppen-Admin hat keine verwaltete Gruppe zugeordnet", Response.Status.FORBIDDEN);
           }
-          token.role = "user";
+          if (!"user".equals(token.role) && !"group-admin".equals(token.role)) {
+            throw new ClientErrorException(
+                "Gruppen-Admin darf nur Rollen 'user' oder 'group-admin' vergeben", Response.Status.FORBIDDEN);
+          }
           token.group = createdBy.managedGroup;
           token.label = token.group.name;
           return token.<InvitationToken>persistAndFlush()
