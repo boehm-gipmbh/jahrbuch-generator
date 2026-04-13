@@ -80,7 +80,7 @@ public class InvitationTokenService {
     }
 
     return User.<User>find(
-        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.usedInvitation JOIN u.groups g WHERE g.id IN ?1",
+        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.usedInvitation LEFT JOIN FETCH u.groups g WHERE g.id IN ?1",
         groupIds
       ).list()
       .map(groupUsers -> {
