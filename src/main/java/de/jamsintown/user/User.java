@@ -50,6 +50,12 @@ public class User extends PanacheEntity {
   @JoinColumn(name = "used_invitation_id")
   public InvitationToken usedInvitation;
 
+  @Transient
+  public ZonedDateTime invitationExpiresAt;
+
+  @Transient
+  public Long usedInvitationId;
+
   @ManyToMany(fetch = FetchType.EAGER)
   @JoinTable(
     name = "user_groups",
