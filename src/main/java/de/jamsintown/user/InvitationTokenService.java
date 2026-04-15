@@ -148,7 +148,7 @@ public class InvitationTokenService {
           token.group = createdBy.managedGroup;
           token.label = token.group.name;
           return token.<InvitationToken>persistAndFlush()
-              .invoke(() -> sendInvitationMailIfSet(token));
+              .call(() -> sendInvitationMailIfSet(token));
         }
 
         // Admin-Flow: optional E-Mail senden nach Persist
@@ -157,23 +157,24 @@ public class InvitationTokenService {
             .chain(gruppe -> {
               token.group = gruppe;
               return token.<InvitationToken>persistAndFlush()
-                  .invoke(() -> sendInvitationMailIfSet(token));
+                  .call(() -> sendInvitationMailIfSet(token));
             });
         }
         return token.<InvitationToken>persistAndFlush()
-            .invoke(() -> sendInvitationMailIfSet(token));
+            .call(() -> sendInvitationMailIfSet(token));
       });
   }
 
-  private void sendInvitationMailIfSet(InvitationToken token) {
+  private Uni<Void> sendInvitationMailIfSet(InvitationToken token) {
     if (token.recipientEmail != null && !token.recipientEmail.isBlank()) {
       token.sentAt = ZonedDateTime.now();
       invitationEmailService.sendInvitationMail(token);
       InvitationSend send = new InvitationSend();
       send.token = token;
       send.sentTo = token.recipientEmail;
-      send.persist();
+      return send.<InvitationSend>persistAndFlush().replaceWithVoid();
     }
+    return Uni.createFrom().voidItem();
   }
 
   @WithTransaction
@@ -219,12 +220,12 @@ public class InvitationTokenService {
         t.recipientEmail = email;
         t.sentAt = ZonedDateTime.now();
         return t.<InvitationToken>persistAndFlush()
-            .invoke(() -> {
+            .call(() -> {
               invitationEmailService.sendInvitationMail(t);
               InvitationSend send = new InvitationSend();
               send.token = t;
               send.sentTo = email;
-              send.persist();
+              return send.<InvitationSend>persistAndFlush().replaceWithVoid();
             });
       })
       .replaceWithVoid();
