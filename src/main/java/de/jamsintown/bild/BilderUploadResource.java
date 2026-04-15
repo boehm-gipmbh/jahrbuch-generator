@@ -8,6 +8,7 @@ import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import jakarta.ws.rs.core.MediaType;
 
 import jakarta.ws.rs.core.Response;
@@ -36,14 +37,17 @@ public class BilderUploadResource {
     private final StoryService storyService;
     private final io.vertx.mutiny.core.Vertx vertx;
     private final AppConfigService appConfigService;
+    private final String defaultCapturesPath;
 
     @Inject
     public BilderUploadResource(BildService bildService, StoryService storyService, io.vertx.mutiny.core.Vertx vertx,
-                                AppConfigService appConfigService) {
+                                AppConfigService appConfigService,
+                                @ConfigProperty(name = "jahrbuch.captures.path") String defaultCapturesPath) {
         this.bildService = bildService;
         this.storyService = storyService;
         this.vertx = vertx;
         this.appConfigService = appConfigService;
+        this.defaultCapturesPath = defaultCapturesPath;
     }
 
     @POST
@@ -62,7 +66,7 @@ public class BilderUploadResource {
                                 .map(pathStr -> new UploadConfig(
                                         Long.parseLong(maxSizeStr != null ? maxSizeStr : "2097152"),
                                         allowedStr != null ? allowedStr : ".jpg,.jpeg,.png,.gif,.bmp,.webp,.tiff,.tif",
-                                        pathStr != null ? pathStr : "/data/captures/"
+                                        pathStr != null ? pathStr : defaultCapturesPath
                                 ))
                         )
                 );

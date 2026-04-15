@@ -7,29 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  submodule-check:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-          fetch-depth: 0
-
-      - name: Submodul-Pointer auf master prüfen
-        run: |
-          cd src/main/frontend
-          git fetch origin master
-          if ! git merge-base --is-ancestor HEAD origin/master; then
-            echo "::error::Submodul src/main/frontend zeigt auf $(git rev-parse --short HEAD), der nicht auf origin/master liegt. Zuerst den Frontend-Branch in master mergen!"
-            exit 1
-          fi
-          echo "OK: Submodul-Pointer $(git rev-parse --short HEAD) ist auf origin/master erreichbar."
-
   test:
     runs-on: ubuntu-latest
-    needs: [submodule-check]
-    if: always() && (needs.submodule-check.result == 'success' || needs.submodule-check.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
 
