@@ -13,6 +13,7 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
 import java.time.ZonedDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -49,18 +50,37 @@ public class InvitationTokenService {
             return Uni.createFrom().item(Collections.<InvitationToken>emptyList());
           }
           return InvitationToken.<InvitationToken>find(
-              "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy LEFT JOIN FETCH t.sends WHERE t.group.id = ?1",
+              "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy WHERE t.group.id = ?1",
               user.managedGroup.id
           ).list()
-          .chain(tokens -> resolveMembers(tokens));
+          .chain(tokens -> resolveMembers(tokens))
+          .chain(tokens -> resolveSends(tokens));
         });
   }
 
   private Uni<List<InvitationToken>> listForAdmin() {
     return InvitationToken.<InvitationToken>find(
-        "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy LEFT JOIN FETCH t.sends"
+        "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy"
       ).list()
-      .chain(tokens -> resolveMembers(tokens));
+      .chain(tokens -> resolveMembers(tokens))
+      .chain(tokens -> resolveSends(tokens));
+  }
+
+  private Uni<List<InvitationToken>> resolveSends(List<InvitationToken> tokens) {
+    List<Long> tokenIds = tokens.stream().map(t -> t.id).collect(Collectors.toList());
+    if (tokenIds.isEmpty()) {
+      tokens.forEach(t -> t.sends = List.of());
+      return Uni.createFrom().item(tokens);
+    }
+    return InvitationSend.<InvitationSend>find(
+        "FROM InvitationSend s JOIN FETCH s.token WHERE s.token.id IN ?1 ORDER BY s.sentAt DESC",
+        tokenIds
+    ).list().map(allSends -> {
+      Map<Long, List<InvitationSend>> byToken = allSends.stream()
+          .collect(Collectors.groupingBy(s -> s.token.id));
+      tokens.forEach(t -> t.sends = byToken.getOrDefault(t.id, List.of()));
+      return tokens;
+    });
   }
 
   /**

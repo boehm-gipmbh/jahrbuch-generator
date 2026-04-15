@@ -53,8 +53,9 @@ public class InvitationToken extends PanacheEntity {
   @JoinColumn(name = "group_id")
   public Gruppe group;
 
-  @OneToMany(mappedBy = "token", fetch = FetchType.EAGER)
-  @OrderBy("sentAt DESC")
+  /** Versandprotokoll — wird in InvitationTokenService.list() befüllt. */
+  @Transient
+  @JsonProperty
   public List<InvitationSend> sends;
 
   /** Effektive Mitglieder — wird in InvitationTokenService.list() befüllt.
