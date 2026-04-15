@@ -132,15 +132,29 @@ Das Verzeichnis ist in /home/dboehm/.gphoto/settings konfiguriert:
 
                 // Reaktive Verarbeitung ohne blockierenden Aufruf
                 String finalFileName = fileName;
-                return userService.getCurrentUser().map(user -> {
+                final String capturedFilePath = capturedPath;
+                return userService.getCurrentUser().chain(user -> {
+                    // Unterverzeichnis nach aktiver Gruppe bestimmen
+                    String subDir = (user.activeGroup != null)
+                            ? "gruppen/" + user.activeGroup.id + "/"
+                            : "ungrouped/";
+                    try {
+                        java.nio.file.Path targetDir = Paths.get(capturesPath, subDir);
+                        Files.createDirectories(targetDir);
+                        java.nio.file.Path targetPath = targetDir.resolve(finalFileName);
+                        Files.move(Paths.get(capturedFilePath), targetPath,
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException e) {
+                        log.warn("Konnte Bild nicht ins Gruppenverzeichnis verschieben: {}", e.getMessage());
+                    }
                     Bild bild = new Bild();
                     bild.created = ZonedDateTime.now();
-                    bild.pfad = "/" + finalFileName;
+                    bild.pfad = "/" + subDir + finalFileName;
                     bild.description = "Bild von " + user.name + " aufgenommen";
                     bild.title = "Bild mit Titel " + finalFileName;
                     bild.priority = 2;  // set default priority to 2 (yellow)
                     bild.user = user;
-                    return bild;
+                    return Uni.createFrom().item(bild);
                 }).chain(bild -> {
                     try {
                         return bild.persistAndFlush()
