@@ -1,5 +1,6 @@
 package de.jamsintown.user;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -10,6 +11,7 @@ import java.time.ZonedDateTime;
 @Table(name = "invitation_sends")
 public class InvitationSend extends PanacheEntity {
 
+  @JsonIgnore
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "token_id", nullable = false)
   public InvitationToken token;
