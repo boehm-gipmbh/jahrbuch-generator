@@ -13,6 +13,7 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
 import java.time.ZonedDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -52,7 +53,8 @@ public class InvitationTokenService {
               "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy WHERE t.group.id = ?1",
               user.managedGroup.id
           ).list()
-          .chain(tokens -> resolveMembers(tokens));
+          .chain(tokens -> resolveMembers(tokens))
+          .chain(tokens -> resolveSends(tokens));
         });
   }
 
@@ -60,7 +62,25 @@ public class InvitationTokenService {
     return InvitationToken.<InvitationToken>find(
         "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy"
       ).list()
-      .chain(tokens -> resolveMembers(tokens));
+      .chain(tokens -> resolveMembers(tokens))
+      .chain(tokens -> resolveSends(tokens));
+  }
+
+  private Uni<List<InvitationToken>> resolveSends(List<InvitationToken> tokens) {
+    List<Long> tokenIds = tokens.stream().map(t -> t.id).collect(Collectors.toList());
+    if (tokenIds.isEmpty()) {
+      tokens.forEach(t -> t.sends = List.of());
+      return Uni.createFrom().item(tokens);
+    }
+    return InvitationSend.<InvitationSend>find(
+        "FROM InvitationSend s JOIN FETCH s.token WHERE s.token.id IN ?1 ORDER BY s.sentAt DESC",
+        tokenIds
+    ).list().map(allSends -> {
+      Map<Long, List<InvitationSend>> byToken = allSends.stream()
+          .collect(Collectors.groupingBy(s -> s.token.id));
+      tokens.forEach(t -> t.sends = byToken.getOrDefault(t.id, List.of()));
+      return tokens;
+    });
   }
 
   /**
@@ -147,7 +167,12 @@ public class InvitationTokenService {
 
   private void sendInvitationMailIfSet(InvitationToken token) {
     if (token.recipientEmail != null && !token.recipientEmail.isBlank()) {
+      token.sentAt = ZonedDateTime.now();
       invitationEmailService.sendInvitationMail(token);
+      InvitationSend send = new InvitationSend();
+      send.token = token;
+      send.sentTo = token.recipientEmail;
+      send.persist();
     }
   }
 
@@ -192,8 +217,15 @@ public class InvitationTokenService {
           throw new ClientErrorException("Keine E-Mail-Adresse angegeben", Response.Status.BAD_REQUEST);
         }
         t.recipientEmail = email;
+        t.sentAt = ZonedDateTime.now();
         return t.<InvitationToken>persistAndFlush()
-            .invoke(() -> invitationEmailService.sendInvitationMail(t));
+            .invoke(() -> {
+              invitationEmailService.sendInvitationMail(t);
+              InvitationSend send = new InvitationSend();
+              send.token = t;
+              send.sentTo = email;
+              send.persist();
+            });
       })
       .replaceWithVoid();
   }

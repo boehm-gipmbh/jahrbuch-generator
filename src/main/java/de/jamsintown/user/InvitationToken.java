@@ -46,9 +46,17 @@ public class InvitationToken extends PanacheEntity {
   @Column(name = "recipient_email")
   public String recipientEmail;
 
+  @Column(name = "sent_at")
+  public ZonedDateTime sentAt;
+
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "group_id")
   public Gruppe group;
+
+  /** Versandprotokoll — wird in InvitationTokenService.list() befüllt. */
+  @Transient
+  @JsonProperty
+  public List<InvitationSend> sends;
 
   /** Effektive Mitglieder — wird in InvitationTokenService.list() befüllt.
    *  Bei Gruppen-Einladungen: alle Gruppen-Mitglieder.
