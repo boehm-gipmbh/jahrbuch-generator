@@ -55,8 +55,17 @@ public class BildService {
 
     public Uni<Bild> findByPfad(String pfad) {
         return userService.getCurrentUser()
-                .chain(user -> Bild.<Bild>find("pfad = ?1 and user = ?2", pfad, user).firstResult()
-                        .onItem().ifNull().failWith(() -> new ObjectNotFoundException((java.io.Serializable) pfad, "Bild")));
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    Uni<Bild> query;
+                    if (g != null) {
+                        query = Bild.<Bild>find("pfad = ?1 and (user = ?2 or group = ?3)", pfad, user, g).firstResult();
+                    } else {
+                        query = Bild.<Bild>find("pfad = ?1 and user = ?2", pfad, user).firstResult();
+                    }
+                    return query.onItem().ifNull().failWith(
+                            () -> new ObjectNotFoundException((java.io.Serializable) pfad, "Bild"));
+                });
     }
 
     public Uni<Bild> findById(Long id) {
