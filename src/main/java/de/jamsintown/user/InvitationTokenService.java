@@ -147,6 +147,7 @@ public class InvitationTokenService {
 
   private void sendInvitationMailIfSet(InvitationToken token) {
     if (token.recipientEmail != null && !token.recipientEmail.isBlank()) {
+      token.sentAt = ZonedDateTime.now();
       invitationEmailService.sendInvitationMail(token);
     }
   }
@@ -192,6 +193,7 @@ public class InvitationTokenService {
           throw new ClientErrorException("Keine E-Mail-Adresse angegeben", Response.Status.BAD_REQUEST);
         }
         t.recipientEmail = email;
+        t.sentAt = ZonedDateTime.now();
         return t.<InvitationToken>persistAndFlush()
             .invoke(() -> invitationEmailService.sendInvitationMail(t));
       })

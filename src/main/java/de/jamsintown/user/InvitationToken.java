@@ -46,6 +46,9 @@ public class InvitationToken extends PanacheEntity {
   @Column(name = "recipient_email")
   public String recipientEmail;
 
+  @Column(name = "sent_at")
+  public ZonedDateTime sentAt;
+
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "group_id")
   public Gruppe group;

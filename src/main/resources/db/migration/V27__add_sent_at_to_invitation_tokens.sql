@@ -1,0 +1,1 @@
+ALTER TABLE invitation_tokens ADD COLUMN sent_at TIMESTAMP WITH TIME ZONE;
