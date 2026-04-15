@@ -4,6 +4,7 @@ import de.jamsintown.config.AppConfigService;
 import de.jamsintown.dtos.RotationDTO;
 import de.jamsintown.dtos.UploadConfigDTO;
 import de.jamsintown.story.StoryService;
+import de.jamsintown.user.UserService;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -35,16 +36,19 @@ public class BilderUploadResource {
 
     private final BildService bildService;
     private final StoryService storyService;
+    private final UserService userService;
     private final io.vertx.mutiny.core.Vertx vertx;
     private final AppConfigService appConfigService;
     private final String defaultCapturesPath;
 
     @Inject
-    public BilderUploadResource(BildService bildService, StoryService storyService, io.vertx.mutiny.core.Vertx vertx,
+    public BilderUploadResource(BildService bildService, StoryService storyService, UserService userService,
+                                io.vertx.mutiny.core.Vertx vertx,
                                 AppConfigService appConfigService,
                                 @ConfigProperty(name = "jahrbuch.captures.path") String defaultCapturesPath) {
         this.bildService = bildService;
         this.storyService = storyService;
+        this.userService = userService;
         this.vertx = vertx;
         this.appConfigService = appConfigService;
         this.defaultCapturesPath = defaultCapturesPath;
@@ -73,6 +77,10 @@ public class BilderUploadResource {
     }
 
     private Uni<Bild> doUploadBild(MultipartFormDataInput input, UploadConfig config) {
+        return userService.getCurrentUser().chain(user -> doUploadBildForUser(input, config, user));
+    }
+
+    private Uni<Bild> doUploadBildForUser(MultipartFormDataInput input, UploadConfig config, de.jamsintown.user.User user) {
         try {
             Map<String, Collection<FormValue>> formValues = input.getValues();
             // Konvertierung zu einer Map mit List statt Collection
@@ -134,8 +142,13 @@ public class BilderUploadResource {
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
             String uniqueFileName = timestamp + "_" + UUID.randomUUID().toString() + fileExtension;
 
+            // Unterverzeichnis nach aktiver Gruppe bestimmen
+            String subDir = (user.activeGroup != null)
+                    ? "gruppen/" + user.activeGroup.id + "/"
+                    : "ungrouped/";
+
             // Sicherstellen, dass das Zielverzeichnis existiert
-            java.nio.file.Path dirPath = Paths.get(config.capturesPath);
+            java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
             Files.createDirectories(dirPath);
 
             // Datei speichern
@@ -147,7 +160,7 @@ public class BilderUploadResource {
 
             // Bild-Entität erstellen und in der Datenbank speichern
             Bild bild = new Bild();
-            bild.setPfad("/" + uniqueFileName);
+            bild.setPfad("/" + subDir + uniqueFileName);
             bild.setTitle(title);
             bild.setDescription(description);
             bild.setPriority(3);  // set default priority to 3 (green)
@@ -284,7 +297,7 @@ public class BilderUploadResource {
         return base + "_thumb.jpg";
     }
 
-    private void generateThumbnail(java.nio.file.Path originalPath) throws Exception {
+    void generateThumbnail(java.nio.file.Path originalPath) throws Exception {
         java.nio.file.Path thumbPath = originalPath.getParent().resolve(toThumbName(originalPath.getFileName().toString()));
         Process process = new ProcessBuilder(
                 "convert", originalPath.toString(), "-resize", "400x>", thumbPath.toString())
