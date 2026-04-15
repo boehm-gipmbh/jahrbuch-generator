@@ -13,8 +13,8 @@ fi
 # Absoluten Pfad zum Token-File ermitteln
 TOKEN_FILE_ABS="$(readlink -f "$TOKEN_FILE")"
 
-# Zielverzeichnis für heruntergeladene Dateien
-DOWNLOAD_DIR="./captures"
+# Zielverzeichnis für heruntergeladene Dateien (optionales Argument, Standard: ./captures)
+DOWNLOAD_DIR="${1:-./captures}"
 FLYCTL="/home/dboehm/.fly/bin/flyctl"
 
 # Verzeichnis erstellen, ignoriere Fehler wenn es bereits existiert
@@ -42,28 +42,39 @@ fi
 COUNT=$(wc -l < "$FILE_LIST")
 echo "Gefunden: $COUNT Dateien"
 
+# Ping-Loop starten damit die App nicht einschläft
+while true; do curl -s "https://$APP_NAME.fly.dev" > /dev/null 2>&1; sleep 20; done &
+PING_PID=$!
+
 # Zähler für Fortschrittsanzeige
 COUNTER=0
 
 # Durch die Dateiliste iterieren und Dateien herunterladen
 while read -r FILE_PATH; do
-  # Dateiname ohne Pfad extrahieren
-  FILE_NAME=$(basename "$FILE_PATH")
+  # Relativen Pfad unterhalb /data/captures beibehalten
+  RELATIVE_PATH="${FILE_PATH#/data/captures/}"
+  TARGET_DIR="$DOWNLOAD_DIR/$(dirname "$RELATIVE_PATH")"
 
   # Fortschritt anzeigen
   COUNTER=$((COUNTER + 1))
-  echo "[$COUNTER/$COUNT] Lade $FILE_NAME herunter..."
+  echo "[$COUNTER/$COUNT] Lade $RELATIVE_PATH herunter..."
 
-  # Datei herunterladen mit absoluten Pfad zum Token-File und App-Namen
-  (cd "$DOWNLOAD_DIR" && FLY_API_TOKEN=$(cat "$TOKEN_FILE_ABS") $FLYCTL -a "$APP_NAME" ssh sftp get "$FILE_PATH")
+  # Zielverzeichnis anlegen
+  mkdir -p "$TARGET_DIR"
+
+  # Datei herunterladen
+  (cd "$TARGET_DIR" && FLY_API_TOKEN=$(cat "$TOKEN_FILE_ABS") $FLYCTL -a "$APP_NAME" ssh sftp get "$FILE_PATH")
 
   # Prüfen ob Download erfolgreich war
   if [ $? -eq 0 ]; then
-    echo "✓ $FILE_NAME erfolgreich heruntergeladen"
+    echo "✓ $RELATIVE_PATH erfolgreich heruntergeladen"
   else
-    echo "✗ Fehler beim Herunterladen von $FILE_NAME"
+    echo "✗ Fehler beim Herunterladen von $RELATIVE_PATH"
   fi
 done < "$FILE_LIST"
+
+# Ping-Loop beenden
+kill $PING_PID 2>/dev/null
 
 # Temporäre Datei löschen
 rm -f "$FILE_LIST"

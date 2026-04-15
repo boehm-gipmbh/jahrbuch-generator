@@ -147,6 +147,15 @@ Dann:
 ./fly-captures-download.sh
 ----
 
+NOTE: Die App schläft bei Inaktivität ein. Das Skript hält die App automatisch mit einem Ping-Loop wach.
+
+Optional: Zielverzeichnis als Argument angeben (Standard: `./captures`):
+
+[source,bash]
+----
+./fly-captures-download.sh ./captures-backup-prod-$(date +%Y%m%d_%H%M%S)
+----
+
 == Native Image lokal testen
 
 === 1. Fly.io DB-Proxy starten

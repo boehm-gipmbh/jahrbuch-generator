@@ -17,6 +17,7 @@ set -e
 
 CAPTURES_PATH="${1:?Pfad zu captures fehlt, z.B. /data/captures}"
 DB_URL="${2:?DB-URL fehlt, z.B. postgres://user:pw@host:5432/db}"
+SKIP_DUMP="${3:-}"
 
 # Trailing slash entfernen
 CAPTURES_PATH="${CAPTURES_PATH%/}"
@@ -26,11 +27,15 @@ echo "Captures: $CAPTURES_PATH"
 echo "DB:       $DB_URL"
 echo ""
 
-# DB-Dump als Backup vor der Migration
-DUMP_FILE="pre_migration_dump_$(date +%Y%m%d_%H%M%S).sql"
-echo "Erstelle DB-Dump: $DUMP_FILE ..."
-pg_dump "$DB_URL" > "$DUMP_FILE"
-echo "Dump erstellt: $DUMP_FILE"
+# DB-Dump als Backup vor der Migration (überspringen mit --skip-dump)
+if [ "$SKIP_DUMP" = "--skip-dump" ]; then
+    echo "DB-Dump übersprungen (--skip-dump gesetzt)."
+else
+    DUMP_FILE="pre_migration_dump_$(date +%Y%m%d_%H%M%S).sql"
+    echo "Erstelle DB-Dump: $DUMP_FILE ..."
+    pg_dump "$DB_URL" > "$DUMP_FILE"
+    echo "Dump erstellt: $DUMP_FILE"
+fi
 echo ""
 
 # Zu migrierende Bilder abfragen: id | alter_pfad | neuer_pfad
