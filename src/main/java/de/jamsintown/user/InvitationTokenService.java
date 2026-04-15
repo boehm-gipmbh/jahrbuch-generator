@@ -49,7 +49,7 @@ public class InvitationTokenService {
             return Uni.createFrom().item(Collections.<InvitationToken>emptyList());
           }
           return InvitationToken.<InvitationToken>find(
-              "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy WHERE t.group.id = ?1",
+              "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy LEFT JOIN FETCH t.sends WHERE t.group.id = ?1",
               user.managedGroup.id
           ).list()
           .chain(tokens -> resolveMembers(tokens));
@@ -58,7 +58,7 @@ public class InvitationTokenService {
 
   private Uni<List<InvitationToken>> listForAdmin() {
     return InvitationToken.<InvitationToken>find(
-        "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy"
+        "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy LEFT JOIN FETCH t.sends"
       ).list()
       .chain(tokens -> resolveMembers(tokens));
   }
@@ -149,6 +149,10 @@ public class InvitationTokenService {
     if (token.recipientEmail != null && !token.recipientEmail.isBlank()) {
       token.sentAt = ZonedDateTime.now();
       invitationEmailService.sendInvitationMail(token);
+      InvitationSend send = new InvitationSend();
+      send.token = token;
+      send.sentTo = token.recipientEmail;
+      send.persist();
     }
   }
 
@@ -195,7 +199,13 @@ public class InvitationTokenService {
         t.recipientEmail = email;
         t.sentAt = ZonedDateTime.now();
         return t.<InvitationToken>persistAndFlush()
-            .invoke(() -> invitationEmailService.sendInvitationMail(t));
+            .invoke(() -> {
+              invitationEmailService.sendInvitationMail(t);
+              InvitationSend send = new InvitationSend();
+              send.token = t;
+              send.sentTo = email;
+              send.persist();
+            });
       })
       .replaceWithVoid();
   }
