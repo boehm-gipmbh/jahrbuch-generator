@@ -238,6 +238,7 @@ public class InvitationTokenService {
 
   @WithTransaction
   public Uni<List<BatchInvitationResult>> sendBatch(BatchInvitationRequest req) {
+
     if (req.entries() == null || req.entries().isEmpty()) {
       return Uni.createFrom().item(List.of());
     }
@@ -288,7 +289,7 @@ public class InvitationTokenService {
       List<String> emails = valid.stream().map(BatchEntry::email).collect(Collectors.toList());
       return User.<User>find("email IN ?1", emails).list()
           .chain(existingUsers -> InvitationSend.<InvitationSend>find(
-              "sent_to IN ?1 AND token.id = ?2", emails, token.id).list()
+              "sentTo IN ?1 AND token.id = ?2", emails, token.id).list()
               .map(existingSends -> {
                 java.util.Set<String> alreadySent = existingSends.stream()
                     .map(s -> s.sentTo).collect(java.util.stream.Collectors.toSet());
