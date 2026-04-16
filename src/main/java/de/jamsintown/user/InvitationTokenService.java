@@ -77,11 +77,22 @@ public class InvitationTokenService {
     return InvitationSend.<InvitationSend>find(
         "FROM InvitationSend s JOIN FETCH s.token WHERE s.token.id IN ?1 ORDER BY s.sentAt DESC",
         tokenIds
-    ).list().map(allSends -> {
-      Map<Long, List<InvitationSend>> byToken = allSends.stream()
-          .collect(Collectors.groupingBy(s -> s.token.id));
-      tokens.forEach(t -> t.sends = byToken.getOrDefault(t.id, List.of()));
-      return tokens;
+    ).list().chain(allSends -> {
+      List<String> sentToEmails = allSends.stream()
+          .map(s -> s.sentTo).distinct().collect(Collectors.toList());
+      if (sentToEmails.isEmpty()) {
+        tokens.forEach(t -> t.sends = List.of());
+        return Uni.createFrom().item(tokens);
+      }
+      return User.<User>find("email IN ?1", sentToEmails).list().map(registeredUsers -> {
+        Map<String, String> emailToName = registeredUsers.stream()
+            .collect(Collectors.toMap(u -> u.email, u -> u.name, (a, b) -> a));
+        allSends.forEach(s -> s.registeredUserName = emailToName.get(s.sentTo));
+        Map<Long, List<InvitationSend>> byToken = allSends.stream()
+            .collect(Collectors.groupingBy(s -> s.token.id));
+        tokens.forEach(t -> t.sends = byToken.getOrDefault(t.id, List.of()));
+        return tokens;
+      });
     });
   }
 
@@ -240,6 +251,8 @@ public class InvitationTokenService {
 
   @WithTransaction
   public Uni<List<BatchInvitationResult>> sendBatch(BatchInvitationRequest req) {
+
+
 
     if (req.entries() == null || req.entries().isEmpty()) {
       return Uni.createFrom().item(List.of());
