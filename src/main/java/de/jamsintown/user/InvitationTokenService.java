@@ -11,10 +11,12 @@ import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
@@ -229,6 +231,96 @@ public class InvitationTokenService {
             });
       })
       .replaceWithVoid();
+  }
+
+  private static final Pattern EMAIL_PATTERN =
+      Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+  @WithTransaction
+  public Uni<List<BatchInvitationResult>> sendBatch(BatchInvitationRequest req) {
+    if (req.entries() == null || req.entries().isEmpty()) {
+      return Uni.createFrom().item(List.of());
+    }
+
+    Uni<InvitationToken> tokenUni;
+    if (req.existingTokenId() != null) {
+      tokenUni = InvitationToken.<InvitationToken>findById(req.existingTokenId())
+          .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND));
+    } else {
+      tokenUni = findUserByNameWithGroups(jwt.getName()).chain(createdBy -> {
+        InvitationToken t = new InvitationToken();
+        t.token = UUID.randomUUID();
+        t.role = req.defaultRole() != null ? req.defaultRole() : "user";
+        t.expiresAt = req.expiresAt();
+        t.label = req.label();
+        t.createdBy = createdBy;
+        boolean isGroupAdmin = jwt.getGroups().contains("group-admin") && !jwt.getGroups().contains("admin");
+        if (isGroupAdmin && createdBy.managedGroup != null) {
+          t.group = createdBy.managedGroup;
+          t.label = t.group.name;
+        } else if (t.label != null && !t.label.isBlank()) {
+          return gruppeService.findOrCreate(t.label).chain(gruppe -> {
+            t.group = gruppe;
+            return t.<InvitationToken>persistAndFlush();
+          });
+        }
+        return t.<InvitationToken>persistAndFlush();
+      });
+    }
+
+    return tokenUni.chain(token -> {
+      List<BatchInvitationResult> results = new ArrayList<>();
+      List<BatchEntry> valid = new ArrayList<>();
+
+      for (BatchEntry entry : req.entries()) {
+        String email = entry.email() != null ? entry.email().trim().toLowerCase() : "";
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+          results.add(new BatchInvitationResult(entry.email(), "invalid", "Ungültige E-Mail-Adresse"));
+          continue;
+        }
+        valid.add(new BatchEntry(email, entry.role()));
+      }
+
+      if (valid.isEmpty()) {
+        return Uni.createFrom().item(results);
+      }
+
+      List<String> emails = valid.stream().map(BatchEntry::email).collect(Collectors.toList());
+      return User.<User>find("email IN ?1", emails).list()
+          .chain(existingUsers -> {
+            java.util.Set<String> registered = existingUsers.stream()
+                .map(u -> u.email).collect(java.util.stream.Collectors.toSet());
+
+            List<Uni<BatchInvitationResult>> sends = new ArrayList<>();
+            for (BatchEntry entry : valid) {
+              if (registered.contains(entry.email())) {
+                sends.add(Uni.createFrom().item(
+                    new BatchInvitationResult(entry.email(), "already_registered", "Bereits registriert")));
+                continue;
+              }
+              String role = entry.role() != null && !entry.role().isBlank() ? entry.role() : token.role;
+              InvitationSend send = new InvitationSend();
+              send.token = token;
+              send.sentTo = entry.email();
+              InvitationToken mailToken = new InvitationToken();
+              mailToken.token = token.token;
+              mailToken.recipientEmail = entry.email();
+              mailToken.label = token.label;
+              mailToken.role = role;
+              mailToken.expiresAt = token.expiresAt;
+              mailToken.createdBy = token.createdBy;
+              invitationEmailService.sendInvitationMail(mailToken);
+              sends.add(send.<InvitationSend>persistAndFlush()
+                  .map(s -> new BatchInvitationResult(entry.email(), "sent", "Versendet")));
+            }
+
+            return Uni.join().all(sends).andCollectFailures()
+                .map(batchResults -> {
+                  results.addAll(batchResults);
+                  return results;
+                });
+          });
+    });
   }
 
   @WithTransaction

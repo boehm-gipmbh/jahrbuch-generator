@@ -12,6 +12,14 @@ import java.util.List;
 
 record ExtendRequest(ZonedDateTime expiresAt) {}
 record ResendRequest(String recipientEmail) {}
+record BatchEntry(String email, String role) {}
+record BatchInvitationRequest(
+    java.util.List<BatchEntry> entries,
+    Long existingTokenId,
+    ZonedDateTime expiresAt,
+    String label,
+    String defaultRole) {}
+record BatchInvitationResult(String email, String status, String message) {}
 
 @Path("/api/v1/users/invitations")
 @RolesAllowed({"admin", "group-admin"})
@@ -61,6 +69,13 @@ public class InvitationTokenResource {
   @ResponseStatus(204)
   public Uni<Void> resend(@PathParam("id") long id, ResendRequest body) {
     return service.resend(id, body != null ? body.recipientEmail() : null);
+  }
+
+  @POST
+  @Path("batch")
+  @Consumes(MediaType.APPLICATION_JSON)
+  public Uni<List<BatchInvitationResult>> batch(BatchInvitationRequest body) {
+    return service.sendBatch(body);
   }
 
   @DELETE
