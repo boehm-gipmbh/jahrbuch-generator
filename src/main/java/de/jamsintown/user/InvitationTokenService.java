@@ -291,11 +291,11 @@ public class InvitationTokenService {
             java.util.Set<String> registered = existingUsers.stream()
                 .map(u -> u.email).collect(java.util.stream.Collectors.toSet());
 
-            List<Uni<BatchInvitationResult>> sends = new ArrayList<>();
+            // Sequentiell verarbeiten — parallele persistAndFlush() kollidieren auf der Sequence-ID
+            Uni<List<BatchInvitationResult>> chain = Uni.createFrom().item(results);
             for (BatchEntry entry : valid) {
               if (registered.contains(entry.email())) {
-                sends.add(Uni.createFrom().item(
-                    new BatchInvitationResult(entry.email(), "already_registered", "Bereits registriert")));
+                results.add(new BatchInvitationResult(entry.email(), "already_registered", "Bereits registriert"));
                 continue;
               }
               String role = entry.role() != null && !entry.role().isBlank() ? entry.role() : token.role;
@@ -310,15 +310,11 @@ public class InvitationTokenService {
               mailToken.expiresAt = token.expiresAt;
               mailToken.createdBy = token.createdBy;
               invitationEmailService.sendInvitationMail(mailToken);
-              sends.add(send.<InvitationSend>persistAndFlush()
-                  .map(s -> new BatchInvitationResult(entry.email(), "sent", "Versendet")));
+              final String sentTo = entry.email();
+              chain = chain.chain(r -> send.<InvitationSend>persistAndFlush()
+                  .map(s -> { r.add(new BatchInvitationResult(sentTo, "sent", "Versendet")); return r; }));
             }
-
-            return Uni.join().all(sends).andCollectFailures()
-                .map(batchResults -> {
-                  results.addAll(batchResults);
-                  return results;
-                });
+            return chain;
           });
     });
   }
