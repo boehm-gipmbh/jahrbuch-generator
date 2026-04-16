@@ -22,4 +22,7 @@ public class InvitationSend extends PanacheEntity {
   @CreationTimestamp
   @Column(name = "sent_at", nullable = false, updatable = false)
   public ZonedDateTime sentAt;
+
+  @Column(name = "resend_message_id")
+  public String resendMessageId;
 }

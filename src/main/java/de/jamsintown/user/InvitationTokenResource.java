@@ -78,6 +78,12 @@ public class InvitationTokenResource {
     return service.sendBatch(body);
   }
 
+  @GET
+  @Path("sends/{sendId}/status")
+  public Uni<java.util.Map<String, String>> sendStatus(@PathParam("sendId") long sendId) {
+    return service.getSendStatus(sendId);
+  }
+
   @DELETE
   @Path("{id}")
   @ResponseStatus(204)

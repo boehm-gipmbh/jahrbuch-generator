@@ -170,10 +170,11 @@ public class InvitationTokenService {
   private Uni<Void> sendInvitationMailIfSet(InvitationToken token) {
     if (token.recipientEmail != null && !token.recipientEmail.isBlank()) {
       token.sentAt = ZonedDateTime.now();
-      invitationEmailService.sendInvitationMail(token);
+      String resendId = invitationEmailService.sendInvitationMail(token);
       InvitationSend send = new InvitationSend();
       send.token = token;
       send.sentTo = token.recipientEmail;
+      send.resendMessageId = resendId;
       return send.<InvitationSend>persistAndFlush().replaceWithVoid();
     }
     return Uni.createFrom().voidItem();
@@ -223,10 +224,11 @@ public class InvitationTokenService {
         t.sentAt = ZonedDateTime.now();
         return t.<InvitationToken>persistAndFlush()
             .call(() -> {
-              invitationEmailService.sendInvitationMail(t);
+              String resendId = invitationEmailService.sendInvitationMail(t);
               InvitationSend send = new InvitationSend();
               send.token = t;
               send.sentTo = email;
+              send.resendMessageId = resendId;
               return send.<InvitationSend>persistAndFlush().replaceWithVoid();
             });
       })
@@ -325,7 +327,7 @@ public class InvitationTokenService {
               mailToken.role = role;
               mailToken.expiresAt = token.expiresAt;
               mailToken.createdBy = token.createdBy;
-              invitationEmailService.sendInvitationMail(mailToken);
+              send.resendMessageId = invitationEmailService.sendInvitationMail(mailToken);
               final String sentTo = entry.email();
               chain = chain.chain(r -> send.<InvitationSend>persistAndFlush()
                   .map(s -> { r.add(new BatchInvitationResult(sentTo, "sent", "Versendet")); return r; }));
@@ -333,6 +335,21 @@ public class InvitationTokenService {
             return chain;
           });
     });
+  }
+
+  @WithSession
+  public Uni<java.util.Map<String, String>> getSendStatus(long sendId) {
+    return InvitationSend.<InvitationSend>findById(sendId)
+        .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
+        .map(send -> {
+          String status = invitationEmailService.getDeliveryStatus(send.resendMessageId);
+          return java.util.Map.of(
+              "sendId", String.valueOf(send.id),
+              "sentTo", send.sentTo,
+              "resendMessageId", send.resendMessageId != null ? send.resendMessageId : "",
+              "status", status
+          );
+        });
   }
 
   @WithTransaction
