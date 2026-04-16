@@ -366,6 +366,17 @@ public class InvitationTokenService {
   }
 
   @WithTransaction
+  public Uni<InvitationSend> updateSendEmail(long sendId, String email) {
+    return InvitationSend.<InvitationSend>findById(sendId)
+        .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
+        .chain(s -> {
+          s.sentTo = email.toLowerCase().trim();
+          s.status = EMAIL_PATTERN.matcher(s.sentTo).matches() ? "sent" : "invalid";
+          return s.<InvitationSend>persistAndFlush();
+        });
+  }
+
+  @WithTransaction
   public Uni<Void> delete(long id) {
     return InvitationToken.deleteById(id).replaceWithVoid();
   }

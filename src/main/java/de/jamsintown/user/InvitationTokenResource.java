@@ -84,6 +84,15 @@ public class InvitationTokenResource {
     return service.getSendStatus(sendId);
   }
 
+  @PUT
+  @Path("sends/{sendId}/email")
+  @Consumes(MediaType.APPLICATION_JSON)
+  public Uni<InvitationSend> updateSendEmail(@PathParam("sendId") long sendId, SendEmailUpdate body) {
+    return service.updateSendEmail(sendId, body.email());
+  }
+
+  record SendEmailUpdate(String email) {}
+
   @DELETE
   @Path("{id}")
   @ResponseStatus(204)
