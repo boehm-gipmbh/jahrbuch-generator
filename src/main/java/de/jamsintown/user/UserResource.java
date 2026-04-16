@@ -112,8 +112,10 @@ public class UserResource {
   @PUT
   @Path("{id}/email")
   @Consumes(MediaType.APPLICATION_JSON)
+  @RolesAllowed({"admin", "group-admin"})
   public Uni<User> updateEmail(@PathParam("id") long id, EmailUpdate body) {
-    return userService.updateEmail(id, body.email());
+    return userService.assertGroupAdminCanActOn(id)
+        .chain(() -> userService.updateEmail(id, body.email()));
   }
 
   record EmailUpdate(String email) {}
