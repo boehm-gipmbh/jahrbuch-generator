@@ -287,7 +287,18 @@ public class InvitationTokenService {
 
       List<String> emails = valid.stream().map(BatchEntry::email).collect(Collectors.toList());
       return User.<User>find("email IN ?1", emails).list()
-          .chain(existingUsers -> {
+          .chain(existingUsers -> InvitationSend.<InvitationSend>find(
+              "sent_to IN ?1 AND token.id = ?2", emails, token.id).list()
+              .map(existingSends -> {
+                java.util.Set<String> alreadySent = existingSends.stream()
+                    .map(s -> s.sentTo).collect(java.util.stream.Collectors.toSet());
+                return new Object[]{existingUsers, alreadySent};
+              }))
+          .chain(pair -> {
+            @SuppressWarnings("unchecked")
+            java.util.List<User> existingUsers = (java.util.List<User>) pair[0];
+            @SuppressWarnings("unchecked")
+            java.util.Set<String> alreadySent = (java.util.Set<String>) pair[1];
             java.util.Set<String> registered = existingUsers.stream()
                 .map(u -> u.email).collect(java.util.stream.Collectors.toSet());
 
@@ -296,6 +307,10 @@ public class InvitationTokenService {
             for (BatchEntry entry : valid) {
               if (registered.contains(entry.email())) {
                 results.add(new BatchInvitationResult(entry.email(), "already_registered", "Bereits registriert"));
+                continue;
+              }
+              if (alreadySent.contains(entry.email())) {
+                results.add(new BatchInvitationResult(entry.email(), "already_sent", "Bereits versendet"));
                 continue;
               }
               String role = entry.role() != null && !entry.role().isBlank() ? entry.role() : token.role;
