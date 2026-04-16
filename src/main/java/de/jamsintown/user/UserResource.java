@@ -110,6 +110,15 @@ public class UserResource {
   }
 
   @PUT
+  @Path("{id}/email")
+  @Consumes(MediaType.APPLICATION_JSON)
+  public Uni<User> updateEmail(@PathParam("id") long id, EmailUpdate body) {
+    return userService.updateEmail(id, body.email());
+  }
+
+  record EmailUpdate(String email) {}
+
+  @PUT
   @Path("self/active-group/{groupId}")
   @RolesAllowed("user")
   public Uni<User> setActiveGroup(@PathParam("groupId") long groupId) {

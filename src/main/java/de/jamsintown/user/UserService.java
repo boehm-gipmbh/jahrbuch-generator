@@ -73,6 +73,14 @@ public class UserService {
       .chain(s -> s.merge(user));
   }
 
+  @WithTransaction
+  public Uni<User> updateEmail(long id, String email) {
+    return findById(id).chain(u -> {
+      u.email = email.toLowerCase().trim();
+      return u.<User>persistAndFlush();
+    });
+  }
+
   public Uni<User> getCurrentUser() {
     return findByName(jwt.getName());
   }
