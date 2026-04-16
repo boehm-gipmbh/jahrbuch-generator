@@ -274,21 +274,34 @@ public class InvitationTokenService {
     return tokenUni.chain(token -> {
       List<BatchInvitationResult> results = new ArrayList<>();
       List<BatchEntry> valid = new ArrayList<>();
+      List<BatchEntry> invalid = new ArrayList<>();
 
       for (BatchEntry entry : req.entries()) {
         String email = entry.email() != null ? entry.email().trim().toLowerCase() : "";
         if (!EMAIL_PATTERN.matcher(email).matches()) {
           results.add(new BatchInvitationResult(entry.email(), "invalid", "Ungültige E-Mail-Adresse"));
+          invalid.add(new BatchEntry(email.isBlank() ? entry.email() : email, entry.role()));
           continue;
         }
         valid.add(new BatchEntry(email, entry.role()));
       }
 
+      // Ungültige Einträge persistieren damit sie in der Send-Liste erscheinen
+      Uni<Void> persistInvalid = Uni.createFrom().voidItem();
+      for (BatchEntry entry : invalid) {
+        InvitationSend s = new InvitationSend();
+        s.token = token;
+        s.sentTo = entry.email();
+        s.status = "invalid";
+        persistInvalid = persistInvalid.chain(() -> s.<InvitationSend>persistAndFlush().replaceWithVoid());
+      }
+
       if (valid.isEmpty()) {
-        return Uni.createFrom().item(results);
+        return persistInvalid.replaceWith(results);
       }
 
       List<String> emails = valid.stream().map(BatchEntry::email).collect(Collectors.toList());
+      final Uni<Void> finalPersistInvalid = persistInvalid;
       return User.<User>find("email IN ?1", emails).list()
           .chain(existingUsers -> InvitationSend.<InvitationSend>find(
               "sentTo IN ?1 AND token.id = ?2", emails, token.id).list()
@@ -332,7 +345,7 @@ public class InvitationTokenService {
               chain = chain.chain(r -> send.<InvitationSend>persistAndFlush()
                   .map(s -> { r.add(new BatchInvitationResult(sentTo, "sent", "Versendet")); return r; }));
             }
-            return chain;
+            return chain.chain(r -> finalPersistInvalid.replaceWith(r));
           });
     });
   }

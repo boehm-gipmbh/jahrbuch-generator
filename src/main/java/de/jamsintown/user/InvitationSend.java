@@ -25,4 +25,7 @@ public class InvitationSend extends PanacheEntity {
 
   @Column(name = "resend_message_id")
   public String resendMessageId;
+
+  @Column(nullable = false)
+  public String status = "sent";
 }
