@@ -422,7 +422,9 @@ public class InvitationTokenService {
 
   @WithTransaction
   public Uni<Void> delete(long id) {
-    return InvitationToken.deleteById(id).replaceWithVoid();
+    // usedInvitation bei betroffenen Usern auf null setzen (FK-Constraint)
+    return User.update("usedInvitation = null WHERE usedInvitation.id = ?1", id)
+        .chain(() -> InvitationToken.deleteById(id).replaceWithVoid());
   }
 
   protected Uni<InvitationToken> findByToken(UUID tokenValue) {
