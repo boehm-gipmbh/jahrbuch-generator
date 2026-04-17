@@ -422,17 +422,8 @@ public class InvitationTokenService {
 
   @WithTransaction
   public Uni<Void> delete(long id) {
-    return io.quarkus.hibernate.reactive.panache.Panache.getSession()
-        .chain(session -> session.createNativeQuery(
-                "UPDATE users SET invitation_expires_at = (SELECT expires_at FROM invitation_tokens WHERE id = :id), " +
-                "used_invitation_id = null WHERE used_invitation_id = :id")
-            .setParameter("id", id)
-            .executeUpdate()
-            .chain(ignored -> session.createNativeQuery(
-                    "DELETE FROM invitation_tokens WHERE id = :id")
-                .setParameter("id", id)
-                .executeUpdate())
-            .replaceWithVoid());
+    return User.update("usedInvitation = null WHERE usedInvitation.id = ?1", id)
+        .chain(() -> InvitationToken.deleteById(id).replaceWithVoid());
   }
 
   protected Uni<InvitationToken> findByToken(UUID tokenValue) {

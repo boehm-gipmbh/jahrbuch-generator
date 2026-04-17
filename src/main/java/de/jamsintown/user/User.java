@@ -50,7 +50,7 @@ public class User extends PanacheEntity {
   @JoinColumn(name = "used_invitation_id")
   public InvitationToken usedInvitation;
 
-  @Column(name = "invitation_expires_at")
+  @Transient
   public ZonedDateTime invitationExpiresAt;
 
   @Transient
