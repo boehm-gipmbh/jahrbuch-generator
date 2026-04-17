@@ -12,6 +12,14 @@ import java.util.List;
 
 record ExtendRequest(ZonedDateTime expiresAt) {}
 record ResendRequest(String recipientEmail) {}
+record BatchEntry(String email, String role) {}
+record BatchInvitationRequest(
+    java.util.List<BatchEntry> entries,
+    Long existingTokenId,
+    ZonedDateTime expiresAt,
+    String label,
+    String defaultRole) {}
+record BatchInvitationResult(String email, String status, String message) {}
 
 @Path("/api/v1/users/invitations")
 @RolesAllowed({"admin", "group-admin"})
@@ -62,6 +70,28 @@ public class InvitationTokenResource {
   public Uni<Void> resend(@PathParam("id") long id, ResendRequest body) {
     return service.resend(id, body != null ? body.recipientEmail() : null);
   }
+
+  @POST
+  @Path("batch")
+  @Consumes(MediaType.APPLICATION_JSON)
+  public Uni<List<BatchInvitationResult>> batch(BatchInvitationRequest body) {
+    return service.sendBatch(body);
+  }
+
+  @GET
+  @Path("sends/{sendId}/status")
+  public Uni<java.util.Map<String, String>> sendStatus(@PathParam("sendId") long sendId) {
+    return service.getSendStatus(sendId);
+  }
+
+  @PUT
+  @Path("sends/{sendId}/email")
+  @Consumes(MediaType.APPLICATION_JSON)
+  public Uni<InvitationSend> updateSendEmail(@PathParam("sendId") long sendId, SendEmailUpdate body) {
+    return service.updateSendEmail(sendId, body.email());
+  }
+
+  record SendEmailUpdate(String email) {}
 
   @DELETE
   @Path("{id}")

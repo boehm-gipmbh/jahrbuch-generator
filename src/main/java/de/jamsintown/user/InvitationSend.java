@@ -1,6 +1,7 @@
 package de.jamsintown.user;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -22,4 +23,15 @@ public class InvitationSend extends PanacheEntity {
   @CreationTimestamp
   @Column(name = "sent_at", nullable = false, updatable = false)
   public ZonedDateTime sentAt;
+
+  @Column(name = "resend_message_id")
+  public String resendMessageId;
+
+  @Column(nullable = false)
+  public String status = "sent";
+
+  /** Vom Backend befüllt: Name des registrierten Users, falls sentTo-Email bereits ein Konto hat. */
+  @Transient
+  @JsonProperty
+  public String registeredUserName;
 }

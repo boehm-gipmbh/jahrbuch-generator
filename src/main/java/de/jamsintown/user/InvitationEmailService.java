@@ -30,7 +30,8 @@ public class InvitationEmailService {
     this.mock = mock;
   }
 
-  public void sendInvitationMail(InvitationToken token) {
+  /** Sendet die Einladungsmail und gibt die Resend-Message-ID zurück (null im Mock oder bei Fehler). */
+  public String sendInvitationMail(InvitationToken token) {
     String link = appUrl + "/register?token=" + token.token;
     String groupInfo = token.label != null && !token.label.isBlank()
         ? " zur Gruppe <strong>" + token.label + "</strong>" : "";
@@ -48,7 +49,7 @@ public class InvitationEmailService {
 
     if (mock) {
       LOG.infof("Mock-Einladungsmail an %s: %s", token.recipientEmail, link);
-      return;
+      return null;
     }
 
     try {
@@ -61,11 +62,47 @@ public class InvitationEmailService {
       HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() >= 200 && response.statusCode() < 300) {
         LOG.infof("Einladungsmail an %s gesendet", token.recipientEmail);
+        return extractResendId(response.body());
       } else {
         LOG.errorf("Resend Fehler %d: %s", response.statusCode(), response.body());
       }
     } catch (Exception e) {
       LOG.errorf("Fehler beim Senden der Einladungsmail: %s", e.getMessage());
     }
+    return null;
+  }
+
+  private String extractResendId(String body) {
+    // {"id":"re_abc123",...}
+    int start = body.indexOf("\"id\":\"");
+    if (start < 0) return null;
+    start += 6;
+    int end = body.indexOf("\"", start);
+    return end > start ? body.substring(start, end) : null;
+  }
+
+  public String getDeliveryStatus(String resendMessageId) {
+    if (resendMessageId == null) return "unknown";
+    try {
+      HttpRequest request = HttpRequest.newBuilder()
+          .uri(URI.create("https://api.resend.com/emails/" + resendMessageId))
+          .header("Authorization", "Bearer " + resendApiKey)
+          .GET()
+          .build();
+      HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() == 200) {
+        String body = response.body();
+        int start = body.indexOf("\"last_event\":\"");
+        if (start < 0) start = body.indexOf("\"status\":\"");
+        if (start < 0) return "unknown";
+        start = body.indexOf("\"", start) + 1;
+        start = body.indexOf("\"", start) + 1;
+        int end = body.indexOf("\"", start);
+        return end > start ? body.substring(start, end) : "unknown";
+      }
+    } catch (Exception e) {
+      LOG.errorf("Fehler beim Abrufen des Resend-Status: %s", e.getMessage());
+    }
+    return "unknown";
   }
 }

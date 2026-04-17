@@ -1,0 +1,1 @@
+ALTER TABLE invitation_sends ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'sent';
