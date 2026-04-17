@@ -336,11 +336,13 @@ public class InvitationTokenService {
             for (BatchEntry entry : valid) {
               if (registered.contains(entry.email())) {
                 results.add(new BatchInvitationResult(entry.email(), "already_registered", "Bereits registriert"));
-                InvitationSend send = new InvitationSend();
-                send.token = token;
-                send.sentTo = entry.email();
-                send.status = "already_registered";
-                chain = chain.chain(r -> send.<InvitationSend>persistAndFlush().replaceWith(r));
+                if (!alreadySent.contains(entry.email())) {
+                  InvitationSend send = new InvitationSend();
+                  send.token = token;
+                  send.sentTo = entry.email();
+                  send.status = "already_registered";
+                  chain = chain.chain(r -> send.<InvitationSend>persistAndFlush().replaceWith(r));
+                }
                 continue;
               }
               if (alreadySent.contains(entry.email())) {
