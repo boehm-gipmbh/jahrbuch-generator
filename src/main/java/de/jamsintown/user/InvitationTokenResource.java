@@ -94,6 +94,13 @@ public class InvitationTokenResource {
   record SendEmailUpdate(String email) {}
 
   @DELETE
+  @Path("sends/{sendId}")
+  @ResponseStatus(204)
+  public Uni<Void> deleteSend(@PathParam("sendId") long sendId) {
+    return service.deleteSend(sendId);
+  }
+
+  @DELETE
   @Path("{id}")
   @ResponseStatus(204)
   public Uni<Void> delete(@PathParam("id") long id) {

@@ -395,6 +395,11 @@ public class InvitationTokenService {
   }
 
   @WithTransaction
+  public Uni<Void> deleteSend(long sendId) {
+    return InvitationSend.deleteById(sendId).replaceWithVoid();
+  }
+
+  @WithTransaction
   public Uni<Void> delete(long id) {
     return InvitationToken.deleteById(id).replaceWithVoid();
   }
