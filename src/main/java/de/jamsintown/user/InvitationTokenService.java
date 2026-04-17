@@ -315,7 +315,7 @@ public class InvitationTokenService {
 
       List<String> emails = valid.stream().map(BatchEntry::email).collect(Collectors.toList());
       final Uni<Void> finalPersistInvalid = persistInvalid;
-      return User.<User>find("email IN ?1", emails).list()
+      return User.<User>find("SELECT u FROM User u LEFT JOIN FETCH u.groups WHERE u.email IN ?1", emails).list()
           .chain(existingUsers -> InvitationSend.<InvitationSend>find(
               "sentTo IN ?1 AND token.id = ?2", emails, token.id).list()
               .map(existingSends -> {
@@ -330,17 +330,25 @@ public class InvitationTokenService {
             java.util.Set<String> alreadySent = (java.util.Set<String>) pair[1];
             java.util.Set<String> registered = existingUsers.stream()
                 .map(u -> u.email).collect(java.util.stream.Collectors.toSet());
+            java.util.Set<String> inGroup = token.group == null ? registered : existingUsers.stream()
+                .filter(u -> u.groups != null && u.groups.stream().anyMatch(g -> g.id.equals(token.group.id)))
+                .map(u -> u.email).collect(java.util.stream.Collectors.toSet());
 
             // Sequentiell verarbeiten — parallele persistAndFlush() kollidieren auf der Sequence-ID
             Uni<List<BatchInvitationResult>> chain = Uni.createFrom().item(results);
             for (BatchEntry entry : valid) {
               if (registered.contains(entry.email())) {
-                results.add(new BatchInvitationResult(entry.email(), "already_registered", "Bereits registriert"));
-                InvitationSend send = new InvitationSend();
-                send.token = token;
-                send.sentTo = entry.email();
-                send.status = "already_registered";
-                chain = chain.chain(r -> send.<InvitationSend>persistAndFlush().replaceWith(r));
+                boolean isInGroup = inGroup.contains(entry.email());
+                String status = isInGroup ? "already_registered" : "registered_not_in_group";
+                String msg = isInGroup ? "Bereits in der Gruppe" : "Account vorhanden, noch nicht in der Gruppe";
+                results.add(new BatchInvitationResult(entry.email(), status, msg));
+                if (!alreadySent.contains(entry.email())) {
+                  InvitationSend send = new InvitationSend();
+                  send.token = token;
+                  send.sentTo = entry.email();
+                  send.status = status;
+                  chain = chain.chain(r -> send.<InvitationSend>persistAndFlush().replaceWith(r));
+                }
                 continue;
               }
               if (alreadySent.contains(entry.email())) {
@@ -392,6 +400,11 @@ public class InvitationTokenService {
           s.status = EMAIL_PATTERN.matcher(s.sentTo).matches() ? "sent" : "invalid";
           return s.<InvitationSend>persistAndFlush();
         });
+  }
+
+  @WithTransaction
+  public Uni<Void> deleteSend(long sendId) {
+    return InvitationSend.deleteById(sendId).replaceWithVoid();
   }
 
   @WithTransaction
