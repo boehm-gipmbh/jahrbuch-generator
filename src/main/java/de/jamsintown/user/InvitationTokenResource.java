@@ -100,10 +100,4 @@ public class InvitationTokenResource {
     return service.deleteSend(sendId);
   }
 
-  @DELETE
-  @Path("{id}")
-  @ResponseStatus(204)
-  public Uni<Void> delete(@PathParam("id") long id) {
-    return service.delete(id);
-  }
 }

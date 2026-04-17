@@ -160,8 +160,13 @@ public class InvitationTokenService {
           }
           token.group = createdBy.managedGroup;
           token.label = token.group.name;
-          return token.<InvitationToken>persistAndFlush()
-              .call(() -> sendInvitationMailIfSet(token));
+          return InvitationToken.count("group.id = ?1", createdBy.managedGroup.id)
+              .chain(count -> {
+                if (count > 0) throw new ClientErrorException(
+                    "Für diese Gruppe existiert bereits ein Token", Response.Status.CONFLICT);
+                return token.<InvitationToken>persistAndFlush()
+                    .call(() -> sendInvitationMailIfSet(token));
+              });
         }
 
         // Admin-Flow: optional E-Mail senden nach Persist
@@ -169,8 +174,13 @@ public class InvitationTokenService {
           return gruppeService.findOrCreate(token.label)
             .chain(gruppe -> {
               token.group = gruppe;
-              return token.<InvitationToken>persistAndFlush()
-                  .call(() -> sendInvitationMailIfSet(token));
+              return InvitationToken.count("group.id = ?1", gruppe.id)
+                  .chain(count -> {
+                    if (count > 0) throw new ClientErrorException(
+                        "Für diese Gruppe existiert bereits ein Token", Response.Status.CONFLICT);
+                    return token.<InvitationToken>persistAndFlush()
+                        .call(() -> sendInvitationMailIfSet(token));
+                  });
             });
         }
         return token.<InvitationToken>persistAndFlush()
@@ -420,11 +430,6 @@ public class InvitationTokenService {
     return InvitationSend.deleteById(sendId).replaceWithVoid();
   }
 
-  @WithTransaction
-  public Uni<Void> delete(long id) {
-    return User.update("usedInvitation = null WHERE usedInvitation.id = ?1", id)
-        .chain(() -> InvitationToken.deleteById(id).replaceWithVoid());
-  }
 
   protected Uni<InvitationToken> findByToken(UUID tokenValue) {
     return InvitationToken.<InvitationToken>find("token", tokenValue).firstResult();
