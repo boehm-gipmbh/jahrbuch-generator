@@ -299,25 +299,19 @@ public class InvitationTokenService {
         valid.add(new BatchEntry(email, entry.role()));
       }
 
-      // Ungültige Einträge persistieren damit sie in der Send-Liste erscheinen
-      Uni<Void> persistInvalid = Uni.createFrom().voidItem();
-      for (BatchEntry entry : invalid) {
-        InvitationSend s = new InvitationSend();
-        s.token = token;
-        s.sentTo = entry.email();
-        s.status = "invalid";
-        persistInvalid = persistInvalid.chain(() -> s.<InvitationSend>persistAndFlush().replaceWithVoid());
-      }
-
-      if (valid.isEmpty()) {
-        return persistInvalid.replaceWith(results);
-      }
-
       List<String> emails = valid.stream().map(BatchEntry::email).collect(Collectors.toList());
-      final Uni<Void> finalPersistInvalid = persistInvalid;
-      return User.<User>find("SELECT u FROM User u LEFT JOIN FETCH u.groups WHERE u.email IN ?1", emails).list()
+      // Ungültige E-Mails ebenfalls für den alreadySent-Check einbeziehen (Dedup)
+      List<String> allEmails = new ArrayList<>(emails);
+      invalid.stream().map(BatchEntry::email)
+          .filter(e -> e != null && !e.isBlank()).forEach(allEmails::add);
+
+      if (allEmails.isEmpty()) {
+        return Uni.createFrom().item(results);
+      }
+
+      return User.<User>find("SELECT u FROM User u LEFT JOIN FETCH u.groups WHERE u.email IN ?1", emails.isEmpty() ? List.of("__none__") : emails).list()
           .chain(existingUsers -> InvitationSend.<InvitationSend>find(
-              "sentTo IN ?1 AND token.id = ?2", emails, token.id).list()
+              "sentTo IN ?1 AND token.id = ?2", allEmails, token.id).list()
               .map(existingSends -> {
                 java.util.Set<String> alreadySent = existingSends.stream()
                     .map(s -> s.sentTo).collect(java.util.stream.Collectors.toSet());
@@ -333,6 +327,19 @@ public class InvitationTokenService {
             java.util.Set<String> inGroup = token.group == null ? registered : existingUsers.stream()
                 .filter(u -> u.groups != null && u.groups.stream().anyMatch(g -> g.id.equals(token.group.id)))
                 .map(u -> u.email).collect(java.util.stream.Collectors.toSet());
+
+            // Ungültige Einträge persistieren — nur wenn noch kein Eintrag existiert (Dedup)
+            Uni<Void> persistInvalid = Uni.createFrom().voidItem();
+            for (BatchEntry entry : invalid) {
+              if (!alreadySent.contains(entry.email())) {
+                InvitationSend s = new InvitationSend();
+                s.token = token;
+                s.sentTo = entry.email();
+                s.status = "invalid";
+                persistInvalid = persistInvalid.chain(() -> s.<InvitationSend>persistAndFlush().replaceWithVoid());
+              }
+            }
+            final Uni<Void> finalPersistInvalid = persistInvalid;
 
             // Sequentiell verarbeiten — parallele persistAndFlush() kollidieren auf der Sequence-ID
             Uni<List<BatchInvitationResult>> chain = Uni.createFrom().item(results);
