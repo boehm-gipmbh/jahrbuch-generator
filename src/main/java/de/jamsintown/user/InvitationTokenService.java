@@ -310,13 +310,19 @@ public class InvitationTokenService {
       }
 
       return User.<User>find("SELECT u FROM User u LEFT JOIN FETCH u.groups WHERE u.email IN ?1", emails.isEmpty() ? List.of("__none__") : emails).list()
-          .chain(existingUsers -> InvitationSend.<InvitationSend>find(
-              "sentTo IN ?1 AND token.id = ?2", allEmails, token.id).list()
-              .map(existingSends -> {
-                java.util.Set<String> alreadySent = existingSends.stream()
-                    .map(s -> s.sentTo).collect(java.util.stream.Collectors.toSet());
-                return new Object[]{existingUsers, alreadySent};
-              }))
+          .chain(existingUsers -> {
+            // Gruppenweiter alreadySent-Check: Email gilt als versendet wenn sie in IRGENDEINEM Token der Gruppe vorkommt
+            String sendQuery = token.group != null
+                ? "sentTo IN ?1 AND token.id IN (SELECT t.id FROM InvitationToken t WHERE t.group.id = ?2)"
+                : "sentTo IN ?1 AND token.id = ?2";
+            Object queryParam = token.group != null ? token.group.id : token.id;
+            return InvitationSend.<InvitationSend>find(sendQuery, allEmails, queryParam).list()
+                .map(existingSends -> {
+                  java.util.Set<String> alreadySent = existingSends.stream()
+                      .map(s -> s.sentTo).collect(java.util.stream.Collectors.toSet());
+                  return new Object[]{existingUsers, alreadySent};
+                });
+          })
           .chain(pair -> {
             @SuppressWarnings("unchecked")
             java.util.List<User> existingUsers = (java.util.List<User>) pair[0];
