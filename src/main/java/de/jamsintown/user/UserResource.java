@@ -121,6 +121,16 @@ public class UserResource {
   record EmailUpdate(String email) {}
 
   @PUT
+  @Path("{id}/invitation-expires")
+  @Consumes(MediaType.APPLICATION_JSON)
+  @RolesAllowed({"admin", "group-admin"})
+  public Uni<User> updateInvitationExpiry(@PathParam("id") long id, InvitationExpiryUpdate body) {
+    return userService.updateInvitationExpiry(id, body.expiresAt());
+  }
+
+  record InvitationExpiryUpdate(java.time.ZonedDateTime expiresAt) {}
+
+  @PUT
   @Path("self/active-group/{groupId}")
   @RolesAllowed("user")
   public Uni<User> setActiveGroup(@PathParam("groupId") long groupId) {

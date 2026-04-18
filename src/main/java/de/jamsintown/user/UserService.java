@@ -81,6 +81,16 @@ public class UserService {
     });
   }
 
+  @WithTransaction
+  public Uni<User> updateInvitationExpiry(long id, java.time.ZonedDateTime expiresAt) {
+    return assertGroupAdminCanActOn(id)
+        .chain(__ -> findById(id))
+        .chain(u -> {
+          u.invitationExpiresAt = expiresAt;
+          return u.<User>persistAndFlush();
+        });
+  }
+
   public Uni<User> getCurrentUser() {
     return findByName(jwt.getName());
   }

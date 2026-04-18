@@ -113,20 +113,21 @@ public class InvitationTokenService {
     }
 
     return User.<User>find(
-        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.usedInvitation LEFT JOIN FETCH u.groups g WHERE g.id IN ?1",
+        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.groups g WHERE g.id IN ?1",
         groupIds
       ).list()
       .map(groupUsers -> {
-        groupUsers.forEach(u -> {
-          if (u.usedInvitation != null) {
-            u.invitationExpiresAt = u.usedInvitation.expiresAt;
-            u.usedInvitationId = u.usedInvitation.id;
-          }
-        });
         tokens.forEach(t -> {
           if (t.group != null) {
             t.members = groupUsers.stream()
                 .filter(u -> u.groups != null && u.groups.stream().anyMatch(g -> g.id.equals(t.group.id)))
+                .peek(u -> {
+                  // User-spezifisches Ablaufdatum bevorzugen, sonst Gruppen-Token als Fallback
+                  if (u.invitationExpiresAt == null) {
+                    u.invitationExpiresAt = t.expiresAt;
+                  }
+                  u.usedInvitationId = t.id;
+                })
                 .collect(Collectors.toList());
           } else {
             t.members = t.registeredUsers != null ? t.registeredUsers : List.of();
@@ -160,8 +161,13 @@ public class InvitationTokenService {
           }
           token.group = createdBy.managedGroup;
           token.label = token.group.name;
-          return token.<InvitationToken>persistAndFlush()
-              .call(() -> sendInvitationMailIfSet(token));
+          return InvitationToken.count("group.id = ?1", createdBy.managedGroup.id)
+              .chain(count -> {
+                if (count > 0) throw new ClientErrorException(
+                    "Für diese Gruppe existiert bereits ein Token", Response.Status.CONFLICT);
+                return token.<InvitationToken>persistAndFlush()
+                    .call(() -> sendInvitationMailIfSet(token));
+              });
         }
 
         // Admin-Flow: optional E-Mail senden nach Persist
@@ -169,8 +175,13 @@ public class InvitationTokenService {
           return gruppeService.findOrCreate(token.label)
             .chain(gruppe -> {
               token.group = gruppe;
-              return token.<InvitationToken>persistAndFlush()
-                  .call(() -> sendInvitationMailIfSet(token));
+              return InvitationToken.count("group.id = ?1", gruppe.id)
+                  .chain(count -> {
+                    if (count > 0) throw new ClientErrorException(
+                        "Für diese Gruppe existiert bereits ein Token", Response.Status.CONFLICT);
+                    return token.<InvitationToken>persistAndFlush()
+                        .call(() -> sendInvitationMailIfSet(token));
+                  });
             });
         }
         return token.<InvitationToken>persistAndFlush()
@@ -209,6 +220,13 @@ public class InvitationTokenService {
         t.active = true;
         return t.<InvitationToken>persistAndFlush();
       });
+  }
+
+  @WithTransaction
+  public Uni<Void> delete(long id) {
+    return User.update("usedInvitation = null WHERE usedInvitation.id = ?1", id)
+        .chain(() -> InvitationToken.deleteById(id))
+        .replaceWithVoid();
   }
 
   @WithTransaction
@@ -299,30 +317,30 @@ public class InvitationTokenService {
         valid.add(new BatchEntry(email, entry.role()));
       }
 
-      // Ungültige Einträge persistieren damit sie in der Send-Liste erscheinen
-      Uni<Void> persistInvalid = Uni.createFrom().voidItem();
-      for (BatchEntry entry : invalid) {
-        InvitationSend s = new InvitationSend();
-        s.token = token;
-        s.sentTo = entry.email();
-        s.status = "invalid";
-        persistInvalid = persistInvalid.chain(() -> s.<InvitationSend>persistAndFlush().replaceWithVoid());
-      }
-
-      if (valid.isEmpty()) {
-        return persistInvalid.replaceWith(results);
-      }
-
       List<String> emails = valid.stream().map(BatchEntry::email).collect(Collectors.toList());
-      final Uni<Void> finalPersistInvalid = persistInvalid;
-      return User.<User>find("SELECT u FROM User u LEFT JOIN FETCH u.groups WHERE u.email IN ?1", emails).list()
-          .chain(existingUsers -> InvitationSend.<InvitationSend>find(
-              "sentTo IN ?1 AND token.id = ?2", emails, token.id).list()
-              .map(existingSends -> {
-                java.util.Set<String> alreadySent = existingSends.stream()
-                    .map(s -> s.sentTo).collect(java.util.stream.Collectors.toSet());
-                return new Object[]{existingUsers, alreadySent};
-              }))
+      // Ungültige E-Mails ebenfalls für den alreadySent-Check einbeziehen (Dedup)
+      List<String> allEmails = new ArrayList<>(emails);
+      invalid.stream().map(BatchEntry::email)
+          .filter(e -> e != null && !e.isBlank()).forEach(allEmails::add);
+
+      if (allEmails.isEmpty()) {
+        return Uni.createFrom().item(results);
+      }
+
+      return User.<User>find("SELECT u FROM User u LEFT JOIN FETCH u.groups WHERE u.email IN ?1", emails.isEmpty() ? List.of("__none__") : emails).list()
+          .chain(existingUsers -> {
+            // Gruppenweiter alreadySent-Check: Email gilt als versendet wenn sie in IRGENDEINEM Token der Gruppe vorkommt
+            String sendQuery = token.group != null
+                ? "sentTo IN ?1 AND token.id IN (SELECT t.id FROM InvitationToken t WHERE t.group.id = ?2)"
+                : "sentTo IN ?1 AND token.id = ?2";
+            Object queryParam = token.group != null ? token.group.id : token.id;
+            return InvitationSend.<InvitationSend>find(sendQuery, allEmails, queryParam).list()
+                .map(existingSends -> {
+                  java.util.Set<String> alreadySent = existingSends.stream()
+                      .map(s -> s.sentTo).collect(java.util.stream.Collectors.toSet());
+                  return new Object[]{existingUsers, alreadySent};
+                });
+          })
           .chain(pair -> {
             @SuppressWarnings("unchecked")
             java.util.List<User> existingUsers = (java.util.List<User>) pair[0];
@@ -333,6 +351,19 @@ public class InvitationTokenService {
             java.util.Set<String> inGroup = token.group == null ? registered : existingUsers.stream()
                 .filter(u -> u.groups != null && u.groups.stream().anyMatch(g -> g.id.equals(token.group.id)))
                 .map(u -> u.email).collect(java.util.stream.Collectors.toSet());
+
+            // Ungültige Einträge persistieren — nur wenn noch kein Eintrag existiert (Dedup)
+            Uni<Void> persistInvalid = Uni.createFrom().voidItem();
+            for (BatchEntry entry : invalid) {
+              if (!alreadySent.contains(entry.email())) {
+                InvitationSend s = new InvitationSend();
+                s.token = token;
+                s.sentTo = entry.email();
+                s.status = "invalid";
+                persistInvalid = persistInvalid.chain(() -> s.<InvitationSend>persistAndFlush().replaceWithVoid());
+              }
+            }
+            final Uni<Void> finalPersistInvalid = persistInvalid;
 
             // Sequentiell verarbeiten — parallele persistAndFlush() kollidieren auf der Sequence-ID
             Uni<List<BatchInvitationResult>> chain = Uni.createFrom().item(results);
@@ -407,10 +438,6 @@ public class InvitationTokenService {
     return InvitationSend.deleteById(sendId).replaceWithVoid();
   }
 
-  @WithTransaction
-  public Uni<Void> delete(long id) {
-    return InvitationToken.deleteById(id).replaceWithVoid();
-  }
 
   protected Uni<InvitationToken> findByToken(UUID tokenValue) {
     return InvitationToken.<InvitationToken>find("token", tokenValue).firstResult();

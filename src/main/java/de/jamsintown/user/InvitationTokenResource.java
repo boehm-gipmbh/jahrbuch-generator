@@ -56,6 +56,13 @@ public class InvitationTokenResource {
     return service.reactivate(id);
   }
 
+  @DELETE
+  @Path("{id}")
+  @ResponseStatus(204)
+  public Uni<Void> delete(@PathParam("id") long id) {
+    return service.delete(id);
+  }
+
   @PUT
   @Path("{id}/extend")
   @Consumes(MediaType.APPLICATION_JSON)
@@ -100,10 +107,4 @@ public class InvitationTokenResource {
     return service.deleteSend(sendId);
   }
 
-  @DELETE
-  @Path("{id}")
-  @ResponseStatus(204)
-  public Uni<Void> delete(@PathParam("id") long id) {
-    return service.delete(id);
-  }
 }
