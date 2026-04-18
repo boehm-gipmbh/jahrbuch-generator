@@ -113,20 +113,21 @@ public class InvitationTokenService {
     }
 
     return User.<User>find(
-        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.usedInvitation LEFT JOIN FETCH u.groups g WHERE g.id IN ?1",
+        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.groups g WHERE g.id IN ?1",
         groupIds
       ).list()
       .map(groupUsers -> {
-        groupUsers.forEach(u -> {
-          if (u.usedInvitation != null) {
-            u.invitationExpiresAt = u.usedInvitation.expiresAt;
-            u.usedInvitationId = u.usedInvitation.id;
-          }
-        });
         tokens.forEach(t -> {
           if (t.group != null) {
             t.members = groupUsers.stream()
                 .filter(u -> u.groups != null && u.groups.stream().anyMatch(g -> g.id.equals(t.group.id)))
+                .peek(u -> {
+                  // User-spezifisches Ablaufdatum bevorzugen, sonst Gruppen-Token als Fallback
+                  if (u.invitationExpiresAt == null) {
+                    u.invitationExpiresAt = t.expiresAt;
+                  }
+                  u.usedInvitationId = t.id;
+                })
                 .collect(Collectors.toList());
           } else {
             t.members = t.registeredUsers != null ? t.registeredUsers : List.of();
@@ -219,6 +220,13 @@ public class InvitationTokenService {
         t.active = true;
         return t.<InvitationToken>persistAndFlush();
       });
+  }
+
+  @WithTransaction
+  public Uni<Void> delete(long id) {
+    return User.update("usedInvitation = null WHERE usedInvitation.id = ?1", id)
+        .chain(() -> InvitationToken.deleteById(id))
+        .replaceWithVoid();
   }
 
   @WithTransaction
