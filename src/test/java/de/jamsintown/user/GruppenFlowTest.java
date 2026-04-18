@@ -164,18 +164,15 @@ class GruppenFlowTest {
             }
             """.formatted(expiresAt());
 
-        Integer groupId1 = given()
+        given()
             .contentType(ContentType.JSON).body(body)
             .when().post("/api/v1/users/invitations")
-            .then().statusCode(201)
-            .extract().<Integer>path("group.id");
+            .then().statusCode(201);
 
-        Integer groupId2 = given()
+        // Zweiter Token für dieselbe Gruppe ist nicht erlaubt (1 Token pro Gruppe)
+        given()
             .contentType(ContentType.JSON).body(body)
             .when().post("/api/v1/users/invitations")
-            .then().statusCode(201)
-            .extract().<Integer>path("group.id");
-
-        assertThat(groupId1, equalTo(groupId2));
+            .then().statusCode(409);
     }
 }
