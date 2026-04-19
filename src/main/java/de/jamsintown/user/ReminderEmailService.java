@@ -1,5 +1,6 @@
 package de.jamsintown.user;
 
+import io.smallrye.common.annotation.Blocking;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -30,6 +31,7 @@ public class ReminderEmailService {
     this.mock = mock;
   }
 
+  @Blocking
   public String sendReminderMail(User user, String groupName) {
     String groupInfo = groupName != null && !groupName.isBlank()
         ? " für <strong>" + groupName + "</strong>" : "";
@@ -70,6 +72,7 @@ public class ReminderEmailService {
     return null;
   }
 
+  @Blocking
   public String getDeliveryStatus(String resendMessageId) {
     if (resendMessageId == null) return "unknown";
     try {

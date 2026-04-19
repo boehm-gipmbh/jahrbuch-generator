@@ -1,5 +1,6 @@
 package de.jamsintown.user;
 
+import io.smallrye.common.annotation.Blocking;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -31,6 +32,7 @@ public class InvitationEmailService {
   }
 
   /** Sendet die Einladungsmail und gibt die Resend-Message-ID zurück (null im Mock oder bei Fehler). */
+  @Blocking
   public String sendInvitationMail(InvitationToken token) {
     String link = appUrl + "/register?token=" + token.token;
     String groupInfo = token.label != null && !token.label.isBlank()
@@ -81,6 +83,7 @@ public class InvitationEmailService {
     return end > start ? body.substring(start, end) : null;
   }
 
+  @Blocking
   public String getDeliveryStatus(String resendMessageId) {
     if (resendMessageId == null) return "unknown";
     try {
