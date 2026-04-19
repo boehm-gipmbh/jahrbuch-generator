@@ -80,6 +80,13 @@ public class UserResource {
     return userService.sendReminder(id);
   }
 
+  @GET
+  @Path("{id}/remind/status")
+  @RolesAllowed({"admin", "group-admin"})
+  public Uni<java.util.Map<String, String>> reminderStatus(@PathParam("id") long id) {
+    return userService.getReminderStatus(id);
+  }
+
   @PUT
   @Path("{id}/deactivate")
   @RolesAllowed({"admin", "group-admin"})

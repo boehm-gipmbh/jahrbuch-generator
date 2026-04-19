@@ -1,0 +1,6 @@
+CREATE TABLE reminder_sends (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id),
+  resend_message_id VARCHAR(255),
+  sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

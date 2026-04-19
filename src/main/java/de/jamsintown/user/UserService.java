@@ -185,20 +185,39 @@ public class UserService {
         }));
   }
 
-  @WithSession
+  @WithTransaction
   public Uni<Void> sendReminder(long id) {
     return assertGroupAdminCanActOn(id)
         .chain(__ -> getCurrentUser()
             .chain(admin -> {
               String groupName = admin.managedGroup != null ? admin.managedGroup.name : null;
-              return findById(id).invoke(target -> {
+              return findById(id).chain(target -> {
                 if (target.email == null || target.email.isBlank()) {
                   throw new ClientErrorException("User hat keine E-Mail-Adresse", Response.Status.BAD_REQUEST);
                 }
-                reminderEmailService.sendReminderMail(target, groupName);
+                String resendId = reminderEmailService.sendReminderMail(target, groupName);
+                ReminderSend send = new ReminderSend();
+                send.user = target;
+                send.resendMessageId = resendId;
+                return send.<ReminderSend>persistAndFlush().replaceWithVoid();
               });
-            }))
-        .replaceWithVoid();
+            }));
+  }
+
+  @WithSession
+  public Uni<java.util.Map<String, String>> getReminderStatus(long userId) {
+    return ReminderSend.<ReminderSend>find("user.id = ?1 ORDER BY sentAt DESC", userId)
+        .firstResult()
+        .map(send -> {
+          if (send == null) return java.util.Map.of("status", "never_sent");
+          String status = send.resendMessageId != null
+              ? reminderEmailService.getDeliveryStatus(send.resendMessageId) : "unknown";
+          return java.util.Map.of(
+              "sentAt", send.sentAt.toString(),
+              "resendMessageId", send.resendMessageId != null ? send.resendMessageId : "",
+              "status", status
+          );
+        });
   }
 
   @WithTransaction
