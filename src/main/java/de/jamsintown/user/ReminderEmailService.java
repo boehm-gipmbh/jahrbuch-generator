@@ -1,6 +1,6 @@
 package de.jamsintown.user;
 
-import io.smallrye.common.annotation.Blocking;
+import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -31,8 +31,7 @@ public class ReminderEmailService {
     this.mock = mock;
   }
 
-  @Blocking
-  public String sendReminderMail(User user, String groupName) {
+  public Uni<String> sendReminderMail(User user, String groupName) {
     String groupInfo = groupName != null && !groupName.isBlank()
         ? " für <strong>" + groupName + "</strong>" : "";
     String html = """
@@ -49,53 +48,59 @@ public class ReminderEmailService {
 
     if (mock) {
       LOG.infof("Mock-Reminder an %s (%s)", user.name, user.email);
-      return null;
+      return Uni.createFrom().nullItem();
     }
 
-    try {
-      HttpRequest request = HttpRequest.newBuilder()
-          .uri(URI.create("https://api.resend.com/emails"))
-          .header("Authorization", "Bearer " + resendApiKey)
-          .header("Content-Type", "application/json")
-          .POST(HttpRequest.BodyPublishers.ofString(json))
-          .build();
-      HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-      if (response.statusCode() >= 200 && response.statusCode() < 300) {
-        LOG.infof("Reminder an %s gesendet", user.email);
-        return extractResendId(response.body());
-      } else {
-        LOG.errorf("Resend Fehler %d: %s", response.statusCode(), response.body());
-      }
-    } catch (Exception e) {
-      LOG.errorf("Fehler beim Senden der Reminder-Mail: %s", e.getMessage());
-    }
-    return null;
+    HttpRequest request = HttpRequest.newBuilder()
+        .uri(URI.create("https://api.resend.com/emails"))
+        .header("Authorization", "Bearer " + resendApiKey)
+        .header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString(json))
+        .build();
+
+    return Uni.createFrom().completionStage(() -> http.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
+        .map(response -> {
+          if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            LOG.infof("Reminder an %s gesendet", user.email);
+            return extractResendId(response.body());
+          } else {
+            LOG.errorf("Resend Fehler %d: %s", response.statusCode(), response.body());
+            return null;
+          }
+        })
+        .onFailure().recoverWithItem(e -> {
+          LOG.errorf("Fehler beim Senden der Reminder-Mail: %s", e.getMessage());
+          return null;
+        });
   }
 
-  @Blocking
-  public String getDeliveryStatus(String resendMessageId) {
-    if (resendMessageId == null) return "unknown";
-    try {
-      HttpRequest request = HttpRequest.newBuilder()
-          .uri(URI.create("https://api.resend.com/emails/" + resendMessageId))
-          .header("Authorization", "Bearer " + resendApiKey)
-          .GET()
-          .build();
-      HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-      if (response.statusCode() == 200) {
-        String body = response.body();
-        int start = body.indexOf("\"last_event\":\"");
-        if (start < 0) start = body.indexOf("\"status\":\"");
-        if (start < 0) return "unknown";
-        start = body.indexOf("\"", start) + 1;
-        start = body.indexOf("\"", start) + 1;
-        int end = body.indexOf("\"", start);
-        return end > start ? body.substring(start, end) : "unknown";
-      }
-    } catch (Exception e) {
-      LOG.errorf("Fehler beim Abrufen des Resend-Status: %s", e.getMessage());
-    }
-    return "unknown";
+  public Uni<String> getDeliveryStatus(String resendMessageId) {
+    if (resendMessageId == null) return Uni.createFrom().item("unknown");
+
+    HttpRequest request = HttpRequest.newBuilder()
+        .uri(URI.create("https://api.resend.com/emails/" + resendMessageId))
+        .header("Authorization", "Bearer " + resendApiKey)
+        .GET()
+        .build();
+
+    return Uni.createFrom().completionStage(() -> http.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
+        .map(response -> {
+          if (response.statusCode() == 200) {
+            String body = response.body();
+            int start = body.indexOf("\"last_event\":\"");
+            if (start < 0) start = body.indexOf("\"status\":\"");
+            if (start < 0) return "unknown";
+            start = body.indexOf("\"", start) + 1;
+            start = body.indexOf("\"", start) + 1;
+            int end = body.indexOf("\"", start);
+            return end > start ? body.substring(start, end) : "unknown";
+          }
+          return "unknown";
+        })
+        .onFailure().recoverWithItem(e -> {
+          LOG.errorf("Fehler beim Abrufen des Resend-Status: %s", e.getMessage());
+          return "unknown";
+        });
   }
 
   private String extractResendId(String body) {

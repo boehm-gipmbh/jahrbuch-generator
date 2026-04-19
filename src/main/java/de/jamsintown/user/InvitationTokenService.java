@@ -192,12 +192,14 @@ public class InvitationTokenService {
   private Uni<Void> sendInvitationMailIfSet(InvitationToken token) {
     if (token.recipientEmail != null && !token.recipientEmail.isBlank()) {
       token.sentAt = ZonedDateTime.now();
-      String resendId = invitationEmailService.sendInvitationMail(token);
-      InvitationSend send = new InvitationSend();
-      send.token = token;
-      send.sentTo = token.recipientEmail;
-      send.resendMessageId = resendId;
-      return send.<InvitationSend>persistAndFlush().replaceWithVoid();
+      return invitationEmailService.sendInvitationMail(token)
+          .chain(resendId -> {
+            InvitationSend send = new InvitationSend();
+            send.token = token;
+            send.sentTo = token.recipientEmail;
+            send.resendMessageId = resendId;
+            return send.<InvitationSend>persistAndFlush().replaceWithVoid();
+          });
     }
     return Uni.createFrom().voidItem();
   }
@@ -252,14 +254,14 @@ public class InvitationTokenService {
         t.recipientEmail = email;
         t.sentAt = ZonedDateTime.now();
         return t.<InvitationToken>persistAndFlush()
-            .call(() -> {
-              String resendId = invitationEmailService.sendInvitationMail(t);
-              InvitationSend send = new InvitationSend();
-              send.token = t;
-              send.sentTo = email;
-              send.resendMessageId = resendId;
-              return send.<InvitationSend>persistAndFlush().replaceWithVoid();
-            });
+            .chain(saved -> invitationEmailService.sendInvitationMail(saved)
+                .chain(resendId -> {
+                  InvitationSend send = new InvitationSend();
+                  send.token = saved;
+                  send.sentTo = email;
+                  send.resendMessageId = resendId;
+                  return send.<InvitationSend>persistAndFlush().replaceWith(saved);
+                }));
       })
       .replaceWithVoid();
   }
@@ -387,9 +389,6 @@ public class InvitationTokenService {
                 continue;
               }
               String role = entry.role() != null && !entry.role().isBlank() ? entry.role() : token.role;
-              InvitationSend send = new InvitationSend();
-              send.token = token;
-              send.sentTo = entry.email();
               InvitationToken mailToken = new InvitationToken();
               mailToken.token = token.token;
               mailToken.recipientEmail = entry.email();
@@ -397,10 +396,16 @@ public class InvitationTokenService {
               mailToken.role = role;
               mailToken.expiresAt = token.expiresAt;
               mailToken.createdBy = token.createdBy;
-              send.resendMessageId = invitationEmailService.sendInvitationMail(mailToken);
               final String sentTo = entry.email();
-              chain = chain.chain(r -> send.<InvitationSend>persistAndFlush()
-                  .map(s -> { r.add(new BatchInvitationResult(sentTo, "sent", "Versendet")); return r; }));
+              chain = chain.chain(r -> invitationEmailService.sendInvitationMail(mailToken)
+                  .chain(resendId -> {
+                    InvitationSend send = new InvitationSend();
+                    send.token = token;
+                    send.sentTo = sentTo;
+                    send.resendMessageId = resendId;
+                    return send.<InvitationSend>persistAndFlush()
+                        .map(s -> { r.add(new BatchInvitationResult(sentTo, "sent", "Versendet")); return r; });
+                  }));
             }
             return chain.chain(r -> finalPersistInvalid.replaceWith(r));
           });
@@ -411,15 +416,13 @@ public class InvitationTokenService {
   public Uni<java.util.Map<String, String>> getSendStatus(long sendId) {
     return InvitationSend.<InvitationSend>findById(sendId)
         .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
-        .map(send -> {
-          String status = invitationEmailService.getDeliveryStatus(send.resendMessageId);
-          return java.util.Map.of(
-              "sendId", String.valueOf(send.id),
-              "sentTo", send.sentTo,
-              "resendMessageId", send.resendMessageId != null ? send.resendMessageId : "",
-              "status", status
-          );
-        });
+        .chain(send -> invitationEmailService.getDeliveryStatus(send.resendMessageId)
+            .map(status -> java.util.Map.of(
+                "sendId", String.valueOf(send.id),
+                "sentTo", send.sentTo,
+                "resendMessageId", send.resendMessageId != null ? send.resendMessageId : "",
+                "status", status
+            )));
   }
 
   @WithTransaction
