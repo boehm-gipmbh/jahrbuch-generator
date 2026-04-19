@@ -253,15 +253,17 @@ public class InvitationTokenService {
         }
         t.recipientEmail = email;
         t.sentAt = ZonedDateTime.now();
+        InvitationSend send = new InvitationSend();
+        send.token = t;
+        send.sentTo = email;
         return t.<InvitationToken>persistAndFlush()
-            .chain(saved -> invitationEmailService.sendInvitationMail(saved)
-                .chain(resendId -> {
-                  InvitationSend send = new InvitationSend();
-                  send.token = saved;
-                  send.sentTo = email;
-                  send.resendMessageId = resendId;
-                  return send.<InvitationSend>persistAndFlush().replaceWith(saved);
-                }));
+            .chain(saved -> send.<InvitationSend>persistAndFlush()
+                .chain(savedSend -> invitationEmailService.sendInvitationMail(saved)
+                    .chain(resendId -> {
+                      savedSend.resendMessageId = resendId;
+                      return savedSend.<InvitationSend>persistAndFlush().replaceWith(saved);
+                    })
+                    .onFailure().recoverWithItem(saved)));
       })
       .replaceWithVoid();
   }
