@@ -81,6 +81,20 @@ public class UserResource {
   }
 
   @GET
+  @Path("{id}/remind/sends")
+  @RolesAllowed({"admin", "group-admin"})
+  public Uni<java.util.List<java.util.Map<String, String>>> reminderSends(@PathParam("id") long id) {
+    return userService.getReminderSends(id);
+  }
+
+  @GET
+  @Path("remind/sends/{sendId}/status")
+  @RolesAllowed({"admin", "group-admin"})
+  public Uni<java.util.Map<String, String>> reminderSendStatus(@PathParam("sendId") long sendId) {
+    return userService.getReminderSendStatus(sendId);
+  }
+
+  @GET
   @Path("{id}/remind/status")
   @RolesAllowed({"admin", "group-admin"})
   public Uni<java.util.Map<String, String>> reminderStatus(@PathParam("id") long id) {
