@@ -20,4 +20,7 @@ public class ReminderSend extends PanacheEntity {
   @CreationTimestamp
   @Column(name = "sent_at", updatable = false, nullable = false)
   public ZonedDateTime sentAt;
+
+  @Column(name = "delivery_status")
+  public String deliveryStatus;
 }
