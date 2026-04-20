@@ -9,6 +9,7 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.ClientErrorException;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.jwt.JsonWebToken;
+import org.jboss.logging.Logger;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -21,6 +22,8 @@ import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class InvitationTokenService {
+
+  private static final Logger LOG = Logger.getLogger(InvitationTokenService.class);
 
   private final JsonWebToken jwt;
   private final EmailVerificationService emailVerificationService;
@@ -192,14 +195,16 @@ public class InvitationTokenService {
   private Uni<Void> sendInvitationMailIfSet(InvitationToken token) {
     if (token.recipientEmail != null && !token.recipientEmail.isBlank()) {
       token.sentAt = ZonedDateTime.now();
-      return invitationEmailService.sendInvitationMail(token)
-          .chain(resendId -> {
-            InvitationSend send = new InvitationSend();
-            send.token = token;
-            send.sentTo = token.recipientEmail;
-            send.resendMessageId = resendId;
-            return send.<InvitationSend>persistAndFlush().replaceWithVoid();
-          });
+      InvitationSend send = new InvitationSend();
+      send.token = token;
+      send.sentTo = token.recipientEmail;
+      return send.<InvitationSend>persistAndFlush()
+          .invoke(savedSend ->
+              invitationEmailService.sendInvitationMail(token)
+                  .subscribe().with(
+                      resendId -> LOG.infof("Einladungsmail an %s gesendet (id: %s)", token.recipientEmail, resendId),
+                      err -> LOG.errorf("Einladungsmail an %s fehlgeschlagen: %s", token.recipientEmail, err.getMessage())))
+          .replaceWithVoid();
     }
     return Uni.createFrom().voidItem();
   }
@@ -256,14 +261,15 @@ public class InvitationTokenService {
         InvitationSend send = new InvitationSend();
         send.token = t;
         send.sentTo = email;
+        final String finalEmail = email;
         return t.<InvitationToken>persistAndFlush()
             .chain(saved -> send.<InvitationSend>persistAndFlush()
-                .chain(savedSend -> invitationEmailService.sendInvitationMail(saved)
-                    .chain(resendId -> {
-                      savedSend.resendMessageId = resendId;
-                      return savedSend.<InvitationSend>persistAndFlush().replaceWith(saved);
-                    })
-                    .onFailure().recoverWithItem(saved)));
+                .invoke(savedSend ->
+                    invitationEmailService.sendInvitationMail(saved)
+                        .subscribe().with(
+                            resendId -> LOG.infof("Resend-Mail an %s gesendet (id: %s)", finalEmail, resendId),
+                            err -> LOG.errorf("Resend-Mail an %s fehlgeschlagen: %s", finalEmail, err.getMessage())))
+                .replaceWith(saved));
       })
       .replaceWithVoid();
   }
