@@ -53,6 +53,26 @@ public class InvitationTokenService {
         });
   }
 
+  /**
+   * Sendet Mail fire-and-forget. Sichert den Vert.x-Kontext vor dem async-Call,
+   * um nach dem HTTP-Callback per runOnContext() zurück auf den Event-Loop zu dispatchen.
+   */
+  private void sendMailAndPersistId(Uni<String> mailUni, long sendId, String emailForLog) {
+    io.vertx.core.Context ctx = io.vertx.core.Vertx.currentContext();
+    mailUni.subscribe().with(
+        resendId -> {
+          LOG.infof("Mail an %s gesendet (resendId: %s)", emailForLog, resendId);
+          if (ctx != null && resendId != null) {
+            ctx.runOnContext(v ->
+                self.persistResendId(sendId, resendId)
+                    .subscribe().with(
+                        ignored -> {},
+                        err -> LOG.errorf("persistResendId für %s fehlgeschlagen: %s", emailForLog, err.getMessage())));
+          }
+        },
+        err -> LOG.errorf("Mail an %s fehlgeschlagen: %s", emailForLog, err.getMessage()));
+  }
+
   @WithSession
   public Uni<List<InvitationToken>> list() {
     boolean isGroupAdmin = jwt.getGroups().contains("group-admin") && !jwt.getGroups().contains("admin");
@@ -213,12 +233,8 @@ public class InvitationTokenService {
       send.token = token;
       send.sentTo = token.recipientEmail;
       return send.<InvitationSend>persistAndFlush()
-          .invoke(savedSend ->
-              invitationEmailService.sendInvitationMail(token)
-                  .chain(resendId -> self.persistResendId(savedSend.id, resendId))
-                  .subscribe().with(
-                      v -> LOG.infof("Einladungsmail an %s persistiert", token.recipientEmail),
-                      err -> LOG.errorf("Einladungsmail an %s fehlgeschlagen: %s", token.recipientEmail, err.getMessage())))
+          .invoke(savedSend -> sendMailAndPersistId(
+              invitationEmailService.sendInvitationMail(token), savedSend.id, token.recipientEmail))
           .replaceWithVoid();
     }
     return Uni.createFrom().voidItem();
@@ -279,12 +295,8 @@ public class InvitationTokenService {
         final String finalEmail = email;
         return t.<InvitationToken>persistAndFlush()
             .chain(saved -> send.<InvitationSend>persistAndFlush()
-                .invoke(savedSend ->
-                    invitationEmailService.sendInvitationMail(saved)
-                        .chain(resendId -> self.persistResendId(savedSend.id, resendId))
-                        .subscribe().with(
-                            v -> LOG.infof("Resend-Mail an %s persistiert", finalEmail),
-                            err -> LOG.errorf("Resend-Mail an %s fehlgeschlagen: %s", finalEmail, err.getMessage())))
+                .invoke(savedSend -> sendMailAndPersistId(
+                    invitationEmailService.sendInvitationMail(saved), savedSend.id, finalEmail))
                 .replaceWith(saved));
       })
       .replaceWithVoid();
