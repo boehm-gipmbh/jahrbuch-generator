@@ -8,7 +8,9 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.ZonedDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -71,6 +73,14 @@ public class User extends PanacheEntity {
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "managed_group_id")
   public Gruppe managedGroup;
+
+  @ManyToMany(fetch = FetchType.EAGER)
+  @JoinTable(
+    name = "user_managed_groups",
+    joinColumns = @JoinColumn(name = "user_id"),
+    inverseJoinColumns = @JoinColumn(name = "group_id")
+  )
+  public Set<Gruppe> managedGroups = new HashSet<>();
 
   @JsonProperty("password")
   public void setPassword(String password) {

@@ -85,12 +85,17 @@ public class InvitationTokenService {
   private Uni<List<InvitationToken>> listForGroupAdmin() {
     return findUserByNameWithGroups(jwt.getName())
         .chain(user -> {
-          if (user == null || user.managedGroup == null) {
+          if (user == null || user.activeGroup == null) {
+            return Uni.createFrom().item(Collections.<InvitationToken>emptyList());
+          }
+          boolean managesActive = user.managedGroups != null &&
+              user.managedGroups.stream().anyMatch(g -> g.id.equals(user.activeGroup.id));
+          if (!managesActive) {
             return Uni.createFrom().item(Collections.<InvitationToken>emptyList());
           }
           return InvitationToken.<InvitationToken>find(
               "FROM InvitationToken t LEFT JOIN FETCH t.registeredUsers LEFT JOIN FETCH t.group LEFT JOIN FETCH t.createdBy WHERE t.group.id = ?1",
-              user.managedGroup.id
+              user.activeGroup.id
           ).list()
           .chain(tokens -> resolveMembers(tokens))
           .chain(tokens -> resolveSends(tokens));
@@ -184,21 +189,26 @@ public class InvitationTokenService {
         token.createdBy = createdBy;
 
         if (isGroupAdmin) {
-          // Gruppen-Admin darf user- und group-admin-Tokens für die eigene Gruppe erstellen
-          if (createdBy.managedGroup == null) {
+          if (createdBy.activeGroup == null) {
             throw new ClientErrorException(
-                "Gruppen-Admin hat keine verwaltete Gruppe zugeordnet", Response.Status.FORBIDDEN);
+                "Kein aktiver Gruppenkontext", Response.Status.FORBIDDEN);
+          }
+          boolean managesActive = createdBy.managedGroups != null &&
+              createdBy.managedGroups.stream().anyMatch(g -> g.id.equals(createdBy.activeGroup.id));
+          if (!managesActive) {
+            throw new ClientErrorException(
+                "Gruppen-Admin verwaltet diese Gruppe nicht", Response.Status.FORBIDDEN);
           }
           if (token.role == null || token.role.isBlank()) {
-            token.role = "user"; // Default-Rolle wenn nicht angegeben
+            token.role = "user";
           }
           if (!"user".equals(token.role) && !"group-admin".equals(token.role)) {
             throw new ClientErrorException(
                 "Gruppen-Admin darf nur Rollen 'user' oder 'group-admin' vergeben", Response.Status.FORBIDDEN);
           }
-          token.group = createdBy.managedGroup;
+          token.group = createdBy.activeGroup;
           token.label = token.group.name;
-          return InvitationToken.count("group.id = ?1", createdBy.managedGroup.id)
+          return InvitationToken.count("group.id = ?1", createdBy.activeGroup.id)
               .chain(count -> {
                 if (count > 0) throw new ClientErrorException(
                     "Für diese Gruppe existiert bereits ein Token", Response.Status.CONFLICT);
@@ -493,7 +503,7 @@ public class InvitationTokenService {
 
   private Uni<User> findUserByNameWithGroups(String name) {
     return User.<User>find(
-        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup WHERE u.name = ?1", name.toLowerCase()
+        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup LEFT JOIN FETCH u.managedGroups WHERE u.name = ?1", name.toLowerCase()
     ).list().map(users -> users.isEmpty() ? null : users.get(0));
   }
 

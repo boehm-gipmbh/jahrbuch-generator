@@ -57,7 +57,7 @@ public class UserService {
     // activeGroup explizit via LEFT JOIN FETCH laden — Hibernate Reactive
     // ignoriert FetchType.EAGER für @ManyToOne außerhalb einer offenen Session.
     return User.<User>find(
-        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup LEFT JOIN FETCH u.usedInvitation WHERE u.name = ?1", name.toLowerCase())
+        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup LEFT JOIN FETCH u.managedGroups LEFT JOIN FETCH u.usedInvitation WHERE u.name = ?1", name.toLowerCase())
         .list()
         .map(users -> {
           if (users.isEmpty()) return null;
@@ -126,12 +126,17 @@ public class UserService {
     if (!isGroupAdmin) return Uni.createFrom().voidItem();
     return getCurrentUser()
         .chain(admin -> {
-          if (admin == null || admin.managedGroup == null) {
+          if (admin == null || admin.activeGroup == null) {
+            throw new ClientErrorException(Response.Status.FORBIDDEN);
+          }
+          boolean managesActive = admin.managedGroups != null &&
+              admin.managedGroups.stream().anyMatch(g -> g.id.equals(admin.activeGroup.id));
+          if (!managesActive) {
             throw new ClientErrorException(Response.Status.FORBIDDEN);
           }
           return User.count(
               "SELECT COUNT(u) FROM User u JOIN u.groups g WHERE u.id = ?1 AND g.id = ?2",
-              targetId, admin.managedGroup.id
+              targetId, admin.activeGroup.id
           ).map(count -> {
             if (count == 0) throw new ClientErrorException(Response.Status.FORBIDDEN);
             return (Void) null;
@@ -185,6 +190,8 @@ public class UserService {
                 u.roles.add("group-admin");
               }
               u.managedGroup = gruppe;
+              if (u.managedGroups == null) u.managedGroups = new java.util.HashSet<>();
+              u.managedGroups.add(gruppe);
               return u.persistAndFlush();
             })));
   }
@@ -197,6 +204,7 @@ public class UserService {
               .filter(r -> !"group-admin".equals(r))
               .collect(Collectors.toList());
           u.managedGroup = null;
+          if (u.managedGroups != null) u.managedGroups.clear();
           return u.persistAndFlush();
         }));
   }
@@ -206,7 +214,7 @@ public class UserService {
     return assertGroupAdminCanActOn(id)
         .chain(__ -> getCurrentUser()
             .chain(admin -> {
-              String groupName = admin.managedGroup != null ? admin.managedGroup.name : null;
+              String groupName = admin.activeGroup != null ? admin.activeGroup.name : null;
               return findById(id).chain(target -> {
                 if (target.email == null || target.email.isBlank()) {
                   throw new ClientErrorException("User hat keine E-Mail-Adresse", Response.Status.BAD_REQUEST);
