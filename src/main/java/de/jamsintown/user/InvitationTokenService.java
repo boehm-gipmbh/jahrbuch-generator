@@ -31,12 +31,26 @@ public class InvitationTokenService {
   private final InvitationEmailService invitationEmailService;
 
   @Inject
+  InvitationTokenService self;
+
+  @Inject
   public InvitationTokenService(JsonWebToken jwt, EmailVerificationService emailVerificationService,
       GruppeService gruppeService, InvitationEmailService invitationEmailService) {
     this.jwt = jwt;
     this.emailVerificationService = emailVerificationService;
     this.gruppeService = gruppeService;
     this.invitationEmailService = invitationEmailService;
+  }
+
+  @WithTransaction
+  public Uni<Void> persistResendId(long sendId, String resendId) {
+    if (resendId == null) return Uni.createFrom().voidItem();
+    return InvitationSend.<InvitationSend>findById(sendId)
+        .chain(s -> {
+          if (s == null) return Uni.createFrom().voidItem();
+          s.resendMessageId = resendId;
+          return s.<InvitationSend>persistAndFlush().replaceWithVoid();
+        });
   }
 
   @WithSession
@@ -201,8 +215,9 @@ public class InvitationTokenService {
       return send.<InvitationSend>persistAndFlush()
           .invoke(savedSend ->
               invitationEmailService.sendInvitationMail(token)
+                  .chain(resendId -> self.persistResendId(savedSend.id, resendId))
                   .subscribe().with(
-                      resendId -> LOG.infof("Einladungsmail an %s gesendet (id: %s)", token.recipientEmail, resendId),
+                      v -> LOG.infof("Einladungsmail an %s persistiert", token.recipientEmail),
                       err -> LOG.errorf("Einladungsmail an %s fehlgeschlagen: %s", token.recipientEmail, err.getMessage())))
           .replaceWithVoid();
     }
@@ -266,8 +281,9 @@ public class InvitationTokenService {
             .chain(saved -> send.<InvitationSend>persistAndFlush()
                 .invoke(savedSend ->
                     invitationEmailService.sendInvitationMail(saved)
+                        .chain(resendId -> self.persistResendId(savedSend.id, resendId))
                         .subscribe().with(
-                            resendId -> LOG.infof("Resend-Mail an %s gesendet (id: %s)", finalEmail, resendId),
+                            v -> LOG.infof("Resend-Mail an %s persistiert", finalEmail),
                             err -> LOG.errorf("Resend-Mail an %s fehlgeschlagen: %s", finalEmail, err.getMessage())))
                 .replaceWith(saved));
       })
