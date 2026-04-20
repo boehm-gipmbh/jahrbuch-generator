@@ -16,7 +16,7 @@ import java.util.Set;
 public class InvitationDeliveryPoller {
 
   private static final Logger LOG = Logger.getLogger(InvitationDeliveryPoller.class);
-  private static final Set<String> FINAL_STATES = Set.of("delivered", "bounced", "complained");
+  private static final Set<String> FINAL_STATES = Set.of("delivered", "bounced", "complained", "suppressed");
 
   @Inject
   InvitationDeliveryPoller self;
@@ -42,7 +42,7 @@ public class InvitationDeliveryPoller {
   public Uni<List<PendingSend>> loadPending() {
     ZonedDateTime cutoff = ZonedDateTime.now().minusHours(48);
     return InvitationSend.<InvitationSend>find(
-        "resendMessageId IS NOT NULL AND sentAt > ?1 AND (deliveryStatus IS NULL OR deliveryStatus NOT IN ('delivered', 'bounced', 'complained'))",
+        "resendMessageId IS NOT NULL AND sentAt > ?1 AND (deliveryStatus IS NULL OR deliveryStatus NOT IN ('delivered', 'bounced', 'complained', 'suppressed'))",
         cutoff
     ).list()
     .map(sends -> sends.stream()
