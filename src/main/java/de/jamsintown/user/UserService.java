@@ -235,6 +235,7 @@ public class UserService {
           m.put("id", String.valueOf(s.id));
           m.put("sentAt", s.sentAt.toString());
           m.put("resendMessageId", s.resendMessageId != null ? s.resendMessageId : "");
+          m.put("deliveryStatus", s.deliveryStatus != null ? s.deliveryStatus : "");
           return m;
         }).collect(java.util.stream.Collectors.toList()));
   }
