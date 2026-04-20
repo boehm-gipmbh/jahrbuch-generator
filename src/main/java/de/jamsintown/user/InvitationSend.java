@@ -30,6 +30,9 @@ public class InvitationSend extends PanacheEntity {
   @Column(nullable = false)
   public String status = "sent";
 
+  @Column(name = "delivery_status")
+  public String deliveryStatus;
+
   /** Vom Backend befüllt: Name des registrierten Users, falls sentTo-Email bereits ein Konto hat. */
   @Transient
   @JsonProperty
