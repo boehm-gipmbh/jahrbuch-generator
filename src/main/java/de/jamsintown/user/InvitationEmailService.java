@@ -53,6 +53,8 @@ public class InvitationEmailService {
       return Uni.createFrom().nullItem();
     }
 
+    io.vertx.core.Context ctx = io.vertx.core.Vertx.currentContext();
+
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create("https://api.resend.com/emails"))
         .header("Authorization", "Bearer " + resendApiKey)
@@ -60,7 +62,7 @@ public class InvitationEmailService {
         .POST(HttpRequest.BodyPublishers.ofString(json))
         .build();
 
-    return Uni.createFrom().completionStage(() -> http.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
+    Uni<String> result = Uni.createFrom().completionStage(() -> http.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
         .map(response -> {
           if (response.statusCode() >= 200 && response.statusCode() < 300) {
             LOG.infof("Einladungsmail an %s gesendet", token.recipientEmail);
@@ -74,10 +76,14 @@ public class InvitationEmailService {
           LOG.errorf("Fehler beim Senden der Einladungsmail: %s", e.getMessage());
           return null;
         });
+
+    return ctx != null ? result.emitOn(cmd -> ctx.runOnContext(v -> cmd.run())) : result;
   }
 
   public Uni<String> getDeliveryStatus(String resendMessageId) {
-    if (resendMessageId == null) return Uni.createFrom().item("unknown");
+    if (resendMessageId == null || resendMessageId.isBlank()) return Uni.createFrom().item("unknown");
+
+    io.vertx.core.Context ctx = io.vertx.core.Vertx.currentContext();
 
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create("https://api.resend.com/emails/" + resendMessageId))
@@ -85,7 +91,7 @@ public class InvitationEmailService {
         .GET()
         .build();
 
-    return Uni.createFrom().completionStage(() -> http.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
+    Uni<String> result = Uni.createFrom().completionStage(() -> http.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
         .map(response -> {
           if (response.statusCode() == 200) {
             String body = response.body();
@@ -103,6 +109,8 @@ public class InvitationEmailService {
           LOG.errorf("Fehler beim Abrufen des Resend-Status: %s", e.getMessage());
           return "unknown";
         });
+
+    return ctx != null ? result.emitOn(cmd -> ctx.runOnContext(v -> cmd.run())) : result;
   }
 
   private String extractResendId(String body) {
