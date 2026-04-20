@@ -58,7 +58,9 @@ public class ReminderEmailService {
         .POST(HttpRequest.BodyPublishers.ofString(json))
         .build();
 
-    return Uni.createFrom().completionStage(() -> http.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
+    io.vertx.core.Context ctx = io.vertx.core.Vertx.currentContext();
+
+    Uni<String> result = Uni.createFrom().completionStage(() -> http.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
         .map(response -> {
           if (response.statusCode() >= 200 && response.statusCode() < 300) {
             LOG.infof("Reminder an %s gesendet", user.email);
@@ -72,10 +74,14 @@ public class ReminderEmailService {
           LOG.errorf("Fehler beim Senden der Reminder-Mail: %s", e.getMessage());
           return null;
         });
+
+    return ctx != null ? result.emitOn(cmd -> ctx.runOnContext(v -> cmd.run())) : result;
   }
 
   public Uni<String> getDeliveryStatus(String resendMessageId) {
-    if (resendMessageId == null) return Uni.createFrom().item("unknown");
+    if (resendMessageId == null || resendMessageId.isBlank()) return Uni.createFrom().item("unknown");
+
+    io.vertx.core.Context ctx = io.vertx.core.Vertx.currentContext();
 
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create("https://api.resend.com/emails/" + resendMessageId))
@@ -83,15 +89,14 @@ public class ReminderEmailService {
         .GET()
         .build();
 
-    return Uni.createFrom().completionStage(() -> http.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
+    Uni<String> result = Uni.createFrom().completionStage(() -> http.sendAsync(request, HttpResponse.BodyHandlers.ofString()))
         .map(response -> {
           if (response.statusCode() == 200) {
             String body = response.body();
             int start = body.indexOf("\"last_event\":\"");
             if (start < 0) start = body.indexOf("\"status\":\"");
             if (start < 0) return "unknown";
-            start = body.indexOf("\"", start) + 1;
-            start = body.indexOf("\"", start) + 1;
+            start = body.indexOf(":\"", start) + 2;
             int end = body.indexOf("\"", start);
             return end > start ? body.substring(start, end) : "unknown";
           }
@@ -101,6 +106,8 @@ public class ReminderEmailService {
           LOG.errorf("Fehler beim Abrufen des Resend-Status: %s", e.getMessage());
           return "unknown";
         });
+
+    return ctx != null ? result.emitOn(cmd -> ctx.runOnContext(v -> cmd.run())) : result;
   }
 
   private String extractResendId(String body) {

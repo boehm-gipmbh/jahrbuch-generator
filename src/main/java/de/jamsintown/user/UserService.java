@@ -19,6 +19,11 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class UserService {
 
+  private static final org.jboss.logging.Logger LOG = org.jboss.logging.Logger.getLogger(UserService.class);
+
+  @Inject
+  UserService self;
+
   private final JsonWebToken jwt;
   private final ReminderEmailService reminderEmailService;
 
@@ -26,6 +31,17 @@ public class UserService {
   public UserService(JsonWebToken jwt, ReminderEmailService reminderEmailService) {
     this.jwt = jwt;
     this.reminderEmailService = reminderEmailService;
+  }
+
+  @WithTransaction
+  public Uni<Void> persistReminderResendId(long sendId, String resendId) {
+    if (resendId == null) return Uni.createFrom().voidItem();
+    return ReminderSend.<ReminderSend>findById(sendId)
+        .chain(s -> {
+          if (s == null) return Uni.createFrom().voidItem();
+          s.resendMessageId = resendId;
+          return s.<ReminderSend>persistAndFlush().replaceWithVoid();
+        });
   }
 
   public Uni<User> findById(long id) {
@@ -195,13 +211,17 @@ public class UserService {
                 if (target.email == null || target.email.isBlank()) {
                   throw new ClientErrorException("User hat keine E-Mail-Adresse", Response.Status.BAD_REQUEST);
                 }
-                return reminderEmailService.sendReminderMail(target, groupName)
-                    .chain(resendId -> {
-                      ReminderSend send = new ReminderSend();
-                      send.user = target;
-                      send.resendMessageId = resendId;
-                      return send.<ReminderSend>persistAndFlush().replaceWithVoid();
-                    });
+                ReminderSend send = new ReminderSend();
+                send.user = target;
+                return send.<ReminderSend>persistAndFlush()
+                    .invoke(savedSend -> {
+                      reminderEmailService.sendReminderMail(target, groupName)
+                          .chain(resendId -> self.persistReminderResendId(savedSend.id, resendId))
+                          .subscribe().with(
+                              v -> LOG.infof("Reminder an %s gesendet", target.email),
+                              err -> LOG.errorf("Reminder an %s fehlgeschlagen: %s", target.email, err.getMessage()));
+                    })
+                    .replaceWithVoid();
               });
             }));
   }
@@ -220,30 +240,40 @@ public class UserService {
   }
 
   @WithSession
-  public Uni<java.util.Map<String, String>> getReminderSendStatus(long sendId) {
+  public Uni<String[]> loadReminderSendFields(long sendId) {
     return ReminderSend.<ReminderSend>findById(sendId)
         .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
-        .chain(s -> reminderEmailService.getDeliveryStatus(s.resendMessageId)
+        .map(s -> new String[]{String.valueOf(s.id), s.sentAt.toString(), s.resendMessageId});
+  }
+
+  public Uni<java.util.Map<String, String>> getReminderSendStatus(long sendId) {
+    return self.loadReminderSendFields(sendId)
+        .chain(fields -> reminderEmailService.getDeliveryStatus(fields[2])
             .map(status -> {
               java.util.Map<String, String> m = new java.util.LinkedHashMap<>();
-              m.put("id", String.valueOf(s.id));
-              m.put("sentAt", s.sentAt.toString());
-              m.put("resendMessageId", s.resendMessageId != null ? s.resendMessageId : "");
+              m.put("id", fields[0]);
+              m.put("sentAt", fields[1]);
+              m.put("resendMessageId", fields[2] != null ? fields[2] : "");
               m.put("status", status);
               return m;
             }));
   }
 
   @WithSession
-  public Uni<java.util.Map<String, String>> getReminderStatus(long userId) {
+  public Uni<String[]> loadLatestReminderSend(long userId) {
     return ReminderSend.<ReminderSend>find("user.id = ?1 ORDER BY sentAt DESC", userId)
         .firstResult()
-        .chain(send -> {
-          if (send == null) return Uni.createFrom().item(java.util.Map.of("status", "never_sent"));
-          return reminderEmailService.getDeliveryStatus(send.resendMessageId)
+        .map(s -> s == null ? null : new String[]{s.sentAt.toString(), s.resendMessageId});
+  }
+
+  public Uni<java.util.Map<String, String>> getReminderStatus(long userId) {
+    return self.loadLatestReminderSend(userId)
+        .chain(fields -> {
+          if (fields == null) return Uni.createFrom().item(java.util.Map.of("status", "never_sent"));
+          return reminderEmailService.getDeliveryStatus(fields[1])
               .map(status -> java.util.Map.of(
-                  "sentAt", send.sentAt.toString(),
-                  "resendMessageId", send.resendMessageId != null ? send.resendMessageId : "",
+                  "sentAt", fields[0],
+                  "resendMessageId", fields[1] != null ? fields[1] : "",
                   "status", status
               ));
         });
