@@ -449,14 +449,19 @@ public class InvitationTokenService {
   }
 
   @WithSession
-  public Uni<java.util.Map<String, String>> getSendStatus(long sendId) {
+  public Uni<String[]> loadSendFields(long sendId) {
     return InvitationSend.<InvitationSend>findById(sendId)
         .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
-        .chain(send -> invitationEmailService.getDeliveryStatus(send.resendMessageId)
+        .map(s -> new String[]{String.valueOf(s.id), s.sentTo, s.resendMessageId});
+  }
+
+  public Uni<java.util.Map<String, String>> getSendStatus(long sendId) {
+    return self.loadSendFields(sendId)
+        .chain(fields -> invitationEmailService.getDeliveryStatus(fields[2])
             .map(status -> java.util.Map.of(
-                "sendId", String.valueOf(send.id),
-                "sentTo", send.sentTo,
-                "resendMessageId", send.resendMessageId != null ? send.resendMessageId : "",
+                "sendId", fields[0],
+                "sentTo", fields[1],
+                "resendMessageId", fields[2] != null ? fields[2] : "",
                 "status", status
             )));
   }
