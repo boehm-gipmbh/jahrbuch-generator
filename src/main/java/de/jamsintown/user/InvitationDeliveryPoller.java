@@ -27,12 +27,15 @@ public class InvitationDeliveryPoller {
   record PendingSend(long id, String resendMessageId) {}
 
   @Scheduled(every = "5m", delayed = "2m")
-  public void poll() {
-    self.loadPending()
+  public Uni<Void> poll() {
+    return self.loadPending()
         .chain(sends -> processAll(sends, 0))
-        .subscribe().with(
-            count -> { if (count > 0) LOG.infof("Delivery-Status für %d Sends aktualisiert", count); },
-            err -> LOG.errorf("Delivery-Status-Poll fehlgeschlagen: %s", err.getMessage()));
+        .invoke(count -> { if (count > 0) LOG.infof("Delivery-Status für %d Sends aktualisiert", count); })
+        .replaceWithVoid()
+        .onFailure().recoverWithItem(err -> {
+          LOG.errorf("Delivery-Status-Poll fehlgeschlagen: %s", err.getMessage());
+          return null;
+        });
   }
 
   @WithSession
