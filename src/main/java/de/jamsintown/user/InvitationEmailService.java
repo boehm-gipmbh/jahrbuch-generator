@@ -98,8 +98,7 @@ public class InvitationEmailService {
             int start = body.indexOf("\"last_event\":\"");
             if (start < 0) start = body.indexOf("\"status\":\"");
             if (start < 0) return "unknown";
-            start = body.indexOf("\"", start) + 1;
-            start = body.indexOf("\"", start) + 1;
+            start = body.indexOf(":\"", start) + 2;
             int end = body.indexOf("\"", start);
             return end > start ? body.substring(start, end) : "unknown";
           }
