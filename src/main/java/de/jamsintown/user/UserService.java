@@ -57,7 +57,7 @@ public class UserService {
     // activeGroup explizit via LEFT JOIN FETCH laden — Hibernate Reactive
     // ignoriert FetchType.EAGER für @ManyToOne außerhalb einer offenen Session.
     return User.<User>find(
-        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup LEFT JOIN FETCH u.managedGroups LEFT JOIN FETCH u.usedInvitation WHERE u.name = ?1", name.toLowerCase())
+        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup LEFT JOIN FETCH u.managedGroups LEFT JOIN FETCH u.usedInvitation WHERE u.name = ?1", name.toLowerCase())
         .list()
         .map(users -> {
           if (users.isEmpty()) return null;
@@ -179,12 +179,19 @@ public class UserService {
         }));
   }
 
+  private Uni<User> findByIdWithManagedGroups(long id) {
+    return User.<User>find(
+        "FROM User u LEFT JOIN FETCH u.managedGroups WHERE u.id = ?1", id
+    ).list().map(users -> users.isEmpty() ? null : users.get(0));
+  }
+
   @WithTransaction
   public Uni<User> promoteToGroupAdmin(long id, long groupId) {
     return assertGroupAdminCanActOn(id)
         .chain(__ -> Gruppe.<Gruppe>findById(groupId)
             .onItem().ifNull().failWith(() -> new ClientErrorException(Response.Status.NOT_FOUND))
-            .chain(gruppe -> findById(id).chain(u -> {
+            .chain(gruppe -> findByIdWithManagedGroups(id).chain(u -> {
+              if (u == null) throw new ObjectNotFoundException(id, "User");
               if (u.roles == null || !u.roles.contains("group-admin")) {
                 u.roles = new ArrayList<>(u.roles != null ? u.roles : List.of());
                 u.roles.add("group-admin");
@@ -199,7 +206,8 @@ public class UserService {
   @WithTransaction
   public Uni<User> demoteFromGroupAdmin(long id) {
     return assertGroupAdminCanActOn(id)
-        .chain(__ -> findById(id).chain(u -> {
+        .chain(__ -> findByIdWithManagedGroups(id).chain(u -> {
+          if (u == null) throw new ObjectNotFoundException(id, "User");
           u.roles = u.roles == null ? List.of() : u.roles.stream()
               .filter(r -> !"group-admin".equals(r))
               .collect(Collectors.toList());

@@ -503,7 +503,7 @@ public class InvitationTokenService {
 
   private Uni<User> findUserByNameWithGroups(String name) {
     return User.<User>find(
-        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup LEFT JOIN FETCH u.managedGroups WHERE u.name = ?1", name.toLowerCase()
+        "SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup LEFT JOIN FETCH u.managedGroup LEFT JOIN FETCH u.managedGroups WHERE u.name = ?1", name.toLowerCase()
     ).list().map(users -> users.isEmpty() ? null : users.get(0));
   }
 
