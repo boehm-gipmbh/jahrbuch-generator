@@ -28,9 +28,12 @@ public class GatewayResource {
   @Path("/{fileName:.+}")
   public RestResponse<InputStream> getFrontendStaticFile(@PathParam("fileName") String fileName) throws IOException {
     final InputStream requestedFileStream = GatewayResource.class.getResourceAsStream("/frontend/" + fileName);
-    final InputStream inputStream;
-    inputStream = Objects.requireNonNullElseGet(requestedFileStream, () ->
-      GatewayResource.class.getResourceAsStream(FALLBACK_RESOURCE));
+    final InputStream inputStream = requestedFileStream != null
+        ? requestedFileStream
+        : GatewayResource.class.getResourceAsStream(FALLBACK_RESOURCE);
+    if (inputStream == null) {
+      return RestResponse.notFound();
+    }
     return RestResponse.ResponseBuilder
       .ok(inputStream)
       .cacheControl(CacheControl.valueOf("max-age=900"))
