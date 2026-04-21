@@ -26,9 +26,11 @@ public class VideoService {
                 .chain(user -> {
                     Gruppe g = user.activeGroup;
                     if (g != null) {
-                        return Video.<Video>find("group = ?1 and deleted = false", g).list();
+                        return Video.<Video>find(
+                                "SELECT DISTINCT v FROM Video v LEFT JOIN FETCH v.story WHERE v.group = ?1 AND v.deleted = false", g).list();
                     }
-                    return Video.<Video>find("user = ?1 and group is null and deleted = false", user).list();
+                    return Video.<Video>find(
+                            "SELECT DISTINCT v FROM Video v LEFT JOIN FETCH v.story WHERE v.user = ?1 AND v.group IS NULL AND v.deleted = false", user).list();
                 });
     }
 
@@ -94,9 +96,11 @@ public class VideoService {
                 .chain(user -> {
                     Gruppe g = user.activeGroup;
                     if (g != null) {
-                        return Video.<Video>find("group = ?1 and deleted = true", g).list();
+                        return Video.<Video>find(
+                                "SELECT DISTINCT v FROM Video v LEFT JOIN FETCH v.story WHERE v.group = ?1 AND v.deleted = true", g).list();
                     }
-                    return Video.<Video>find("user = ?1 and group is null and deleted = true", user).list();
+                    return Video.<Video>find(
+                            "SELECT DISTINCT v FROM Video v LEFT JOIN FETCH v.story WHERE v.user = ?1 AND v.group IS NULL AND v.deleted = true", user).list();
                 });
     }
 
