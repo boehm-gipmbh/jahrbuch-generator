@@ -74,6 +74,22 @@ public class VideoService {
     }
 
     @WithTransaction
+    public Uni<Video> update(Video incoming) {
+        return findById(incoming.id)
+                .chain(video -> Video.getSession())
+                .chain(s -> s.merge(incoming));
+    }
+
+    @WithTransaction
+    public Uni<Boolean> setComplete(long id, boolean complete) {
+        return findById(id)
+                .chain(video -> {
+                    video.complete = complete;
+                    return video.persistAndFlush().map(v -> ((Video) v).complete);
+                });
+    }
+
+    @WithTransaction
     public Uni<Void> softDelete(long id) {
         return findById(id)
                 .chain(video -> {

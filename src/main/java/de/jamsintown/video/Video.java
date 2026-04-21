@@ -50,4 +50,7 @@ public class Video extends PanacheEntity {
 
     @Column(nullable = false)
     public boolean deleted = false;
+
+    @Column(nullable = false)
+    public boolean complete = false;
 }

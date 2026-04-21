@@ -42,6 +42,23 @@ public class VideoResource {
         return videoService.listForUser();
     }
 
+    @PUT
+    @Path("/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Video> update(@PathParam("id") Long id, Video video) {
+        video.id = id;
+        return videoService.update(video);
+    }
+
+    @PUT
+    @Path("/{id}/complete")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Boolean> setComplete(@PathParam("id") long id, boolean complete) {
+        return videoService.setComplete(id, complete);
+    }
+
     @DELETE
     @Path("/{id}")
     public Uni<Void> delete(@PathParam("id") long id) {
