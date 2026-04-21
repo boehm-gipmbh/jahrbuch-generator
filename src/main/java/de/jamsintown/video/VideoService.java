@@ -1,0 +1,110 @@
+package de.jamsintown.video;
+
+import de.jamsintown.user.Gruppe;
+import de.jamsintown.user.UserService;
+import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
+import io.quarkus.security.ForbiddenException;
+import io.smallrye.mutiny.Uni;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.hibernate.ObjectNotFoundException;
+
+import java.util.List;
+
+@ApplicationScoped
+public class VideoService {
+
+    private final UserService userService;
+
+    @Inject
+    public VideoService(UserService userService) {
+        this.userService = userService;
+    }
+
+    public Uni<List<Video>> listForUser() {
+        return userService.getCurrentUser()
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    if (g != null) {
+                        return Video.<Video>find("group = ?1 and deleted = false", g).list();
+                    }
+                    return Video.<Video>find("user = ?1 and group is null and deleted = false", user).list();
+                });
+    }
+
+    public Uni<Video> findById(Long id) {
+        return userService.getCurrentUser()
+                .chain(user -> Video.<Video>find(
+                        "FROM Video v JOIN FETCH v.user u LEFT JOIN FETCH u.groups WHERE v.id = ?1", id)
+                        .firstResult()
+                        .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Video"))
+                        .onItem().invoke(video -> {
+                            Gruppe g = user.activeGroup;
+                            boolean inGroup = g != null && video.user.groups.stream()
+                                    .anyMatch(gr -> g.id != null && g.id.equals(gr.id));
+                            if (!user.id.equals(video.user.id) && !inGroup) {
+                                throw new ForbiddenException("Access denied to video with id: " + id);
+                            }
+                        }));
+    }
+
+    public Uni<Video> findByPfad(String pfad) {
+        return userService.getCurrentUser()
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    Uni<Video> query;
+                    if (g != null) {
+                        query = Video.<Video>find("pfad = ?1 and (user = ?2 or group = ?3)", pfad, user, g).firstResult();
+                    } else {
+                        query = Video.<Video>find("pfad = ?1 and user = ?2", pfad, user).firstResult();
+                    }
+                    return query.onItem().ifNull().failWith(
+                            () -> new ObjectNotFoundException((java.io.Serializable) pfad, "Video"));
+                });
+    }
+
+    @WithTransaction
+    public Uni<Video> create(Video video) {
+        return userService.getCurrentUser()
+                .chain(user -> {
+                    video.user = user;
+                    video.group = user.activeGroup;
+                    return video.persistAndFlush();
+                });
+    }
+
+    @WithTransaction
+    public Uni<Void> softDelete(long id) {
+        return findById(id)
+                .chain(video -> {
+                    video.deleted = true;
+                    video.story = null;
+                    return video.persistAndFlush().replaceWithVoid();
+                });
+    }
+
+    @WithTransaction
+    public Uni<Video> restore(long id) {
+        return findByIdIncludeDeleted(id)
+                .chain(video -> {
+                    video.deleted = false;
+                    return video.persistAndFlush();
+                });
+    }
+
+    protected Uni<Video> findByIdIncludeDeleted(Long id) {
+        return userService.getCurrentUser()
+                .chain(user -> Video.<Video>find(
+                        "FROM Video v JOIN FETCH v.user u LEFT JOIN FETCH u.groups WHERE v.id = ?1", id)
+                        .firstResult()
+                        .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Video"))
+                        .onItem().invoke(video -> {
+                            Gruppe g = user.activeGroup;
+                            boolean inGroup = g != null && video.user.groups.stream()
+                                    .anyMatch(gr -> g.id != null && g.id.equals(gr.id));
+                            if (!user.id.equals(video.user.id) && !inGroup) {
+                                throw new ForbiddenException("Access denied to video with id: " + id);
+                            }
+                        }));
+    }
+}

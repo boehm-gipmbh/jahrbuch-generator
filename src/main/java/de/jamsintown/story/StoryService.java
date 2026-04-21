@@ -2,6 +2,7 @@ package de.jamsintown.story;
 
 import de.jamsintown.bild.Bild;
 import de.jamsintown.text.Text;
+import de.jamsintown.video.Video;
 import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
@@ -116,6 +117,8 @@ public class StoryService {
                 int pos = colCounters.merge(item.column, 0, (old, x) -> old + 1);
                 if ("bild".equals(item.type)) {
                     updates.add(Bild.update("storyPosition = ?1, storyColumn = ?2 where id = ?3", pos, item.column, item.id));
+                } else if ("video".equals(item.type)) {
+                    updates.add(Video.update("storyPosition = ?1, storyColumn = ?2 where id = ?3", pos, item.column, item.id));
                 } else {
                     updates.add(Text.update("storyPosition = ?1, storyColumn = ?2 where id = ?3", pos, item.column, item.id));
                 }
