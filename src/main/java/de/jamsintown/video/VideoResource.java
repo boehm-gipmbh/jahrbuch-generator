@@ -73,6 +73,19 @@ public class VideoResource {
     }
 
     @GET
+    @Path("/papierkorb")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<List<Video>> papierkorb() {
+        return videoService.listDeleted();
+    }
+
+    @DELETE
+    @Path("/{id}/hard")
+    public Uni<Void> hardDelete(@PathParam("id") long id) {
+        return videoService.hardDelete(id);
+    }
+
+    @GET
     @Path("/extern/{pfad:.*}")
     public Uni<Response> streamVideo(@PathParam("pfad") String pfad,
                                       @HeaderParam("Range") String rangeHeader) {

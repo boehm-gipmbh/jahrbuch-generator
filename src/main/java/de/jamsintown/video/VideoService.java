@@ -89,6 +89,23 @@ public class VideoService {
                 });
     }
 
+    public Uni<List<Video>> listDeleted() {
+        return userService.getCurrentUser()
+                .chain(user -> {
+                    Gruppe g = user.activeGroup;
+                    if (g != null) {
+                        return Video.<Video>find("group = ?1 and deleted = true", g).list();
+                    }
+                    return Video.<Video>find("user = ?1 and group is null and deleted = true", user).list();
+                });
+    }
+
+    @WithTransaction
+    public Uni<Void> hardDelete(long id) {
+        return findByIdIncludeDeleted(id)
+                .chain(video -> video.delete().replaceWithVoid());
+    }
+
     @WithTransaction
     public Uni<Void> softDelete(long id) {
         return findById(id)
