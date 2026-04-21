@@ -1,5 +1,6 @@
 package de.jamsintown.bild;
 
+import de.jamsintown.config.AppConfigService;
 import io.smallrye.mutiny.Uni;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
@@ -9,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
-import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,14 +39,18 @@ class ExterneBilderResourceTest {
         }
     };
 
+    private AppConfigService configFor(String path) {
+        return new AppConfigService() {
+            @Override
+            public Uni<String> getValue(String key) {
+                return Uni.createFrom().item(path);
+            }
+        };
+    }
+
     @BeforeEach
     void setUp() throws Exception {
-        resource = new ExterneBilderResource(AUTHORIZED_SERVICE);
-
-        // capturesPath manuell setzen
-        Field capturesPathField = ExterneBilderResource.class.getDeclaredField("capturesPath");
-        capturesPathField.setAccessible(true);
-        capturesPathField.set(resource, tempDir.toString());
+        resource = new ExterneBilderResource(AUTHORIZED_SERVICE, configFor(tempDir.toString()));
 
         // Testdateien erstellen
         createTestFile("testbild.jpg", "JPEG-Testdaten");
@@ -95,11 +99,9 @@ class ExterneBilderResourceTest {
     }
 
     @Test
-    void getBild_nichtAuthorisiert_liefert403() throws Exception {
-        ExterneBilderResource unauthorizedResource = new ExterneBilderResource(UNAUTHORIZED_SERVICE);
-        Field capturesPathField = ExterneBilderResource.class.getDeclaredField("capturesPath");
-        capturesPathField.setAccessible(true);
-        capturesPathField.set(unauthorizedResource, tempDir.toString());
+    void getBild_nichtAuthorisiert_liefert403() {
+        ExterneBilderResource unauthorizedResource =
+                new ExterneBilderResource(UNAUTHORIZED_SERVICE, configFor(tempDir.toString()));
 
         Response response = unauthorizedResource.getBild("testbild.jpg", false).await().indefinitely();
 
