@@ -1,30 +1,26 @@
 package de.jamsintown.video;
 
-import jakarta.annotation.Priority;
-import jakarta.ws.rs.Priorities;
-import jakarta.ws.rs.container.ContainerRequestContext;
-import jakarta.ws.rs.container.ContainerRequestFilter;
-import jakarta.ws.rs.container.PreMatching;
-import jakarta.ws.rs.ext.Provider;
+import io.quarkus.vertx.http.runtime.filters.RouteFilter;
+import io.vertx.ext.web.RoutingContext;
+import jakarta.enterprise.context.ApplicationScoped;
 
 /**
  * Erlaubt Video-Streaming via ?token= Query-Param statt Authorization-Header,
  * damit der Browser <video src="...?token=jwt"> nativ mit Range-Requests streamen kann.
+ * Muss auf Vert.x-Ebene laufen (vor der JWT-Prüfung).
  */
-@Provider
-@PreMatching
-@Priority(Priorities.AUTHENTICATION - 10)
-public class VideoTokenFilter implements ContainerRequestFilter {
+@ApplicationScoped
+public class VideoTokenFilter {
 
-    @Override
-    public void filter(ContainerRequestContext ctx) {
-        String path = ctx.getUriInfo().getPath();
-        if (!path.contains("/videos/extern/")) return;
-        if (ctx.getHeaderString("Authorization") != null) return;
-
-        String token = ctx.getUriInfo().getQueryParameters().getFirst("token");
-        if (token != null && !token.isBlank()) {
-            ctx.getHeaders().putSingle("Authorization", "Bearer " + token);
+    @RouteFilter(200)
+    public void filter(RoutingContext rc) {
+        String path = rc.request().path();
+        if (path.contains("/videos/extern/") && rc.request().getHeader("Authorization") == null) {
+            String token = rc.request().getParam("token");
+            if (token != null && !token.isBlank()) {
+                rc.request().headers().set("Authorization", "Bearer " + token);
+            }
         }
+        rc.next();
     }
 }
