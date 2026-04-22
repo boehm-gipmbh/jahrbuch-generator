@@ -1,7 +1,6 @@
 package de.jamsintown.video;
 
 import de.jamsintown.config.AppConfigService;
-import io.quarkus.security.ForbiddenException;
 import io.smallrye.jwt.auth.principal.JWTParser;
 import io.smallrye.jwt.auth.principal.ParseException;
 import io.smallrye.mutiny.Uni;
@@ -11,7 +10,6 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import org.hibernate.ObjectNotFoundException;
 
 import java.io.File;
 import java.io.IOException;
@@ -24,16 +22,14 @@ import java.nio.file.Paths;
 @PermitAll
 public class VideoStreamResource {
 
-    private final VideoService videoService;
     private final AppConfigService appConfigService;
     private final JWTParser jwtParser;
     private final String defaultCapturesPath;
 
     @Inject
-    public VideoStreamResource(VideoService videoService, AppConfigService appConfigService,
+    public VideoStreamResource(AppConfigService appConfigService,
                                 JWTParser jwtParser,
                                 @ConfigProperty(name = "jahrbuch.captures.path") String defaultCapturesPath) {
-        this.videoService = videoService;
         this.appConfigService = appConfigService;
         this.jwtParser = jwtParser;
         this.defaultCapturesPath = defaultCapturesPath;
@@ -64,10 +60,7 @@ public class VideoStreamResource {
                                 Response.status(Response.Status.FORBIDDEN).entity("Zugriff verweigert").build());
                     }
 
-                    return videoService.findByPfad("/" + pfad)
-                            .chain(video -> buildVideoResponse(filePath.toFile(), rangeHeader))
-                            .onFailure(e -> e instanceof ObjectNotFoundException || e instanceof ForbiddenException)
-                            .recoverWithItem(Response.status(Response.Status.FORBIDDEN).entity("Zugriff verweigert").build());
+                    return buildVideoResponse(filePath.toFile(), rangeHeader);
                 });
     }
 
