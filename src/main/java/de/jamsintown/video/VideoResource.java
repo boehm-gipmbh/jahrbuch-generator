@@ -2,7 +2,10 @@ package de.jamsintown.video;
 
 import de.jamsintown.config.AppConfigService;
 import io.quarkus.security.ForbiddenException;
+import io.smallrye.jwt.auth.principal.JWTParser;
+import io.smallrye.jwt.auth.principal.ParseException;
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -26,13 +29,16 @@ public class VideoResource {
 
     private final VideoService videoService;
     private final AppConfigService appConfigService;
+    private final JWTParser jwtParser;
     private final String defaultCapturesPath;
 
     @Inject
     public VideoResource(VideoService videoService, AppConfigService appConfigService,
+                          JWTParser jwtParser,
                           @ConfigProperty(name = "jahrbuch.captures.path") String defaultCapturesPath) {
         this.videoService = videoService;
         this.appConfigService = appConfigService;
+        this.jwtParser = jwtParser;
         this.defaultCapturesPath = defaultCapturesPath;
     }
 
@@ -87,8 +93,19 @@ public class VideoResource {
 
     @GET
     @Path("/extern/{pfad:.*}")
+    @PermitAll
     public Uni<Response> streamVideo(@PathParam("pfad") String pfad,
-                                      @HeaderParam("Range") String rangeHeader) {
+                                      @HeaderParam("Range") String rangeHeader,
+                                      @QueryParam("token") String tokenParam) {
+        if (tokenParam != null && !tokenParam.isBlank()) {
+            try {
+                jwtParser.parse(tokenParam);
+            } catch (ParseException e) {
+                return Uni.createFrom().item(Response.status(Response.Status.UNAUTHORIZED).build());
+            }
+        } else {
+            return Uni.createFrom().item(Response.status(Response.Status.UNAUTHORIZED).build());
+        }
         return appConfigService.getValue("jahrbuch.captures.path")
                 .chain(configPath -> {
                     String capturesPath = configPath != null ? configPath : defaultCapturesPath;
