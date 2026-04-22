@@ -26,7 +26,10 @@ public class AuthService {
   }
     @WithSession
   public Uni<String> authenticate(AuthRequest authRequest) {
-    return userService.findByName(authRequest.name())
+    Uni<de.jamsintown.user.User> lookup = authRequest.name().contains("@")
+        ? userService.findByEmail(authRequest.name())
+        : userService.findByName(authRequest.name());
+    return lookup
       .onItem()
       .transform(user -> {
         if (user == null || !UserService.matches(user, authRequest.password())) {
