@@ -25,7 +25,7 @@ primary_region = 'fra'
   processes = ['app']
 
   [http_service.http_options]
-    idle_timeout = 600000
+    idle_timeout = 900
 
 [[vm]]
   memory = '1gb'
