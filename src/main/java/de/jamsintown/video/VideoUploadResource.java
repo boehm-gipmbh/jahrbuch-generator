@@ -15,6 +15,7 @@ import org.jboss.resteasy.reactive.server.multipart.FormValue;
 import org.jboss.resteasy.reactive.server.multipart.MultipartFormDataInput;
 
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -53,6 +54,138 @@ public class VideoUploadResource {
     @Produces(MediaType.APPLICATION_JSON)
     public Uni<Video> uploadVideo(MultipartFormDataInput input) {
         return loadUploadConfig().chain(config -> doUpload(input, config));
+    }
+
+    @POST
+    @Path("/upload/chunk")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Response> uploadChunk(MultipartFormDataInput input) {
+        return loadUploadConfig().chain(config ->
+            userService.getCurrentUser().chain(user -> {
+                try {
+                    Map<String, List<FormValue>> parts = new HashMap<>();
+                    input.getValues().forEach((k, v) -> parts.put(k, new ArrayList<>(v)));
+
+                    String uploadId = getFormValue(parts, "uploadId");
+                    int chunkIndex = Integer.parseInt(getFormValue(parts, "chunkIndex").trim());
+                    int totalChunks = Integer.parseInt(getFormValue(parts, "totalChunks").trim());
+                    String fileName = getFormValue(parts, "fileName");
+
+                    if (!uploadId.matches("[a-zA-Z0-9\\-]{8,64}")) {
+                        return Uni.createFrom().item(
+                            Response.status(400).entity(Map.of("message", "Ungültige Upload-ID")).build());
+                    }
+
+                    List<FormValue> fileParts = parts.get("file");
+                    if (fileParts == null || fileParts.isEmpty()) {
+                        return Uni.createFrom().item(
+                            Response.status(400).entity(Map.of("message", "Kein Chunk")).build());
+                    }
+
+                    java.nio.file.Path tmpDir = Paths.get(config.capturesPath, "videos", "tmp", uploadId);
+                    Files.createDirectories(tmpDir);
+
+                    java.nio.file.Path chunkPath = tmpDir.resolve(String.format("chunk_%05d", chunkIndex));
+                    try (InputStream is = fileParts.get(0).getFileItem().getInputStream()) {
+                        Files.copy(is, chunkPath, StandardCopyOption.REPLACE_EXISTING);
+                    }
+
+                    long receivedCount = Files.list(tmpDir)
+                        .filter(p -> p.getFileName().toString().startsWith("chunk_"))
+                        .count();
+
+                    if (receivedCount >= totalChunks) {
+                        return assembleAndCreate(uploadId, totalChunks, fileName, config, user, parts);
+                    }
+
+                    return Uni.createFrom().item(
+                        Response.ok(Map.of("received", chunkIndex, "total", totalChunks)).build());
+
+                } catch (Exception e) {
+                    log.error("Chunk-Upload Fehler: {}", e.getMessage(), e);
+                    return Uni.createFrom().item(
+                        Response.serverError().entity(Map.of("message", "Chunk-Fehler: " + e.getMessage())).build());
+                }
+            })
+        );
+    }
+
+    private Uni<Response> assembleAndCreate(String uploadId, int totalChunks, String fileName,
+                                             UploadConfig config, de.jamsintown.user.User user,
+                                             Map<String, List<FormValue>> parts) {
+        try {
+            String title = getFormValue(parts, "title");
+            String description = getFormValue(parts, "description");
+            String storyIdStr = getFormValue(parts, "storyId");
+
+            String ext = getFileExtension(fileName != null && !fileName.isBlank() ? fileName : "video.mp4");
+            if (!isAllowedType(ext, config.allowedTypes)) {
+                cleanupTmp(config.capturesPath, uploadId);
+                return Uni.createFrom().item(
+                    Response.status(400).entity(Map.of("message", "Nicht erlaubter Typ: " + ext)).build());
+            }
+
+            String subDir = (user.activeGroup != null)
+                ? "videos/gruppen/" + user.activeGroup.id + "/"
+                : "videos/ungrouped/";
+
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+            String uniqueFileName = timestamp + "_" + UUID.randomUUID() + ext;
+
+            java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
+            Files.createDirectories(dirPath);
+            java.nio.file.Path finalPath = dirPath.resolve(uniqueFileName);
+
+            java.nio.file.Path tmpDir = Paths.get(config.capturesPath, "videos", "tmp", uploadId);
+            try (OutputStream out = Files.newOutputStream(finalPath)) {
+                for (int i = 0; i < totalChunks; i++) {
+                    java.nio.file.Path chunkPath = tmpDir.resolve(String.format("chunk_%05d", i));
+                    Files.copy(chunkPath, out);
+                }
+            }
+
+            cleanupTmp(config.capturesPath, uploadId);
+
+            Video video = new Video();
+            video.pfad = "/" + subDir + uniqueFileName;
+            video.title = title != null && !title.isBlank() ? title : fileName;
+            video.description = description;
+            video.priority = 3;
+
+            Long storyId = null;
+            if (storyIdStr != null && !storyIdStr.isBlank()) {
+                try { storyId = Long.parseLong(storyIdStr); } catch (NumberFormatException ignored) {}
+            }
+
+            final Long sid = storyId;
+            if (sid != null) {
+                return storyService.findById(sid).chain(story -> {
+                    if (story != null) video.story = story;
+                    return videoService.create(video);
+                }).map(v -> Response.ok(v).build());
+            }
+            return videoService.create(video).map(v -> Response.ok(v).build());
+
+        } catch (Exception e) {
+            log.error("Assembly-Fehler: {}", e.getMessage(), e);
+            cleanupTmp(config.capturesPath, uploadId);
+            return Uni.createFrom().item(
+                Response.serverError().entity(Map.of("message", "Assembly-Fehler: " + e.getMessage())).build());
+        }
+    }
+
+    private void cleanupTmp(String capturesPath, String uploadId) {
+        try {
+            java.nio.file.Path tmpDir = Paths.get(capturesPath, "videos", "tmp", uploadId);
+            if (Files.exists(tmpDir)) {
+                Files.walk(tmpDir)
+                    .sorted(Comparator.reverseOrder())
+                    .forEach(p -> { try { Files.delete(p); } catch (Exception ignored) {} });
+            }
+        } catch (Exception e) {
+            log.warn("Tmp-Verzeichnis konnte nicht gelöscht werden: {}", e.getMessage());
+        }
     }
 
     private Uni<UploadConfig> loadUploadConfig() {
