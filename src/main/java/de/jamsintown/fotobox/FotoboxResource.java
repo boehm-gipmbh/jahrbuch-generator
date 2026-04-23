@@ -40,6 +40,9 @@ public class FotoboxResource {
     @ConfigProperty(name = "jahrbuch.fotobox.capture-user", defaultValue = "admin")
     String captureUser;
 
+    @ConfigProperty(name = "jahrbuch.fotobox.token", defaultValue = "")
+    String fotoboxToken;
+
     private final CaptureService captureService;
     private final UserService userService;
     private final AppConfigService appConfigService;
@@ -93,6 +96,16 @@ public class FotoboxResource {
                         .map(b -> b.pfad)
                         .toList())
                 .map(pfade -> new FotoboxStateDTO(capturesStation, connected, model, pfade));
+    }
+
+    @GET
+    @Path("/station-token")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getStationToken() {
+        if (fotoboxToken == null || fotoboxToken.isBlank()) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        return Response.ok("{\"token\":\"" + fotoboxToken + "\"}").build();
     }
 
     @GET
