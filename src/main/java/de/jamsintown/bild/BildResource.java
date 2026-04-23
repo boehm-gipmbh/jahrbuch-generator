@@ -2,7 +2,6 @@ package de.jamsintown.bild;
 
 import de.jamsintown.capture.CaptureService;
 import de.jamsintown.config.main.ImageSettings;
-import de.jamsintown.dtos.CaptureConfigDTO;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -17,9 +16,6 @@ import java.util.List;
 @RolesAllowed("user")
 public class BildResource {
 
-    @ConfigProperty
-    (name = "jahrbuch.captures.station", defaultValue = "false")
-    boolean capturesStation;
     private final BildService bildService;
     private final CaptureService captureService;
 
@@ -99,10 +95,4 @@ public class BildResource {
         return captureService.create(imageSettings);
     }
 
-    @GET
-    @Path("/capture/config")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Uni<CaptureConfigDTO> getCaptureConfig() {
-        return Uni.createFrom().item(new CaptureConfigDTO(capturesStation));
-    }
 }

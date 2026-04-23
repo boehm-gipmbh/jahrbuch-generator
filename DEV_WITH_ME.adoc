@@ -156,6 +156,44 @@ Optional: Zielverzeichnis als Argument angeben (Standard: `./captures`):
 ./fly-captures-download.sh ./captures-backup-prod-$(date +%Y%m%d_%H%M%S)
 ----
 
+== Frontend-Submodul: Pointer manuell aktualisieren
+
+Das Frontend (`src/main/frontend`) ist ein Git-Submodul. Das Hauptrepo speichert nur einen Commit-Hash des Frontend-Repos — den "Pointer". Dieser wird normalerweise automatisch per CI/CD-Workflow gesetzt, sobald ein Frontend-PR auf `master` gemergt wird.
+
+Wenn Frontend-Änderungen lokal (ohne CI/CD) gemacht und gepusht werden, muss der Pointer im Hauptrepo manuell nachgezogen werden.
+
+=== Submodul-Pointer aktualisieren
+
+[source,bash]
+----
+# 1. Im Frontend-Verzeichnis committen und pushen
+cd src/main/frontend
+git add .
+git commit -m "feat: meine Änderung"
+git push
+
+# 2. Zurück ins Hauptrepo, Pointer per -a mitnehmen
+cd ../../..
+git commit -am "chore: Submodul-Pointer auf Frontend $(git -C src/main/frontend rev-parse --short HEAD)"
+
+# 3. Push
+git push
+----
+
+NOTE: Das `-a` in Schritt 2 staged automatisch alle bereits getrackten Änderungen — das Submodul zählt dazu. Neue (untracked) Dateien werden dabei nicht erfasst.
+
+IMPORTANT: Submodul-Pointer-Commits dürfen **nur auf `main`** gemacht werden, nie auf Feature-Branches. Der Auto-CI/CD-Workflow setzt den Pointer nach jedem Frontend-Merge ebenfalls auf `main`. Zwei konkurrierende Pointer-Commits auf Feature-Branch und `main` erzeugen beim Rebase zwangsläufig Merge-Konflikte.
+
+=== Wo steckt der Pointer?
+
+[source,bash]
+----
+git ls-tree HEAD src/main/frontend
+# → 160000 commit abc1234...  src/main/frontend
+----
+
+Der Modus `160000` zeigt: kein normaler Blob, sondern ein Submodul-Commit.
+
 == Native Image lokal testen
 
 === 1. Fly.io DB-Proxy starten
