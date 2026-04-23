@@ -5,6 +5,7 @@ import de.jamsintown.dtos.FotoboxTokenDTO;
 import de.jamsintown.dtos.FotoboxTokenRequest;
 import de.jamsintown.fotobox.FotoboxTokenService;
 import io.quarkus.hibernate.reactive.panache.common.WithSession;
+import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -31,6 +32,15 @@ public class GruppeResource {
     @WithSession
     public Uni<List<Gruppe>> list() {
         return Gruppe.listAll();
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @RolesAllowed("admin")
+    @WithTransaction
+    public Uni<Gruppe> create(Gruppe gruppe) {
+        return gruppe.persistAndFlush();
     }
 
     @POST

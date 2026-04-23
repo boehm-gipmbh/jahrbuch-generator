@@ -18,6 +18,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import java.util.Optional;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.io.File;
@@ -40,8 +42,8 @@ public class FotoboxResource {
     @ConfigProperty(name = "jahrbuch.fotobox.capture-user", defaultValue = "admin")
     String captureUser;
 
-    @ConfigProperty(name = "jahrbuch.fotobox.token", defaultValue = "")
-    String fotoboxToken;
+    @ConfigProperty(name = "jahrbuch.fotobox.token")
+    Optional<String> fotoboxToken;
 
     private final CaptureService captureService;
     private final UserService userService;
@@ -102,10 +104,16 @@ public class FotoboxResource {
     @Path("/station-token")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getStationToken() {
-        if (fotoboxToken == null || fotoboxToken.isBlank()) {
-            return Response.status(Response.Status.NOT_FOUND).build();
-        }
-        return Response.ok("{\"token\":\"" + fotoboxToken + "\"}").build();
+        return fotoboxToken
+                .map(t -> Response.ok("{\"token\":\"" + t + "\"}").build())
+                .orElse(Response.status(Response.Status.NOT_FOUND).build());
+    }
+
+    private Long extractGroupId() {
+        Object raw = jwt.getClaim("group_id");
+        if (raw == null) return null;
+        if (raw instanceof Number) return ((Number) raw).longValue();
+        try { return Long.parseLong(raw.toString()); } catch (NumberFormatException e) { return null; }
     }
 
     @GET
@@ -114,7 +122,7 @@ public class FotoboxResource {
     @RolesAllowed("fotobox")
     @WithSession
     public Uni<FotoboxConfigDTO> getConfig() {
-        Long groupId = jwt.getClaim("group_id");
+        Long groupId = extractGroupId();
         if (groupId == null) {
             return Uni.createFrom().failure(new ForbiddenException("Kein group_id im Token"));
         }
@@ -130,7 +138,7 @@ public class FotoboxResource {
     @RolesAllowed("fotobox")
     @WithSession
     public Uni<Bild> capture(ImageSettings imageSettings) {
-        Long groupId = jwt.getClaim("group_id");
+        Long groupId = extractGroupId();
         if (groupId == null) {
             return Uni.createFrom().failure(new ForbiddenException("Kein group_id im Token"));
         }
