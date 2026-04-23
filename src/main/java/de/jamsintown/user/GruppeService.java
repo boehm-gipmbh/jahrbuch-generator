@@ -9,6 +9,14 @@ import jakarta.ws.rs.core.Response;
 @ApplicationScoped
 public class GruppeService {
 
+  /** Legt eine neue Gruppe an. */
+  @WithTransaction
+  public Uni<Gruppe> create(String name) {
+    Gruppe g = new Gruppe();
+    g.name = name;
+    return g.persistAndFlush();
+  }
+
   /** Findet eine Gruppe anhand des Namens oder legt sie neu an. */
   @WithTransaction
   public Uni<Gruppe> findOrCreate(String name) {

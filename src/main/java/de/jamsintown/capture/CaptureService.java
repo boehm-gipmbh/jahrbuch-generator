@@ -2,6 +2,8 @@ package de.jamsintown.capture;
 
 import de.jamsintown.bild.Bild;
 import de.jamsintown.config.main.ImageSettings;
+import de.jamsintown.user.Gruppe;
+import de.jamsintown.user.User;
 import de.jamsintown.user.UserService;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -33,12 +35,16 @@ public class CaptureService {
     }
 
     public Uni<Bild> create(ImageSettings imageSettings) {
-        return userService.getCurrentUser().chain(user -> createForUser(imageSettings, user));
+        return userService.getCurrentUser().chain(user -> createForUser(imageSettings, user, null));
     }
 
-    public Uni<Bild> createForUser(ImageSettings imageSettings, de.jamsintown.user.User user) {
+    public Uni<Bild> createForUser(ImageSettings imageSettings, User user) {
+        return createForUser(imageSettings, user, null);
+    }
+
+    public Uni<Bild> createForUser(ImageSettings imageSettings, User user, Gruppe gruppe) {
         if (setImageSettings(imageSettings)) {
-            return getBildUniForUser(user);
+            return getBildUniForUser(user, gruppe);
         } else {
             return Uni.createFrom().failure(new RuntimeException("Failed to set image settings"));
         }
@@ -70,7 +76,7 @@ public class CaptureService {
         }
     }
 
-    private Uni<Bild> getBildUniForUser(de.jamsintown.user.User user) {
+    private Uni<Bild> getBildUniForUser(User user, Gruppe gruppe) {
         try {
             ProcessBuilder processBuilder = new ProcessBuilder();
             processBuilder.command("bash", "-c", "gphoto2 --capture-image-and-download --debug --debug-loglevel=\"error\"");
@@ -78,7 +84,6 @@ public class CaptureService {
             Process process = processBuilder.start();
 
             String originalPath = null;
-            String fileName = null;
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -93,19 +98,22 @@ public class CaptureService {
                 if (capturedPath == null) {
                     return Uni.createFrom().failure(new RuntimeException("Konnte kein Bild aufnehmen"));
                 }
-                fileName = Paths.get(capturedPath).getFileName().toString();
+                String fileName = Paths.get(capturedPath).getFileName().toString();
+
+                // Gruppe bestimmen: explizit übergeben > activeGroup des Users > ungrouped
+                Gruppe effectiveGruppe = gruppe != null ? gruppe : user.activeGroup;
+                String subDir = (effectiveGruppe != null)
+                        ? "gruppen/" + effectiveGruppe.id + "/"
+                        : "ungrouped/";
 
                 String finalFileName = fileName;
-                final String capturedFilePath = capturedPath;
+                Gruppe finalGruppe = effectiveGruppe;
                 return Uni.createFrom().item(user).chain(u -> {
-                    String subDir = (u.activeGroup != null)
-                            ? "gruppen/" + u.activeGroup.id + "/"
-                            : "ungrouped/";
                     try {
                         java.nio.file.Path targetDir = Paths.get(capturesPath, subDir);
                         Files.createDirectories(targetDir);
                         java.nio.file.Path targetPath = targetDir.resolve(finalFileName);
-                        Files.move(Paths.get(capturedFilePath), targetPath,
+                        Files.move(Paths.get(capturedPath), targetPath,
                                 java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     } catch (IOException e) {
                         log.warn("Konnte Bild nicht ins Gruppenverzeichnis verschieben: {}", e.getMessage());
@@ -117,18 +125,12 @@ public class CaptureService {
                     bild.title = "Bild mit Titel " + finalFileName;
                     bild.priority = 2;
                     bild.user = u;
+                    bild.group = finalGruppe;
                     return Uni.createFrom().item(bild);
-                }).chain(bild -> {
-                    try {
-                        return bild.persistAndFlush()
-                                .replaceWith(bild)
-                                .invoke(b -> log.info("Bild in der DB gespeichert mit ID: {}", bild.id))
-                                .onFailure().invoke(e -> log.error("Fehler beim Persistieren: {}", e.getMessage(), e));
-                    } catch (Exception e) {
-                        log.error("Fehler beim Persistieren: {}", e.getMessage(), e);
-                        return Uni.createFrom().failure(e);
-                    }
-                });
+                }).chain(bild -> bild.persistAndFlush()
+                        .replaceWith(bild)
+                        .invoke(b -> log.info("Bild in der DB gespeichert mit ID: {}", bild.id))
+                        .onFailure().invoke(e -> log.error("Fehler beim Persistieren: {}", e.getMessage(), e)));
             }
         } catch (InterruptedException | IOException e) {
             log.error("Fehler beim Capture: {}", e.getMessage(), e);
@@ -137,7 +139,6 @@ public class CaptureService {
     }
 
     public String extractPath(String input) {
-        // Deutsch: "Speichere Datei als", Englisch: "Saving file as"
         String regex = "(?:Speichere Datei als|Saving file as) (.+)";
         Pattern pattern = Pattern.compile(regex);
         Matcher matcher = pattern.matcher(input);

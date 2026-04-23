@@ -1,6 +1,5 @@
 package de.jamsintown.bild;
 
-import de.jamsintown.config.AppConfigService;
 import io.smallrye.mutiny.Uni;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
@@ -10,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,18 +39,17 @@ class ExterneBilderResourceTest {
         }
     };
 
-    private AppConfigService configFor(String path) {
-        return new AppConfigService() {
-            @Override
-            public Uni<String> getValue(String key) {
-                return Uni.createFrom().item(path);
-            }
-        };
+    private ExterneBilderResource resourceFor(BildService service, String path) throws Exception {
+        ExterneBilderResource r = new ExterneBilderResource(service);
+        Field f = ExterneBilderResource.class.getDeclaredField("defaultCapturesPath");
+        f.setAccessible(true);
+        f.set(r, path + "/");
+        return r;
     }
 
     @BeforeEach
     void setUp() throws Exception {
-        resource = new ExterneBilderResource(AUTHORIZED_SERVICE, configFor(tempDir.toString()));
+        resource = resourceFor(AUTHORIZED_SERVICE, tempDir.toString());
 
         // Testdateien erstellen
         createTestFile("testbild.jpg", "JPEG-Testdaten");
@@ -99,9 +98,9 @@ class ExterneBilderResourceTest {
     }
 
     @Test
-    void getBild_nichtAuthorisiert_liefert403() {
+    void getBild_nichtAuthorisiert_liefert403() throws Exception {
         ExterneBilderResource unauthorizedResource =
-                new ExterneBilderResource(UNAUTHORIZED_SERVICE, configFor(tempDir.toString()));
+                resourceFor(UNAUTHORIZED_SERVICE, tempDir.toString());
 
         Response response = unauthorizedResource.getBild("testbild.jpg", false).await().indefinitely();
 
