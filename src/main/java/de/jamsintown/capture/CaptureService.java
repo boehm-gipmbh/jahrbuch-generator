@@ -33,8 +33,12 @@ public class CaptureService {
     }
 
     public Uni<Bild> create(ImageSettings imageSettings) {
+        return userService.getCurrentUser().chain(user -> createForUser(imageSettings, user));
+    }
+
+    public Uni<Bild> createForUser(ImageSettings imageSettings, de.jamsintown.user.User user) {
         if (setImageSettings(imageSettings)) {
-            return getBildUni();
+            return getBildUniForUser(user);
         } else {
             return Uni.createFrom().failure(new RuntimeException("Failed to set image settings"));
         }
@@ -66,7 +70,7 @@ public class CaptureService {
         }
     }
 
-    private Uni<Bild> getBildUni() {
+    private Uni<Bild> getBildUniForUser(de.jamsintown.user.User user) {
         try {
             ProcessBuilder processBuilder = new ProcessBuilder();
             processBuilder.command("bash", "-c", "gphoto2 --capture-image-and-download --debug --debug-loglevel=\"error\"");
@@ -93,7 +97,7 @@ public class CaptureService {
 
                 String finalFileName = fileName;
                 final String capturedFilePath = capturedPath;
-                return userService.getCurrentUser().chain(user -> {
+                return Uni.createFrom().item(user).chain(user -> {
                     String subDir = (user.activeGroup != null)
                             ? "gruppen/" + user.activeGroup.id + "/"
                             : "ungrouped/";
