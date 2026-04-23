@@ -97,9 +97,9 @@ public class CaptureService {
 
                 String finalFileName = fileName;
                 final String capturedFilePath = capturedPath;
-                return Uni.createFrom().item(user).chain(user -> {
-                    String subDir = (user.activeGroup != null)
-                            ? "gruppen/" + user.activeGroup.id + "/"
+                return Uni.createFrom().item(user).chain(u -> {
+                    String subDir = (u.activeGroup != null)
+                            ? "gruppen/" + u.activeGroup.id + "/"
                             : "ungrouped/";
                     try {
                         java.nio.file.Path targetDir = Paths.get(capturesPath, subDir);
@@ -113,10 +113,10 @@ public class CaptureService {
                     Bild bild = new Bild();
                     bild.created = ZonedDateTime.now();
                     bild.pfad = "/" + subDir + finalFileName;
-                    bild.description = "Bild von " + user.name + " aufgenommen";
+                    bild.description = "Bild von " + u.name + " aufgenommen";
                     bild.title = "Bild mit Titel " + finalFileName;
                     bild.priority = 2;
-                    bild.user = user;
+                    bild.user = u;
                     return Uni.createFrom().item(bild);
                 }).chain(bild -> {
                     try {

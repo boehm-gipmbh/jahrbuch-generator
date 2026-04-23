@@ -81,7 +81,7 @@ public class FotoboxResource {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
         return Bild.<Bild>listAll()
                 .map(bilder -> bilder.stream()
-                        .filter(b -> b.deleted == null || !b.deleted)
+                        .filter(b -> !b.deleted)
                         .filter(b -> b.created != null &&
                                 b.created.toLocalDate().equals(today))
                         .map(b -> b.pfad)
