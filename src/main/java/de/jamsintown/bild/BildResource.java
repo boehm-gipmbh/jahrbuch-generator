@@ -115,11 +115,13 @@ public class BildResource {
                 Process process = new ProcessBuilder("gphoto2", "--auto-detect").start();
                 String output = new String(process.getInputStream().readAllBytes());
                 process.waitFor();
-                String[] lines = output.lines()
-                        .filter(l -> !l.startsWith("Model") && !l.startsWith("-") && !l.isBlank())
-                        .toArray(String[]::new);
-                if (lines.length > 0) {
-                    String model = lines[0].replaceAll("\\s{2,}.*", "").trim();
+                // Zeilen nach dem Header (Modell + Port durch mind. 2 Leerzeichen getrennt)
+                java.util.Optional<String> cameraLine = output.lines()
+                        .filter(l -> !l.startsWith("Modell") && !l.startsWith("Model") && !l.startsWith("-") && !l.isBlank())
+                        .findFirst();
+                if (cameraLine.isPresent()) {
+                    // Modellname = alles vor mind. 2 aufeinanderfolgenden Leerzeichen
+                    String model = cameraLine.get().replaceAll("  +.*", "").trim();
                     return new de.jamsintown.dtos.CameraStatusDTO(true, model);
                 }
             } catch (Exception ignored) {}
