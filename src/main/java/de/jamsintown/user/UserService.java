@@ -81,6 +81,18 @@ public class UserService {
   }
 
   @WithTransaction
+  public Uni<User> createFotoboxUser(String username) {
+    User user = new User();
+    user.name = username;
+    user.email = username + "@fotobox.system";
+    user.password = BcryptUtil.bcryptHash(java.util.UUID.randomUUID().toString());
+    user.active = true;
+    user.emailVerified = true;
+    user.roles = List.of("user");
+    return user.persistAndFlush();
+  }
+
+  @WithTransaction
   public Uni<User> update(User user) {
     return findById(user.id).chain(u -> {
         user.setPassword(u.password);

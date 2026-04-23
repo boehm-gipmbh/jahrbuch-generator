@@ -7,6 +7,7 @@ import de.jamsintown.config.main.ImageSettings;
 import de.jamsintown.dtos.FotoboxConfigDTO;
 import de.jamsintown.dtos.FotoboxStateDTO;
 import de.jamsintown.user.Gruppe;
+import de.jamsintown.user.GruppeService;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
@@ -39,7 +40,7 @@ public class FotoboxResource {
     @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
     String defaultCapturesPath;
 
-    @ConfigProperty(name = "jahrbuch.fotobox.capture-user", defaultValue = "admin")
+    @ConfigProperty(name = "jahrbuch.fotobox.capture-user", defaultValue = "fotobox")
     String captureUser;
 
     @ConfigProperty(name = "jahrbuch.fotobox.token")
@@ -47,14 +48,17 @@ public class FotoboxResource {
 
     private final CaptureService captureService;
     private final UserService userService;
+    private final GruppeService gruppeService;
     private final AppConfigService appConfigService;
     private final JsonWebToken jwt;
 
     @Inject
     public FotoboxResource(CaptureService captureService, UserService userService,
-                           AppConfigService appConfigService, JsonWebToken jwt) {
+                           GruppeService gruppeService, AppConfigService appConfigService,
+                           JsonWebToken jwt) {
         this.captureService = captureService;
         this.userService = userService;
+        this.gruppeService = gruppeService;
         this.appConfigService = appConfigService;
         this.jwt = jwt;
     }
@@ -145,7 +149,12 @@ public class FotoboxResource {
         return Gruppe.<Gruppe>findById(groupId)
                 .onItem().ifNull().failWith(() -> new NotFoundException("Gruppe nicht gefunden"))
                 .chain(gruppe -> userService.findByName(captureUser)
-                        .chain(user -> captureService.createForUser(imageSettings, user, gruppe)));
+                        .onItem().ifNull().switchTo(() -> {
+                            log.info("Fotobox-User '{}' nicht gefunden — wird angelegt", captureUser);
+                            return userService.createFotoboxUser(captureUser);
+                        })
+                        .chain(user -> gruppeService.addToGroup(user, gruppe)
+                                .chain(updatedUser -> captureService.createForUser(imageSettings, updatedUser, gruppe))));
     }
 
     @GET

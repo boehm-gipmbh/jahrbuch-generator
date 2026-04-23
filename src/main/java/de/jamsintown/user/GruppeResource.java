@@ -1,6 +1,8 @@
 package de.jamsintown.user;
 
 import de.jamsintown.dtos.FotoboxConfigDTO;
+import de.jamsintown.dtos.FotoboxSetupRequest;
+import de.jamsintown.dtos.FotoboxSetupResponse;
 import de.jamsintown.dtos.FotoboxTokenDTO;
 import de.jamsintown.dtos.FotoboxTokenRequest;
 import de.jamsintown.fotobox.FotoboxTokenService;
@@ -19,11 +21,13 @@ import java.util.List;
 public class GruppeResource {
 
     private final FotoboxTokenService fotoboxTokenService;
+    private final GruppeService gruppeService;
     private final UserService userService;
 
     @Inject
-    public GruppeResource(FotoboxTokenService fotoboxTokenService, UserService userService) {
+    public GruppeResource(FotoboxTokenService fotoboxTokenService, GruppeService gruppeService, UserService userService) {
         this.fotoboxTokenService = fotoboxTokenService;
+        this.gruppeService = gruppeService;
         this.userService = userService;
     }
 
@@ -41,6 +45,22 @@ public class GruppeResource {
     @WithTransaction
     public Uni<Gruppe> create(Gruppe gruppe) {
         return gruppe.persistAndFlush();
+    }
+
+    /**
+     * Erstellt eine neue Gruppe und generiert gleichzeitig den Fotobox-JWT.
+     * Der Fotobox-User wird lazy beim ersten Capture angelegt.
+     */
+    @POST
+    @Path("/fotobox-setup")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<FotoboxSetupResponse> setupFotobox(FotoboxSetupRequest request) {
+        return gruppeService.create(request.groupName())
+                .map(gruppe -> new FotoboxSetupResponse(
+                        gruppe.id,
+                        gruppe.name,
+                        fotoboxTokenService.generateToken(gruppe.id, request.validFrom(), request.validTo())));
     }
 
     @POST
