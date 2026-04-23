@@ -2,7 +2,6 @@ package de.jamsintown.bild;
 
 import de.jamsintown.capture.CaptureService;
 import de.jamsintown.config.main.ImageSettings;
-import de.jamsintown.dtos.CaptureConfigDTO;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -17,9 +16,6 @@ import java.util.List;
 @RolesAllowed("user")
 public class BildResource {
 
-    @ConfigProperty
-    (name = "jahrbuch.captures.station", defaultValue = "false")
-    boolean capturesStation;
     private final BildService bildService;
     private final CaptureService captureService;
 
@@ -99,33 +95,4 @@ public class BildResource {
         return captureService.create(imageSettings);
     }
 
-    @GET
-    @Path("/capture/config")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Uni<CaptureConfigDTO> getCaptureConfig() {
-        return Uni.createFrom().item(new CaptureConfigDTO(capturesStation));
-    }
-
-    @GET
-    @Path("/capture/status")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Uni<de.jamsintown.dtos.CameraStatusDTO> getCameraStatus() {
-        return Uni.createFrom().item(() -> {
-            try {
-                Process process = new ProcessBuilder("gphoto2", "--auto-detect").start();
-                String output = new String(process.getInputStream().readAllBytes());
-                process.waitFor();
-                // Zeilen nach dem Header (Modell + Port durch mind. 2 Leerzeichen getrennt)
-                java.util.Optional<String> cameraLine = output.lines()
-                        .filter(l -> !l.startsWith("Modell") && !l.startsWith("Model") && !l.startsWith("-") && !l.isBlank())
-                        .findFirst();
-                if (cameraLine.isPresent()) {
-                    // Modellname = alles vor mind. 2 aufeinanderfolgenden Leerzeichen
-                    String model = cameraLine.get().replaceAll("  +.*", "").trim();
-                    return new de.jamsintown.dtos.CameraStatusDTO(true, model);
-                }
-            } catch (Exception ignored) {}
-            return new de.jamsintown.dtos.CameraStatusDTO(false, null);
-        });
-    }
 }
