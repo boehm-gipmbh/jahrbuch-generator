@@ -33,19 +33,22 @@ public class CapturePublicResource {
     public Uni<CameraStatusDTO> getCameraStatus() {
         return Uni.createFrom().item(() -> {
             try {
-                Process process = new ProcessBuilder("gphoto2", "--auto-detect").start();
+                ProcessBuilder pb = new ProcessBuilder("gphoto2", "--auto-detect");
+                pb.redirectErrorStream(true); // stderr auf stdout mergen
+                Process process = pb.start();
                 String output = new String(process.getInputStream().readAllBytes());
                 process.waitFor();
-                java.util.Optional<String> cameraLine = output.lines()
-                        .filter(l -> !l.startsWith("Modell") && !l.startsWith("Model")
-                                && !l.startsWith("-") && !l.isBlank())
-                        .findFirst();
-                if (cameraLine.isPresent()) {
-                    String model = cameraLine.get().replaceAll("  +.*", "").trim();
+                log.info("gphoto2 --auto-detect Ausgabe: [{}]", output);
+                if (output.contains("usb:")) {
+                    String model = output.lines()
+                            .filter(l -> l.contains("usb:"))
+                            .findFirst()
+                            .map(l -> l.replaceAll("  +.*", "").trim())
+                            .orElse("Kamera");
                     return new CameraStatusDTO(true, model);
                 }
             } catch (Exception e) {
-                log.debug("gphoto2 --auto-detect fehlgeschlagen: {}", e.getMessage());
+                log.warn("gphoto2 --auto-detect fehlgeschlagen: {}", e.getMessage());
             }
             return new CameraStatusDTO(false, null);
         });
