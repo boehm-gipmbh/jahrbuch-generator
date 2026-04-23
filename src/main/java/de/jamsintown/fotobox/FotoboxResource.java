@@ -104,30 +104,27 @@ public class FotoboxResource {
 
     @GET
     @Path("/bilder/{pfad: .+}")
-    public Uni<Response> getBild(@PathParam("pfad") String pfad) {
-        return appConfigService.getValue("jahrbuch.captures.path")
-                .map(configPath -> configPath != null ? configPath : defaultCapturesPath)
-                .map(capturesPath -> {
-                    java.nio.file.Path basePath = Paths.get(capturesPath).normalize();
-                    java.nio.file.Path filePath = basePath.resolve(pfad).normalize();
-                    if (!filePath.startsWith(basePath)) {
-                        return Response.status(Response.Status.FORBIDDEN).build();
-                    }
-                    File file = filePath.toFile();
-                    if (!file.exists() || !file.isFile()) {
-                        return Response.status(Response.Status.NOT_FOUND).build();
-                    }
-                    String mimeType;
-                    try {
-                        mimeType = Files.probeContentType(filePath);
-                    } catch (Exception e) {
-                        mimeType = "image/jpeg";
-                    }
-                    if (mimeType == null) mimeType = "image/jpeg";
-                    return Response.ok(file)
-                            .header("Content-Type", mimeType)
-                            .header("Cache-Control", "max-age=3600")
-                            .build();
-                });
+    public Response getBild(@PathParam("pfad") String pfad) {
+        java.nio.file.Path basePath = Paths.get(defaultCapturesPath).normalize();
+        java.nio.file.Path filePath = basePath.resolve(pfad).normalize();
+        if (!filePath.startsWith(basePath)) {
+            return Response.status(Response.Status.FORBIDDEN).build();
+        }
+        File file = filePath.toFile();
+        if (!file.exists() || !file.isFile()) {
+            log.warn("Datei nicht gefunden: {}", filePath);
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        String mimeType;
+        try {
+            mimeType = Files.probeContentType(filePath);
+        } catch (Exception e) {
+            mimeType = "image/jpeg";
+        }
+        if (mimeType == null) mimeType = "image/jpeg";
+        return Response.ok(file)
+                .header("Content-Type", mimeType)
+                .header("Cache-Control", "max-age=3600")
+                .build();
     }
 }
