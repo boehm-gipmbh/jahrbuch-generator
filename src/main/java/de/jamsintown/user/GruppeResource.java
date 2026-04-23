@@ -1,6 +1,5 @@
 package de.jamsintown.user;
 
-import de.jamsintown.dtos.FotoboxConfigDTO;
 import de.jamsintown.dtos.FotoboxSetupRequest;
 import de.jamsintown.dtos.FotoboxSetupResponse;
 import de.jamsintown.dtos.FotoboxTokenDTO;
@@ -14,7 +13,9 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 
 @Path("/api/v1/groups")
 @RolesAllowed({"admin", "group-admin"})
@@ -48,19 +49,32 @@ public class GruppeResource {
     }
 
     /**
-     * Erstellt eine neue Gruppe und generiert gleichzeitig den Fotobox-JWT.
-     * Der Fotobox-User wird lazy beim ersten Capture angelegt.
+     * Erstellt eine neue Gruppe + Einladungstoken + Fotobox-JWT in einem Schritt.
+     * Die Gruppe erscheint danach sofort in der Invitations-View.
      */
     @POST
     @Path("/fotobox-setup")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
+    @WithTransaction
     public Uni<FotoboxSetupResponse> setupFotobox(FotoboxSetupRequest request) {
-        return gruppeService.create(request.groupName())
-                .map(gruppe -> new FotoboxSetupResponse(
-                        gruppe.id,
-                        gruppe.name,
-                        fotoboxTokenService.generateToken(gruppe.id, request.validFrom(), request.validTo())));
+        return userService.getCurrentUser()
+                .chain(admin -> gruppeService.create(request.groupName())
+                        .chain(gruppe -> {
+                            InvitationToken invToken = new InvitationToken();
+                            invToken.token = UUID.randomUUID();
+                            invToken.label = gruppe.name;
+                            invToken.role = "user";
+                            invToken.expiresAt = request.validTo().plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC).toZonedDateTime();
+                            invToken.group = gruppe;
+                            invToken.active = true;
+                            invToken.createdBy = admin;
+                            return invToken.<InvitationToken>persistAndFlush()
+                                    .map(saved -> new FotoboxSetupResponse(
+                                            gruppe.id,
+                                            gruppe.name,
+                                            fotoboxTokenService.generateToken(gruppe.id, request.validFrom(), request.validTo())));
+                        }));
     }
 
     @POST
