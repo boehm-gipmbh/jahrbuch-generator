@@ -1,6 +1,5 @@
 package de.jamsintown.bild;
 
-import de.jamsintown.config.AppConfigService;
 import io.quarkus.security.ForbiddenException;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
@@ -28,20 +27,17 @@ public class ExterneBilderResource {
     private String defaultCapturesPath;
 
     private final BildService bildService;
-    private final AppConfigService appConfigService;
 
     @Inject
-    public ExterneBilderResource(BildService bildService, AppConfigService appConfigService) {
+    public ExterneBilderResource(BildService bildService) {
         this.bildService = bildService;
-        this.appConfigService = appConfigService;
     }
 
     @GET
     @Path("/{pfad:.*}")
     public Uni<Response> getBild(@PathParam("pfad") String pfad,
                                   @QueryParam("thumb") boolean thumb) {
-        return appConfigService.getValue("jahrbuch.captures.path")
-                .map(pathStr -> pathStr != null ? pathStr : defaultCapturesPath)
+        return Uni.createFrom().item(defaultCapturesPath)
                 .chain(capturesPath -> {
                     // Path-Traversal verhindern
                     java.nio.file.Path basePath = Paths.get(capturesPath).normalize();

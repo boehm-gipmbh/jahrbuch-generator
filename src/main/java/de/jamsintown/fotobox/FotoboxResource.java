@@ -10,6 +10,7 @@ import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.GruppeService;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithSession;
+import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
