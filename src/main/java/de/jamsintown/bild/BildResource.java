@@ -105,4 +105,25 @@ public class BildResource {
     public Uni<CaptureConfigDTO> getCaptureConfig() {
         return Uni.createFrom().item(new CaptureConfigDTO(capturesStation));
     }
+
+    @GET
+    @Path("/capture/status")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<de.jamsintown.dtos.CameraStatusDTO> getCameraStatus() {
+        return Uni.createFrom().item(() -> {
+            try {
+                Process process = new ProcessBuilder("gphoto2", "--auto-detect").start();
+                String output = new String(process.getInputStream().readAllBytes());
+                process.waitFor();
+                String[] lines = output.lines()
+                        .filter(l -> !l.startsWith("Model") && !l.startsWith("-") && !l.isBlank())
+                        .toArray(String[]::new);
+                if (lines.length > 0) {
+                    String model = lines[0].replaceAll("\\s{2,}.*", "").trim();
+                    return new de.jamsintown.dtos.CameraStatusDTO(true, model);
+                }
+            } catch (Exception ignored) {}
+            return new de.jamsintown.dtos.CameraStatusDTO(false, null);
+        });
+    }
 }
