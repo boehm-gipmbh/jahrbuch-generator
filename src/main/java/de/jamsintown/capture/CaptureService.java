@@ -15,7 +15,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.ZonedDateTime;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -110,11 +112,11 @@ public class CaptureService {
                 Gruppe finalGruppe = effectiveGruppe;
                 return Uni.createFrom().item(user).chain(u -> {
                     try {
-                        java.nio.file.Path targetDir = Paths.get(capturesPath, subDir);
+                        Path targetDir = Paths.get(capturesPath, subDir);
                         Files.createDirectories(targetDir);
-                        java.nio.file.Path targetPath = targetDir.resolve(finalFileName);
+                        Path targetPath = targetDir.resolve(finalFileName);
                         Files.move(Paths.get(capturedPath), targetPath,
-                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                                StandardCopyOption.REPLACE_EXISTING);
                     } catch (IOException e) {
                         log.warn("Konnte Bild nicht ins Gruppenverzeichnis verschieben: {}", e.getMessage());
                     }
@@ -136,6 +138,34 @@ public class CaptureService {
             log.error("Fehler beim Capture: {}", e.getMessage(), e);
             return Uni.createFrom().failure(e);
         }
+    }
+
+    public Path captureToLocalFile(ImageSettings imageSettings, long groupId, String capturesPath) throws Exception {
+        if (!setImageSettings(imageSettings)) {
+            throw new RuntimeException("Kamera-Einstellungen konnten nicht gesetzt werden");
+        }
+        ProcessBuilder pb = new ProcessBuilder("bash", "-c",
+                "gphoto2 --capture-image-and-download --debug --debug-loglevel=\"error\"");
+        Process process = pb.start();
+        String capturedPath = null;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                log.info(line);
+                if ((capturedPath = extractPath(line)) != null) break;
+            }
+            process.waitFor();
+        }
+        if (capturedPath == null) throw new RuntimeException("Keine Bilddatei aufgenommen");
+
+        String fileName = Paths.get(capturedPath).getFileName().toString();
+        String subDir = "gruppen/" + groupId + "/";
+        Path targetDir = Paths.get(capturesPath, subDir);
+        Files.createDirectories(targetDir);
+        Path targetPath = targetDir.resolve(fileName);
+        Files.move(Paths.get(capturedPath), targetPath, StandardCopyOption.REPLACE_EXISTING);
+        log.info("Bild lokal gespeichert: {}", targetPath);
+        return targetPath;
     }
 
     public String extractPath(String input) {
