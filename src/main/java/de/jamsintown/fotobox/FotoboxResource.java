@@ -4,8 +4,6 @@ import de.jamsintown.capture.CaptureService;
 import de.jamsintown.config.main.ImageSettings;
 import de.jamsintown.dtos.FotoboxStateDTO;
 import io.smallrye.common.annotation.Blocking;
-import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -136,16 +134,15 @@ public class FotoboxResource {
     @Path("/config")
     @Produces(MediaType.APPLICATION_JSON)
     @RolesAllowed("fotobox")
-    public Uni<Response> getConfig() {
+    @Blocking
+    public Response getConfig() {
         Long groupId = extractGroupId();
-        if (groupId == null) return Uni.createFrom().failure(new ForbiddenException("Kein group_id im Token"));
+        if (groupId == null) throw new ForbiddenException("Kein group_id im Token");
 
         if (capturesStation) {
-            return Uni.createFrom().item(() -> proxyGetToFlyio("/api/v1/fotobox/config"))
-                    .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+            return proxyGetToFlyio("/api/v1/fotobox/config");
         }
-        return fotoboxDbService.getConfig(groupId)
-                .map(dto -> Response.ok(dto).build());
+        return Response.ok(fotoboxDbService.getConfig(groupId).await().indefinitely()).build();
     }
 
     @POST
@@ -153,25 +150,23 @@ public class FotoboxResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @RolesAllowed("fotobox")
-    public Uni<Response> capture(ImageSettings imageSettings) {
+    @Blocking
+    public Response capture(ImageSettings imageSettings) {
         if (!capturesStation) {
-            return Uni.createFrom().item(Response.status(Response.Status.NOT_IMPLEMENTED).build());
+            return Response.status(Response.Status.NOT_IMPLEMENTED).build();
         }
         Long groupId = extractGroupId();
-        if (groupId == null) return Uni.createFrom().item(Response.status(Response.Status.FORBIDDEN).build());
+        if (groupId == null) return Response.status(Response.Status.FORBIDDEN).build();
         String token = fotoboxToken.orElse(null);
-        if (token == null) return Uni.createFrom().item(Response.status(Response.Status.FORBIDDEN).build());
+        if (token == null) return Response.status(Response.Status.FORBIDDEN).build();
 
-        final long gid = groupId;
-        return Uni.createFrom().item(() -> {
-            try {
-                java.nio.file.Path capturedFile = captureService.captureToLocalFile(imageSettings, gid, capturesPath);
-                return uploadToFlyio(capturedFile, token);
-            } catch (Exception e) {
-                log.error("Capture fehlgeschlagen: {}", e.getMessage(), e);
-                return Response.serverError().entity("{\"error\":\"" + e.getMessage() + "\"}").build();
-            }
-        }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+        try {
+            java.nio.file.Path capturedFile = captureService.captureToLocalFile(imageSettings, groupId, capturesPath);
+            return uploadToFlyio(capturedFile, token);
+        } catch (Exception e) {
+            log.error("Capture fehlgeschlagen: {}", e.getMessage(), e);
+            return Response.serverError().entity("{\"error\":\"" + e.getMessage() + "\"}").build();
+        }
     }
 
     // Empfängt Bild-Upload von der Capture-Station (läuft auf Fly.io mit DB-Zugriff)
@@ -180,18 +175,19 @@ public class FotoboxResource {
     @Consumes("image/jpeg")
     @Produces(MediaType.APPLICATION_JSON)
     @RolesAllowed("fotobox")
-    public Uni<Response> upload(
+    @Blocking
+    public Response upload(
             @HeaderParam("X-Filename") String filename,
             byte[] imageBytes) {
         if (capturesStation) {
-            return Uni.createFrom().item(Response.status(Response.Status.NOT_IMPLEMENTED).build());
+            return Response.status(Response.Status.NOT_IMPLEMENTED).build();
         }
         Long groupId = extractGroupId();
-        if (groupId == null) return Uni.createFrom().item(Response.status(Response.Status.BAD_REQUEST).build());
+        if (groupId == null) return Response.status(Response.Status.BAD_REQUEST).build();
 
         String fn = filename != null ? filename : "capture_" + System.currentTimeMillis() + ".jpg";
-        return fotoboxDbService.saveBildForGroup(imageBytes, fn, groupId, capturesPath, captureUser)
-                .map(bild -> Response.ok(bild).build());
+        return Response.ok(fotoboxDbService.saveBildForGroup(imageBytes, fn, groupId, capturesPath, captureUser)
+                .await().indefinitely()).build();
     }
 
     private Response proxyGetToFlyio(String path) {

@@ -8,11 +8,15 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.jboss.resteasy.reactive.ResponseStatus;
 
 import java.util.UUID;
 
 
+@Tag(name = "Auth", description = "Login, Registrierung, E-Mail-Verifizierung, Passwort-Reset, Gruppenbeitritt")
 @Path("/api/v1/auth")
 public class AuthResource {
 
@@ -39,6 +43,9 @@ public class AuthResource {
     this.usernameReminderEmailService = usernameReminderEmailService;
   }
 
+  @Operation(summary = "Login", description = "Gibt bei Erfolg ein JWT zurück")
+  @APIResponse(responseCode = "200", description = "JWT-Token als String")
+  @APIResponse(responseCode = "401", description = "Falsche Zugangsdaten")
   @PermitAll
   @POST
   @Path("/login")
@@ -46,6 +53,9 @@ public class AuthResource {
     return authService.authenticate(request);
   }
 
+  @Operation(summary = "Einladungstoken prüfen")
+  @APIResponse(responseCode = "200", description = "Token gültig")
+  @APIResponse(responseCode = "410", description = "Token ungültig oder abgelaufen")
   @PermitAll
   @GET
   @Path("/validate-token")
@@ -53,6 +63,11 @@ public class AuthResource {
     return invitationTokenService.validate(token);
   }
 
+  @Operation(summary = "Neuen User registrieren")
+  @APIResponse(responseCode = "201", description = "Registrierung erfolgreich")
+  @APIResponse(responseCode = "400", description = "Validierungsfehler (Name, Passwort)")
+  @APIResponse(responseCode = "409", description = "Username oder E-Mail bereits vergeben")
+  @APIResponse(responseCode = "410", description = "Token ungültig oder abgelaufen")
   @PermitAll
   @POST
   @Path("/register")
@@ -63,6 +78,9 @@ public class AuthResource {
       .replaceWithVoid();
   }
 
+  @Operation(summary = "E-Mail-Adresse bestätigen")
+  @APIResponse(responseCode = "200", description = "E-Mail erfolgreich bestätigt")
+  @APIResponse(responseCode = "410", description = "Token ungültig oder abgelaufen")
   @PermitAll
   @GET
   @Path("/verify-email")
@@ -70,9 +88,8 @@ public class AuthResource {
     return emailVerificationService.verify(token);
   }
 
-  /**
-   * Schickt den Username per E-Mail. Gibt immer 200 zurück (kein Email-Enumeration).
-   */
+  @Operation(summary = "Username per E-Mail senden", description = "Gibt immer 200 zurück (kein E-Mail-Enumeration)")
+  @APIResponse(responseCode = "200", description = "E-Mail versandt (oder User nicht gefunden — kein Unterschied)")
   @PermitAll
   @POST
   @Path("/forgot-username")
@@ -90,9 +107,8 @@ public class AuthResource {
         });
   }
 
-  /**
-   * Startet den Passwort-Reset-Flow. Gibt immer 200 zurück (kein Email-Enumeration).
-   */
+  @Operation(summary = "Passwort-Reset anfordern", description = "Gibt immer 200 zurück (kein E-Mail-Enumeration)")
+  @APIResponse(responseCode = "200", description = "Reset-E-Mail versandt (oder User nicht gefunden — kein Unterschied)")
   @PermitAll
   @POST
   @Path("/forgot-password")
@@ -105,9 +121,10 @@ public class AuthResource {
         .map(v -> Response.ok().build());
   }
 
-  /**
-   * Setzt das Passwort mit einem gültigen Reset-Token zurück.
-   */
+  @Operation(summary = "Passwort zurücksetzen")
+  @APIResponse(responseCode = "204", description = "Passwort erfolgreich geändert")
+  @APIResponse(responseCode = "400", description = "Token fehlt oder Passwort ungültig")
+  @APIResponse(responseCode = "410", description = "Reset-Token ungültig oder abgelaufen")
   @PermitAll
   @POST
   @Path("/reset-password")
@@ -123,7 +140,10 @@ public class AuthResource {
     return passwordResetService.resetPassword(token, request.password());
   }
 
-  /** Bestehender User tritt einer Gruppe bei (bei E-Mail-Kollision nach Login). */
+  @Operation(summary = "Gruppe beitreten", description = "Bestehender User tritt via Einladungstoken einer Gruppe bei")
+  @APIResponse(responseCode = "204", description = "Gruppe erfolgreich beigetreten (oder bereits Mitglied)")
+  @APIResponse(responseCode = "404", description = "Token hat keine zugeordnete Gruppe")
+  @APIResponse(responseCode = "410", description = "Token ungültig oder abgelaufen")
   @RolesAllowed("user")
   @POST
   @Path("/join-group")
@@ -136,7 +156,18 @@ public class AuthResource {
         }
         return userService.getCurrentUser()
           .chain(user -> gruppeService.addToGroup(user, invitation.group))
+          .onFailure(AuthResource::isUserGroupsDuplicate).recoverWithNull()
           .replaceWithVoid();
       });
+  }
+
+  private static boolean isUserGroupsDuplicate(Throwable t) {
+    while (t != null) {
+      if (t instanceof io.vertx.pgclient.PgException pg
+          && "23505".equals(pg.getSqlState())
+          && pg.getMessage().contains("user_groups_pkey")) return true;
+      t = t.getCause();
+    }
+    return false;
   }
 }
