@@ -560,12 +560,12 @@ public class InvitationTokenService {
           .chain(savedUser -> {
             if (t.group != null) {
               return gruppeService.addToGroup(savedUser, t.group)
-                  .chain(u -> {
+                  .chain(ignored -> {
                     if ("group-admin".equals(t.role)) {
-                      u.managedGroup = t.group;
-                      return u.<User>persistAndFlush();
+                      savedUser.managedGroup = t.group;
+                      return savedUser.<User>persistAndFlush();
                     }
-                    return Uni.createFrom().item(u);
+                    return Uni.createFrom().item(savedUser);
                   });
             }
             return Uni.createFrom().item(savedUser);
