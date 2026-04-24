@@ -30,28 +30,22 @@ public class GruppeService {
   }
 
   /** Fügt einen User einer Gruppe hinzu und setzt sie als aktive Gruppe.
-   *  Lädt User und Gruppe frisch innerhalb der Transaktion, damit Hibernate
-   *  die groups-Collection korrekt als PersistentCollection trackt. */
+   *  Verwendet native SQL mit ON CONFLICT DO NOTHING — idempotent, kein Hibernate
+   *  Dirty-Tracking, kein 23505-Fehler bei mehrfachem Aufruf. */
   @WithTransaction
-  public Uni<User> addToGroup(User user, Gruppe gruppe) {
-    return findUserWithGroups(user.id)
-      .chain(freshUser -> findGruppeById(gruppe.id)
-        .chain(freshGruppe -> {
-          boolean alreadyMember = freshUser.groups.stream()
-              .anyMatch(g -> g.id != null && g.id.equals(freshGruppe.id));
-          if (!alreadyMember) {
-            freshUser.groups.add(freshGruppe);
-          }
-          freshUser.activeGroup = freshGruppe;
-          return persistUser(freshUser);
-        }));
-  }
-
-  protected Uni<User> findUserWithGroups(long userId) {
-    return User.<User>find(
-        "FROM User u LEFT JOIN FETCH u.groups LEFT JOIN FETCH u.activeGroup WHERE u.id = ?1", userId)
-        .list()
-        .map(users -> users.isEmpty() ? null : users.get(0));
+  public Uni<Void> addToGroup(User user, Gruppe gruppe) {
+    return io.quarkus.hibernate.reactive.panache.Panache.getSession()
+        .chain(session -> session
+            .createNativeQuery("INSERT INTO user_groups (user_id, group_id) VALUES (:uid, :gid) ON CONFLICT DO NOTHING")
+            .setParameter("uid", user.id)
+            .setParameter("gid", gruppe.id)
+            .executeUpdate()
+            .chain(ignored -> session
+                .createNativeQuery("UPDATE users SET active_group_id = :gid WHERE id = :uid")
+                .setParameter("uid", user.id)
+                .setParameter("gid", gruppe.id)
+                .executeUpdate()))
+        .replaceWithVoid();
   }
 
   protected Uni<Gruppe> findGruppeById(long groupId) {

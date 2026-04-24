@@ -155,23 +155,7 @@ public class AuthResource {
           throw new ClientErrorException("Einladungslink hat keine Gruppe", Response.Status.NOT_FOUND);
         }
         return userService.getCurrentUser()
-          .chain(user -> gruppeService.addToGroup(user, invitation.group))
-          .onFailure(AuthResource::isUserGroupsDuplicate).recoverWithNull()
-          .replaceWithVoid();
+          .chain(user -> gruppeService.addToGroup(user, invitation.group));
       });
-  }
-
-  private static boolean isUserGroupsDuplicate(Throwable t) {
-    while (t != null) {
-      if (t instanceof org.hibernate.exception.ConstraintViolationException cve
-          && cve.getConstraintName() != null
-          && cve.getConstraintName().contains("user_groups_pkey")) return true;
-      if (t instanceof io.vertx.pgclient.PgException pg
-          && "23505".equals(pg.getSqlState())
-          && pg.getMessage() != null
-          && pg.getMessage().contains("user_groups_pkey")) return true;
-      t = t.getCause();
-    }
-    return false;
   }
 }
