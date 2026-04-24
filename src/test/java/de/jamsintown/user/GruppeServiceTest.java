@@ -40,20 +40,13 @@ class GruppeServiceTest {
         return serviceWith(findResult, null);
     }
 
-    /** Service mit vollständig stubbaren Panache-Methoden. */
+    /** Service mit stubbaren Panache-Methoden. */
     private GruppeService serviceWith(Gruppe gruppeResult, User userResult) {
         return new GruppeService() {
             @Override
             protected Uni<Gruppe> findGruppeById(long id) {
                 return gruppeResult != null
                         ? Uni.createFrom().item(gruppeResult)
-                        : Uni.createFrom().nullItem();
-            }
-
-            @Override
-            protected Uni<User> findUserWithGroups(long userId) {
-                return userResult != null
-                        ? Uni.createFrom().item(userResult)
                         : Uni.createFrom().nullItem();
             }
 
@@ -113,31 +106,4 @@ class GruppeServiceTest {
         assertNull(result.activeGroup);
     }
 
-    // -------------------------------------------------------------------------
-    // addToGroup
-    // -------------------------------------------------------------------------
-
-    @Test
-    void addToGroup_fuegtGruppeHinzu() {
-        Gruppe gruppe = gruppeStub(1L);
-        User freshUser = userStub(); // noch kein Mitglied (wird von findUserWithGroups geliefert)
-        User callerUser = userStub();
-        callerUser.id = 10L;
-        GruppeService service = serviceWith(gruppe, freshUser);
-        User result = service.addToGroup(callerUser, gruppe).await().indefinitely();
-        assertTrue(result.groups.stream().anyMatch(g -> g.id != null && g.id.equals(1L)));
-        assertSame(gruppe, result.activeGroup);
-    }
-
-    @Test
-    void addToGroup_gruppeSchonMitglied_keinDuplikat() {
-        Gruppe gruppe = gruppeStub(1L);
-        User freshUser = userStub(gruppe); // bereits Mitglied (wird von findUserWithGroups geliefert)
-        User callerUser = userStub(gruppe);
-        callerUser.id = 10L;
-        int vorher = freshUser.groups.size();
-        GruppeService service = serviceWith(gruppe, freshUser);
-        service.addToGroup(callerUser, gruppe).await().indefinitely();
-        assertEquals(vorher, freshUser.groups.size(), "Keine Duplikate in groups-Liste");
-    }
 }
