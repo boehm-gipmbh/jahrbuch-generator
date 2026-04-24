@@ -1,17 +1,11 @@
 package de.jamsintown.fotobox;
 
-import de.jamsintown.bild.Bild;
 import de.jamsintown.capture.CaptureService;
-import de.jamsintown.config.AppConfigService;
 import de.jamsintown.config.main.ImageSettings;
-import de.jamsintown.dtos.FotoboxConfigDTO;
 import de.jamsintown.dtos.FotoboxStateDTO;
-import de.jamsintown.user.Gruppe;
-import de.jamsintown.user.GruppeService;
-import de.jamsintown.user.UserService;
-import io.quarkus.hibernate.reactive.panache.common.WithSession;
-import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
+import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -20,15 +14,19 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-
-import java.util.Optional;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.io.File;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Path("/api/v1/fotobox")
@@ -39,7 +37,7 @@ public class FotoboxResource {
     boolean capturesStation;
 
     @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
-    String defaultCapturesPath;
+    String capturesPath;
 
     @ConfigProperty(name = "jahrbuch.fotobox.capture-user", defaultValue = "fotobox")
     String captureUser;
@@ -47,27 +45,24 @@ public class FotoboxResource {
     @ConfigProperty(name = "jahrbuch.fotobox.token")
     Optional<String> fotoboxToken;
 
+    @ConfigProperty(name = "jahrbuch.flyio.url", defaultValue = "https://jahrbuch-generator.fly.dev")
+    String flyioUrl;
+
     private final CaptureService captureService;
-    private final UserService userService;
-    private final GruppeService gruppeService;
-    private final AppConfigService appConfigService;
+    private final FotoboxDbService fotoboxDbService;
     private final JsonWebToken jwt;
 
     @Inject
-    public FotoboxResource(CaptureService captureService, UserService userService,
-                           GruppeService gruppeService, AppConfigService appConfigService,
-                           JsonWebToken jwt) {
+    public FotoboxResource(CaptureService captureService, FotoboxDbService fotoboxDbService, JsonWebToken jwt) {
         this.captureService = captureService;
-        this.userService = userService;
-        this.gruppeService = gruppeService;
-        this.appConfigService = appConfigService;
+        this.fotoboxDbService = fotoboxDbService;
         this.jwt = jwt;
     }
 
     @GET
+    @Blocking
     @Produces(MediaType.APPLICATION_JSON)
-    @WithSession
-    public Uni<FotoboxStateDTO> getState() {
+    public FotoboxStateDTO getState() {
         boolean cameraConnected;
         String cameraModel = null;
         try {
@@ -91,18 +86,34 @@ public class FotoboxResource {
             cameraConnected = false;
         }
 
-        boolean connected = cameraConnected;
-        String model = cameraModel;
+        List<String> todaysPfade = listLocalCapturesForToday();
+        return new FotoboxStateDTO(capturesStation, cameraConnected, cameraModel, todaysPfade);
+    }
 
+    private List<String> listLocalCapturesForToday() {
         LocalDate today = LocalDate.now(ZoneId.systemDefault());
-        return de.jamsintown.bild.Bild.<de.jamsintown.bild.Bild>listAll()
-                .map(bilder -> bilder.stream()
-                        .filter(b -> !b.deleted)
-                        .filter(b -> b.created != null &&
-                                b.created.toLocalDate().equals(today))
-                        .map(b -> b.pfad)
-                        .toList())
-                .map(pfade -> new FotoboxStateDTO(capturesStation, connected, model, pfade));
+        try {
+            java.nio.file.Path base = Paths.get(capturesPath);
+            if (!Files.exists(base)) return List.of();
+            try (var stream = Files.walk(base, 3)) {
+                return stream
+                        .filter(Files::isRegularFile)
+                        .filter(p -> {
+                            try {
+                                var attrs = Files.readAttributes(p, java.nio.file.attribute.BasicFileAttributes.class);
+                                return attrs.creationTime().toInstant()
+                                        .atZone(ZoneId.systemDefault()).toLocalDate().equals(today);
+                            } catch (Exception e) {
+                                return false;
+                            }
+                        })
+                        .map(p -> "/" + base.relativize(p))
+                        .toList();
+            }
+        } catch (Exception e) {
+            log.warn("Fehler beim Lesen der lokalen Captures: {}", e.getMessage());
+            return List.of();
+        }
     }
 
     @GET
@@ -125,15 +136,16 @@ public class FotoboxResource {
     @Path("/config")
     @Produces(MediaType.APPLICATION_JSON)
     @RolesAllowed("fotobox")
-    @WithSession
-    public Uni<FotoboxConfigDTO> getConfig() {
+    public Uni<Response> getConfig() {
         Long groupId = extractGroupId();
-        if (groupId == null) {
-            return Uni.createFrom().failure(new ForbiddenException("Kein group_id im Token"));
+        if (groupId == null) return Uni.createFrom().failure(new ForbiddenException("Kein group_id im Token"));
+
+        if (capturesStation) {
+            return Uni.createFrom().item(() -> proxyGetToFlyio("/api/v1/fotobox/config"))
+                    .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
         }
-        return Gruppe.<Gruppe>findById(groupId)
-                .onItem().ifNull().failWith(() -> new NotFoundException("Gruppe nicht gefunden"))
-                .map(gruppe -> new FotoboxConfigDTO(gruppe.id, gruppe.name, "Small Fine JPEG"));
+        return fotoboxDbService.getConfig(groupId)
+                .map(dto -> Response.ok(dto).build());
     }
 
     @POST
@@ -141,27 +153,87 @@ public class FotoboxResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @RolesAllowed("fotobox")
-    @WithSession
-    public Uni<Bild> capture(ImageSettings imageSettings) {
-        Long groupId = extractGroupId();
-        if (groupId == null) {
-            return Uni.createFrom().failure(new ForbiddenException("Kein group_id im Token"));
+    public Uni<Response> capture(ImageSettings imageSettings) {
+        if (!capturesStation) {
+            return Uni.createFrom().item(Response.status(Response.Status.NOT_IMPLEMENTED).build());
         }
-        return Gruppe.<Gruppe>findById(groupId)
-                .onItem().ifNull().failWith(() -> new NotFoundException("Gruppe nicht gefunden"))
-                .chain(gruppe -> userService.findByName(captureUser)
-                        .onItem().ifNull().switchTo(() -> {
-                            log.info("Fotobox-User '{}' nicht gefunden — wird angelegt", captureUser);
-                            return userService.createFotoboxUser(captureUser);
-                        })
-                        .chain(user -> gruppeService.addToGroup(user, gruppe)
-                                .chain(updatedUser -> captureService.createForUser(imageSettings, updatedUser, gruppe))));
+        Long groupId = extractGroupId();
+        if (groupId == null) return Uni.createFrom().item(Response.status(Response.Status.FORBIDDEN).build());
+        String token = fotoboxToken.orElse(null);
+        if (token == null) return Uni.createFrom().item(Response.status(Response.Status.FORBIDDEN).build());
+
+        final long gid = groupId;
+        return Uni.createFrom().item(() -> {
+            try {
+                java.nio.file.Path capturedFile = captureService.captureToLocalFile(imageSettings, gid, capturesPath);
+                return uploadToFlyio(capturedFile, token);
+            } catch (Exception e) {
+                log.error("Capture fehlgeschlagen: {}", e.getMessage(), e);
+                return Response.serverError().entity("{\"error\":\"" + e.getMessage() + "\"}").build();
+            }
+        }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+    }
+
+    // Empfängt Bild-Upload von der Capture-Station (läuft auf Fly.io mit DB-Zugriff)
+    @POST
+    @Path("/upload")
+    @Consumes("image/jpeg")
+    @Produces(MediaType.APPLICATION_JSON)
+    @RolesAllowed("fotobox")
+    public Uni<Response> upload(
+            @HeaderParam("X-Filename") String filename,
+            byte[] imageBytes) {
+        if (capturesStation) {
+            return Uni.createFrom().item(Response.status(Response.Status.NOT_IMPLEMENTED).build());
+        }
+        Long groupId = extractGroupId();
+        if (groupId == null) return Uni.createFrom().item(Response.status(Response.Status.BAD_REQUEST).build());
+
+        String fn = filename != null ? filename : "capture_" + System.currentTimeMillis() + ".jpg";
+        return fotoboxDbService.saveBildForGroup(imageBytes, fn, groupId, capturesPath, captureUser)
+                .map(bild -> Response.ok(bild).build());
+    }
+
+    private Response proxyGetToFlyio(String path) {
+        String token = fotoboxToken.orElse(null);
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest.Builder req = HttpRequest.newBuilder()
+                    .uri(URI.create(flyioUrl + path))
+                    .GET();
+            if (token != null) req.header("Authorization", "Bearer " + token);
+            HttpResponse<String> resp = client.send(req.build(), HttpResponse.BodyHandlers.ofString());
+            return Response.status(resp.statusCode()).type(MediaType.APPLICATION_JSON).entity(resp.body()).build();
+        } catch (Exception e) {
+            log.error("Proxy zu Fly.io fehlgeschlagen: {}", e.getMessage());
+            return Response.serverError().build();
+        }
+    }
+
+    private Response uploadToFlyio(java.nio.file.Path file, String token) throws Exception {
+        byte[] fileBytes = Files.readAllBytes(file);
+        Long groupId = extractGroupId();
+
+        HttpClient client = HttpClient.newBuilder().build();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(flyioUrl + "/api/v1/fotobox/upload"))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "image/jpeg")
+                .header("X-Filename", file.getFileName().toString())
+                .POST(HttpRequest.BodyPublishers.ofByteArray(fileBytes))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new RuntimeException("Upload fehlgeschlagen: HTTP " + response.statusCode());
+        }
+        return Response.ok(response.body()).type(MediaType.APPLICATION_JSON).build();
     }
 
     @GET
     @Path("/bilder/{pfad: .+}")
     public Response getBild(@PathParam("pfad") String pfad) {
-        java.nio.file.Path basePath = Paths.get(defaultCapturesPath).normalize();
+        java.nio.file.Path basePath = Paths.get(capturesPath).normalize();
         java.nio.file.Path filePath = basePath.resolve(pfad).normalize();
         if (!filePath.startsWith(basePath)) {
             return Response.status(Response.Status.FORBIDDEN).build();
