@@ -163,8 +163,12 @@ public class AuthResource {
 
   private static boolean isUserGroupsDuplicate(Throwable t) {
     while (t != null) {
+      if (t instanceof org.hibernate.exception.ConstraintViolationException cve
+          && cve.getConstraintName() != null
+          && cve.getConstraintName().contains("user_groups_pkey")) return true;
       if (t instanceof io.vertx.pgclient.PgException pg
           && "23505".equals(pg.getSqlState())
+          && pg.getMessage() != null
           && pg.getMessage().contains("user_groups_pkey")) return true;
       t = t.getCause();
     }
