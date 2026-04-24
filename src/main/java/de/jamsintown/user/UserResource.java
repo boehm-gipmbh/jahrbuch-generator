@@ -117,14 +117,14 @@ public class UserResource {
 
   @GET
   @Path("self")
-  @RolesAllowed("user")
+  @RolesAllowed({"user", "admin", "group-admin"})
   public Uni<User> getCurrentUser() {
     return userService.getCurrentUser();
   }
 
   @PUT
   @Path("self/password")
-  @RolesAllowed("user")
+  @RolesAllowed({"user", "admin", "group-admin"})
   public Uni<User> changePassword(PasswordChange passwordChange) {
     return userService
       .changePassword(passwordChange.currentPassword(), passwordChange.newPassword());
@@ -153,7 +153,7 @@ public class UserResource {
 
   @PUT
   @Path("self/active-group/{groupId}")
-  @RolesAllowed("user")
+  @RolesAllowed({"user", "admin", "group-admin"})
   public Uni<User> setActiveGroup(@PathParam("groupId") long groupId) {
     return userService.getCurrentUser()
       .chain(user -> gruppeService.setActiveGroup(user, groupId));
@@ -161,7 +161,7 @@ public class UserResource {
 
   @DELETE
   @Path("self/active-group")
-  @RolesAllowed("user")
+  @RolesAllowed({"user", "admin", "group-admin"})
   public Uni<User> clearActiveGroup() {
     return userService.getCurrentUser()
       .chain(user -> gruppeService.clearActiveGroup(user));
