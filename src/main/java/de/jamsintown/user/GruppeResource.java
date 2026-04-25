@@ -12,6 +12,7 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.time.ZoneOffset;
 import java.util.List;
@@ -24,18 +25,26 @@ public class GruppeResource {
     private final FotoboxTokenService fotoboxTokenService;
     private final GruppeService gruppeService;
     private final UserService userService;
+    private final JsonWebToken jwt;
 
     @Inject
-    public GruppeResource(FotoboxTokenService fotoboxTokenService, GruppeService gruppeService, UserService userService) {
+    public GruppeResource(FotoboxTokenService fotoboxTokenService, GruppeService gruppeService,
+                          UserService userService, JsonWebToken jwt) {
         this.fotoboxTokenService = fotoboxTokenService;
         this.gruppeService = gruppeService;
         this.userService = userService;
+        this.jwt = jwt;
     }
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     @WithSession
     public Uni<List<Gruppe>> list() {
+        boolean isGroupAdmin = jwt.getGroups().contains("group-admin") && !jwt.getGroups().contains("admin");
+        if (isGroupAdmin) {
+            return userService.getCurrentUser()
+                    .map(user -> user.managedGroups == null ? List.of() : List.copyOf(user.managedGroups));
+        }
         return Gruppe.listAll();
     }
 
@@ -56,6 +65,7 @@ public class GruppeResource {
     @Path("/fotobox-setup")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
+    @RolesAllowed("admin")
     @WithTransaction
     public Uni<FotoboxSetupResponse> setupFotobox(FotoboxSetupRequest request) {
         return userService.getCurrentUser()
@@ -85,6 +95,19 @@ public class GruppeResource {
     public Uni<FotoboxTokenDTO> generateFotoboxToken(
             @PathParam("id") long groupId,
             FotoboxTokenRequest request) {
+        boolean isGroupAdmin = jwt.getGroups().contains("group-admin") && !jwt.getGroups().contains("admin");
+        if (isGroupAdmin) {
+            return userService.getCurrentUser()
+                    .chain(user -> {
+                        boolean manages = user.managedGroups != null &&
+                                user.managedGroups.stream().anyMatch(g -> g.id != null && g.id.equals(groupId));
+                        if (!manages) throw new ForbiddenException("Gruppe wird nicht verwaltet");
+                        return Gruppe.<Gruppe>findById(groupId)
+                                .onItem().ifNull().failWith(NotFoundException::new)
+                                .map(gruppe -> new FotoboxTokenDTO(
+                                        fotoboxTokenService.generateToken(groupId, request.validFrom(), request.validTo())));
+                    });
+        }
         return Gruppe.<Gruppe>findById(groupId)
                 .onItem().ifNull().failWith(NotFoundException::new)
                 .map(gruppe -> new FotoboxTokenDTO(
