@@ -1,7 +1,9 @@
 package de.jamsintown.video;
 
 import de.jamsintown.config.AppConfigService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -10,7 +12,9 @@ import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Path("/api/v1/videos")
@@ -19,13 +23,16 @@ public class VideoResource {
 
     private final VideoService videoService;
     private final AppConfigService appConfigService;
+    private final FfmpegService ffmpegService;
     private final String defaultCapturesPath;
 
     @Inject
     public VideoResource(VideoService videoService, AppConfigService appConfigService,
+                          FfmpegService ffmpegService,
                           @ConfigProperty(name = "jahrbuch.captures.path") String defaultCapturesPath) {
         this.videoService = videoService;
         this.appConfigService = appConfigService;
+        this.ffmpegService = ffmpegService;
         this.defaultCapturesPath = defaultCapturesPath;
     }
 
@@ -76,6 +83,33 @@ public class VideoResource {
     @Path("/{id}/hard")
     public Uni<Void> hardDelete(@PathParam("id") long id) {
         return videoService.hardDelete(id);
+    }
+
+    @POST
+    @Path("/generate-thumbs")
+    @RolesAllowed("admin")
+    @Produces(MediaType.APPLICATION_JSON)
+    @WithSession
+    public Uni<Map<String, Object>> generateThumbs() {
+        return appConfigService.getValue("jahrbuch.captures.path")
+                .map(p -> p != null ? p : defaultCapturesPath)
+                .chain(capturesPath -> Video.<Video>listAll()
+                        .map(videos -> {
+                            int processed = 0, skipped = 0, errors = 0;
+                            for (Video v : videos) {
+                                if (v.pfad == null || v.deleted) { skipped++; continue; }
+                                java.nio.file.Path videoPath = Paths.get(capturesPath)
+                                        .resolve(v.pfad.replaceFirst("^/", "")).normalize();
+                                if (!videoPath.toFile().exists()) { skipped++; continue; }
+                                java.nio.file.Path thumbPath = videoPath.resolveSibling(
+                                        videoPath.getFileName() + ".thumb.jpg");
+                                if (thumbPath.toFile().exists()) { skipped++; continue; }
+                                boolean ok = ffmpegService.generateSnapshot(videoPath);
+                                if (ok) processed++; else errors++;
+                            }
+                            return Map.<String, Object>of(
+                                    "processed", processed, "skipped", skipped, "errors", errors);
+                        }));
     }
 
 }
