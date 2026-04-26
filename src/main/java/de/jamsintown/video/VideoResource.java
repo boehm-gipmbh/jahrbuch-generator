@@ -108,7 +108,7 @@ public class VideoResource {
                     .resolve(v.pfad.replaceFirst("^/", "")).normalize();
             if (!videoPath.toFile().exists()) { skipped++; continue; }
 
-            String codec = detectCodec(videoPath);
+            String codec = ffmpegService.detectCodec(videoPath);
             if (!"h264".equals(codec)) {
                 boolean ok = ffmpegService.processVideo(videoPath);
                 if (ok) transcoded++; else { errors++; continue; }
@@ -124,24 +124,6 @@ public class VideoResource {
         }
         log.info("generate-thumbs abgeschlossen: transcoded={}, snapshots={}, skipped={}, errors={}",
                 transcoded, snapshots, skipped, errors);
-    }
-
-    private String detectCodec(java.nio.file.Path videoPath) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    "ffprobe", "-v", "quiet",
-                    "-select_streams", "v:0",
-                    "-show_entries", "stream=codec_name",
-                    "-of", "default=noprint_wrappers=1",
-                    videoPath.toString());
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes()).trim();
-            p.waitFor();
-            return output.replace("codec_name=", "").trim();
-        } catch (Exception e) {
-            return "unknown";
-        }
     }
 
 }

@@ -92,6 +92,24 @@ public class FfmpegService {
         }
     }
 
+    public String detectCodec(Path videoPath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffprobe", "-v", "quiet",
+                    "-select_streams", "v:0",
+                    "-show_entries", "stream=codec_name",
+                    "-of", "default=noprint_wrappers=1",
+                    videoPath.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            p.waitFor();
+            return output.replace("codec_name=", "").trim();
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
     public static String toSnapshotPfad(String videoPfad) {
         return videoPfad + THUMB_SUFFIX;
     }

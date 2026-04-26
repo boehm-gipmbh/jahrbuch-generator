@@ -320,7 +320,9 @@ public class VideoUploadResource {
         }
         io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool().execute(() -> {
             ffmpegService.generateSnapshot(videoPath);
-            ffmpegService.processVideo(videoPath);
+            if (!"h264".equals(ffmpegService.detectCodec(videoPath))) {
+                ffmpegService.processVideo(videoPath);
+            }
         });
     }
 
