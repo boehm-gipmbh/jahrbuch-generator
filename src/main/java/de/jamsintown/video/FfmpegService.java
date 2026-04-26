@@ -36,7 +36,7 @@ public class FfmpegService {
                     "ffmpeg", "-y",
                     "-i", videoPath.toString(),
                     "-c:v", "libx264",
-                    "-preset", "fast",
+                    "-preset", "veryfast",
                     "-crf", "23",
                     "-c:a", "aac",
                     "-movflags", "+faststart",
