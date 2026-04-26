@@ -142,25 +142,27 @@ public class VideoUploadResource {
         final String videoDesc = description;
         final String sid = storyIdStr;
 
-        return Uni.createFrom().<java.nio.file.Path>item(() -> {
-            try {
-                java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
-                Files.createDirectories(dirPath);
-                java.nio.file.Path finalPath = dirPath.resolve(uniqueFileName);
-                java.nio.file.Path tmpDir = Paths.get(config.capturesPath, "videos", "tmp", uploadId);
-                try (OutputStream out = Files.newOutputStream(finalPath)) {
-                    for (int i = 0; i < totalChunks; i++) {
-                        Files.copy(tmpDir.resolve(String.format("chunk_%05d", i)), out);
+        io.vertx.core.Context vertxContext = io.vertx.core.Vertx.currentContext();
+        return Uni.createFrom().<java.nio.file.Path>emitter(emitter ->
+            io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool().execute(() -> {
+                try {
+                    java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
+                    Files.createDirectories(dirPath);
+                    java.nio.file.Path finalPath = dirPath.resolve(uniqueFileName);
+                    java.nio.file.Path tmpDir = Paths.get(config.capturesPath, "videos", "tmp", uploadId);
+                    try (OutputStream out = Files.newOutputStream(finalPath)) {
+                        for (int i = 0; i < totalChunks; i++) {
+                            Files.copy(tmpDir.resolve(String.format("chunk_%05d", i)), out);
+                        }
                     }
+                    cleanupTmp(config.capturesPath, uploadId);
+                    runFfmpeg(finalPath);
+                    vertxContext.runOnContext(v -> emitter.complete(finalPath));
+                } catch (Exception e) {
+                    vertxContext.runOnContext(v -> emitter.fail(e));
                 }
-                cleanupTmp(config.capturesPath, uploadId);
-                runFfmpeg(finalPath);
-                return finalPath;
-            } catch (java.io.IOException e) {
-                throw new java.io.UncheckedIOException(e);
-            }
-        }).runSubscriptionOn(io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool())
-        .chain(finalPath -> {
+            })
+        ).chain(finalPath -> {
             Video video = new Video();
             video.pfad = "/" + subDir + uniqueFileName;
             video.title = videoTitle;
