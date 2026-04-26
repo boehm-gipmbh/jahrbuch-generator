@@ -38,6 +38,7 @@ public class FfmpegService {
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-crf", "23",
+                    "-vf", "scale='min(1280,iw)':-2",
                     "-c:a", "aac",
                     "-movflags", "+faststart",
                     tmpPath.toString()
