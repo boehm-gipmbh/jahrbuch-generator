@@ -70,10 +70,10 @@ public class VideoUploadResource {
                     Map<String, List<FormValue>> parts = new HashMap<>();
                     input.getValues().forEach((k, v) -> parts.put(k, new ArrayList<>(v)));
 
-                    String uploadId = getFormValue(parts, "uploadId");
-                    int chunkIndex = Integer.parseInt(getFormValue(parts, "chunkIndex").trim());
-                    int totalChunks = Integer.parseInt(getFormValue(parts, "totalChunks").trim());
-                    String fileName = getFormValue(parts, "fileName");
+                    final String uploadId = getFormValue(parts, "uploadId");
+                    final int chunkIndex = Integer.parseInt(getFormValue(parts, "chunkIndex").trim());
+                    final int totalChunks = Integer.parseInt(getFormValue(parts, "totalChunks").trim());
+                    final String fileName = getFormValue(parts, "fileName");
 
                     if (!uploadId.matches("[a-zA-Z0-9\\-]{8,64}")) {
                         return Uni.createFrom().item(
@@ -86,24 +86,36 @@ public class VideoUploadResource {
                             Response.status(400).entity(Map.of("message", "Kein Chunk")).build());
                     }
 
-                    java.nio.file.Path tmpDir = Paths.get(config.capturesPath, "videos", "tmp", uploadId);
-                    Files.createDirectories(tmpDir);
+                    final InputStream chunkStream = fileParts.get(0).getFileItem().getInputStream();
+                    final io.vertx.core.Context vertxCtx = io.vertx.core.Vertx.currentContext();
 
-                    java.nio.file.Path chunkPath = tmpDir.resolve(String.format("chunk_%05d", chunkIndex));
-                    try (InputStream is = fileParts.get(0).getFileItem().getInputStream()) {
-                        Files.copy(is, chunkPath, StandardCopyOption.REPLACE_EXISTING);
-                    }
-
-                    long receivedCount = Files.list(tmpDir)
-                        .filter(p -> p.getFileName().toString().startsWith("chunk_"))
-                        .count();
-
-                    if (receivedCount >= totalChunks) {
-                        return assembleAndCreate(uploadId, totalChunks, fileName, config, user, parts);
-                    }
-
-                    return Uni.createFrom().item(
-                        Response.ok(Map.of("received", chunkIndex, "total", totalChunks)).build());
+                    return Uni.createFrom().<Boolean>emitter(emitter ->
+                        io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool().execute(() -> {
+                            try {
+                                java.nio.file.Path tmpDir = Paths.get(config.capturesPath, "videos", "tmp", uploadId);
+                                Files.createDirectories(tmpDir);
+                                java.nio.file.Path chunkPath = tmpDir.resolve(String.format("chunk_%05d", chunkIndex));
+                                try (chunkStream) {
+                                    Files.copy(chunkStream, chunkPath, StandardCopyOption.REPLACE_EXISTING);
+                                }
+                                long receivedCount = Files.list(tmpDir)
+                                    .filter(p -> p.getFileName().toString().startsWith("chunk_"))
+                                    .count();
+                                vertxCtx.runOnContext(v -> emitter.complete(receivedCount >= totalChunks));
+                            } catch (Exception e) {
+                                vertxCtx.runOnContext(v -> emitter.fail(e));
+                            }
+                        })
+                    ).chain(isLast -> {
+                        if (isLast) {
+                            return assembleAndCreate(uploadId, totalChunks, fileName, config, user, parts);
+                        }
+                        return Uni.createFrom().item(
+                            Response.ok(Map.of("received", chunkIndex, "total", totalChunks)).build());
+                    }).onFailure().recoverWithItem(e -> {
+                        log.error("Chunk-Upload Fehler: {}", e.getMessage(), e);
+                        return Response.serverError().entity(Map.of("message", "Chunk-Fehler: " + e.getMessage())).build();
+                    });
 
                 } catch (Exception e) {
                     log.error("Chunk-Upload Fehler: {}", e.getMessage(), e);
