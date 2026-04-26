@@ -36,8 +36,9 @@ public class FfmpegService {
                     "ffmpeg", "-y",
                     "-i", videoPath.toString(),
                     "-c:v", "libx264",
-                    "-preset", "fast",
+                    "-preset", "veryfast",
                     "-crf", "23",
+                    "-vf", "scale='min(1280,iw)':-2",
                     "-c:a", "aac",
                     "-movflags", "+faststart",
                     tmpPath.toString()
@@ -89,6 +90,24 @@ public class FfmpegService {
         } catch (Exception e) {
             log.error("FFmpeg Snapshot Fehler bei {}: {}", videoPath.getFileName(), e.getMessage());
             return false;
+        }
+    }
+
+    public String detectCodec(Path videoPath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffprobe", "-v", "quiet",
+                    "-select_streams", "v:0",
+                    "-show_entries", "stream=codec_name",
+                    "-of", "default=noprint_wrappers=1",
+                    videoPath.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            p.waitFor();
+            return output.replace("codec_name=", "").trim();
+        } catch (Exception e) {
+            return "unknown";
         }
     }
 
