@@ -319,8 +319,8 @@ public class VideoUploadResource {
             return;
         }
         io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool().execute(() -> {
-            ffmpegService.processVideo(videoPath);
             ffmpegService.generateSnapshot(videoPath);
+            ffmpegService.processVideo(videoPath);
         });
     }
 
