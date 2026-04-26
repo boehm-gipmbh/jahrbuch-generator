@@ -35,16 +35,19 @@ public class VideoUploadResource {
     private final StoryService storyService;
     private final UserService userService;
     private final AppConfigService appConfigService;
+    private final FfmpegService ffmpegService;
     private final String defaultCapturesPath;
 
     @Inject
     public VideoUploadResource(VideoService videoService, StoryService storyService,
                                 UserService userService, AppConfigService appConfigService,
+                                FfmpegService ffmpegService,
                                 @ConfigProperty(name = "jahrbuch.captures.path") String defaultCapturesPath) {
         this.videoService = videoService;
         this.storyService = storyService;
         this.userService = userService;
         this.appConfigService = appConfigService;
+        this.ffmpegService = ffmpegService;
         this.defaultCapturesPath = defaultCapturesPath;
     }
 
@@ -147,6 +150,8 @@ public class VideoUploadResource {
 
             cleanupTmp(config.capturesPath, uploadId);
 
+            runFfmpeg(finalPath);
+
             Video video = new Video();
             video.pfad = "/" + subDir + uniqueFileName;
             video.title = title != null && !title.isBlank() ? title : fileName;
@@ -242,6 +247,8 @@ public class VideoUploadResource {
                     Files.copy(is, targetPath, StandardCopyOption.REPLACE_EXISTING);
                 }
 
+                runFfmpeg(targetPath);
+
                 Video video = new Video();
                 video.pfad = "/" + subDir + uniqueFileName;
                 video.title = title != null && !title.isBlank() ? title : fileName;
@@ -284,6 +291,15 @@ public class VideoUploadResource {
     private boolean isAllowedType(String ext, String allowedTypes) {
         if (ext.isEmpty()) return false;
         return Arrays.stream(allowedTypes.split(",")).anyMatch(t -> t.trim().equalsIgnoreCase(ext));
+    }
+
+    private void runFfmpeg(java.nio.file.Path videoPath) {
+        if (!ffmpegService.isAvailable()) {
+            log.warn("FFmpeg nicht verfügbar — kein Transcode für {}", videoPath.getFileName());
+            return;
+        }
+        ffmpegService.processVideo(videoPath);
+        ffmpegService.generateSnapshot(videoPath);
     }
 
     private static class UploadConfig {
