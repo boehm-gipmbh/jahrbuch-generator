@@ -298,8 +298,10 @@ public class VideoUploadResource {
             log.warn("FFmpeg nicht verfügbar — kein Transcode für {}", videoPath.getFileName());
             return;
         }
-        ffmpegService.processVideo(videoPath);
-        ffmpegService.generateSnapshot(videoPath);
+        io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool().execute(() -> {
+            ffmpegService.processVideo(videoPath);
+            ffmpegService.generateSnapshot(videoPath);
+        });
     }
 
     private static class UploadConfig {
