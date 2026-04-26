@@ -94,22 +94,54 @@ public class VideoResource {
         return appConfigService.getValue("jahrbuch.captures.path")
                 .map(p -> p != null ? p : defaultCapturesPath)
                 .chain(capturesPath -> Video.<Video>listAll()
+                        .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
                         .map(videos -> {
-                            int processed = 0, skipped = 0, errors = 0;
+                            int transcoded = 0, snapshots = 0, skipped = 0, errors = 0;
                             for (Video v : videos) {
                                 if (v.pfad == null || v.deleted) { skipped++; continue; }
                                 java.nio.file.Path videoPath = Paths.get(capturesPath)
                                         .resolve(v.pfad.replaceFirst("^/", "")).normalize();
                                 if (!videoPath.toFile().exists()) { skipped++; continue; }
+
+                                // Transcode wenn nötig (HEVC oder kein faststart)
+                                String codec = detectCodec(videoPath);
+                                if (!"h264".equals(codec)) {
+                                    boolean ok = ffmpegService.processVideo(videoPath);
+                                    if (ok) transcoded++; else { errors++; continue; }
+                                }
+
+                                // Snapshot wenn noch nicht vorhanden
                                 java.nio.file.Path thumbPath = videoPath.resolveSibling(
                                         videoPath.getFileName() + ".thumb.jpg");
-                                if (thumbPath.toFile().exists()) { skipped++; continue; }
-                                boolean ok = ffmpegService.generateSnapshot(videoPath);
-                                if (ok) processed++; else errors++;
+                                if (!thumbPath.toFile().exists()) {
+                                    boolean ok = ffmpegService.generateSnapshot(videoPath);
+                                    if (ok) snapshots++; else errors++;
+                                } else {
+                                    skipped++;
+                                }
                             }
                             return Map.<String, Object>of(
-                                    "processed", processed, "skipped", skipped, "errors", errors);
+                                    "transcoded", transcoded, "snapshots", snapshots,
+                                    "skipped", skipped, "errors", errors);
                         }));
+    }
+
+    private String detectCodec(java.nio.file.Path videoPath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffprobe", "-v", "quiet",
+                    "-select_streams", "v:0",
+                    "-show_entries", "stream=codec_name",
+                    "-of", "default=noprint_wrappers=1",
+                    videoPath.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            p.waitFor();
+            return output.replace("codec_name=", "").trim();
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 
 }
