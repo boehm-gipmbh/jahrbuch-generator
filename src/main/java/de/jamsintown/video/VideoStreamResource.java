@@ -91,7 +91,12 @@ public class VideoStreamResource {
         try {
             long[] range = parseRange(rangeHeader, fileSize);
             long start = range[0];
-            long end = Math.min(range[1], start + 1024 * 1024 - 1);
+            // Offene Range-Requests (bytes=X-): Browser sucht moov-Atom → 10 MB Cap
+            // Explizite Range-Requests (bytes=X-Y): Seek während Wiedergabe → 2 MB Cap
+            String rangeSpec = rangeHeader.substring(6);
+            boolean openEnded = rangeSpec.split("-", 2)[1].isEmpty() || rangeSpec.startsWith("-");
+            long cap = openEnded ? 10L * 1024 * 1024 : 2L * 1024 * 1024;
+            long end = Math.min(range[1], start + cap - 1);
             long length = end - start + 1;
 
             byte[] chunk = readChunk(file, start, length);
