@@ -90,39 +90,40 @@ public class VideoResource {
     @RolesAllowed("admin")
     @Produces(MediaType.APPLICATION_JSON)
     @WithSession
-    public Uni<Map<String, Object>> generateThumbs() {
+    public Uni<Response> generateThumbs() {
         return appConfigService.getValue("jahrbuch.captures.path")
                 .map(p -> p != null ? p : defaultCapturesPath)
                 .chain(capturesPath -> Video.<Video>listAll()
-                        .chain(videos -> Uni.createFrom().<Map<String, Object>>item(() -> {
-                            int transcoded = 0, snapshots = 0, skipped = 0, errors = 0;
-                            for (Video v : videos) {
-                                if (v.pfad == null || v.deleted) { skipped++; continue; }
-                                java.nio.file.Path videoPath = Paths.get(capturesPath)
-                                        .resolve(v.pfad.replaceFirst("^/", "")).normalize();
-                                if (!videoPath.toFile().exists()) { skipped++; continue; }
+                        .map(videos -> {
+                            Infrastructure.getDefaultWorkerPool().execute(() -> processVideos(videos, capturesPath));
+                            return Response.accepted(Map.of("message", "Verarbeitung gestartet", "count", videos.size())).build();
+                        }));
+    }
 
-                                // Transcode wenn nötig (HEVC oder kein faststart)
-                                String codec = detectCodec(videoPath);
-                                if (!"h264".equals(codec)) {
-                                    boolean ok = ffmpegService.processVideo(videoPath);
-                                    if (ok) transcoded++; else { errors++; continue; }
-                                }
+    private void processVideos(java.util.List<Video> videos, String capturesPath) {
+        int transcoded = 0, snapshots = 0, skipped = 0, errors = 0;
+        for (Video v : videos) {
+            if (v.pfad == null || v.deleted) { skipped++; continue; }
+            java.nio.file.Path videoPath = Paths.get(capturesPath)
+                    .resolve(v.pfad.replaceFirst("^/", "")).normalize();
+            if (!videoPath.toFile().exists()) { skipped++; continue; }
 
-                                // Snapshot wenn noch nicht vorhanden
-                                java.nio.file.Path thumbPath = videoPath.resolveSibling(
-                                        videoPath.getFileName() + ".thumb.jpg");
-                                if (!thumbPath.toFile().exists()) {
-                                    boolean ok = ffmpegService.generateSnapshot(videoPath);
-                                    if (ok) snapshots++; else errors++;
-                                } else {
-                                    skipped++;
-                                }
-                            }
-                            return Map.<String, Object>of(
-                                    "transcoded", transcoded, "snapshots", snapshots,
-                                    "skipped", skipped, "errors", errors);
-                        }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool())));
+            String codec = detectCodec(videoPath);
+            if (!"h264".equals(codec)) {
+                boolean ok = ffmpegService.processVideo(videoPath);
+                if (ok) transcoded++; else { errors++; continue; }
+            }
+
+            java.nio.file.Path thumbPath = videoPath.resolveSibling(videoPath.getFileName() + ".thumb.jpg");
+            if (!thumbPath.toFile().exists()) {
+                boolean ok = ffmpegService.generateSnapshot(videoPath);
+                if (ok) snapshots++; else errors++;
+            } else {
+                skipped++;
+            }
+        }
+        log.info("generate-thumbs abgeschlossen: transcoded={}, snapshots={}, skipped={}, errors={}",
+                transcoded, snapshots, skipped, errors);
     }
 
     private String detectCodec(java.nio.file.Path videoPath) {
