@@ -117,67 +117,69 @@ public class VideoUploadResource {
     private Uni<Response> assembleAndCreate(String uploadId, int totalChunks, String fileName,
                                              UploadConfig config, de.jamsintown.user.User user,
                                              Map<String, List<FormValue>> parts) {
+        String title, description, storyIdStr;
         try {
-            String title = getFormValue(parts, "title");
-            String description = getFormValue(parts, "description");
-            String storyIdStr = getFormValue(parts, "storyId");
+            title = getFormValue(parts, "title");
+            description = getFormValue(parts, "description");
+            storyIdStr = getFormValue(parts, "storyId");
+        } catch (Exception e) {
+            return Uni.createFrom().item(Response.serverError().entity(Map.of("message", e.getMessage())).build());
+        }
 
-            String ext = getFileExtension(fileName != null && !fileName.isBlank() ? fileName : "video.mp4");
-            if (!isAllowedType(ext, config.allowedTypes)) {
-                cleanupTmp(config.capturesPath, uploadId);
-                return Uni.createFrom().item(
-                    Response.status(400).entity(Map.of("message", "Nicht erlaubter Typ: " + ext)).build());
-            }
+        String ext = getFileExtension(fileName != null && !fileName.isBlank() ? fileName : "video.mp4");
+        if (!isAllowedType(ext, config.allowedTypes)) {
+            cleanupTmp(config.capturesPath, uploadId);
+            return Uni.createFrom().item(
+                Response.status(400).entity(Map.of("message", "Nicht erlaubter Typ: " + ext)).build());
+        }
 
-            String subDir = (user.activeGroup != null)
-                ? "videos/gruppen/" + user.activeGroup.id + "/"
-                : "videos/ungrouped/";
+        String subDir = (user.activeGroup != null)
+            ? "videos/gruppen/" + user.activeGroup.id + "/"
+            : "videos/ungrouped/";
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String uniqueFileName = timestamp + "_" + UUID.randomUUID() + ext;
+        final String videoTitle = title != null && !title.isBlank() ? title : fileName;
+        final String videoDesc = description;
+        final String sid = storyIdStr;
 
-            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-            String uniqueFileName = timestamp + "_" + UUID.randomUUID() + ext;
-
+        return Uni.createFrom().<java.nio.file.Path>item(() -> {
             java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
             Files.createDirectories(dirPath);
             java.nio.file.Path finalPath = dirPath.resolve(uniqueFileName);
-
             java.nio.file.Path tmpDir = Paths.get(config.capturesPath, "videos", "tmp", uploadId);
             try (OutputStream out = Files.newOutputStream(finalPath)) {
                 for (int i = 0; i < totalChunks; i++) {
-                    java.nio.file.Path chunkPath = tmpDir.resolve(String.format("chunk_%05d", i));
-                    Files.copy(chunkPath, out);
+                    Files.copy(tmpDir.resolve(String.format("chunk_%05d", i)), out);
                 }
             }
-
             cleanupTmp(config.capturesPath, uploadId);
-
             runFfmpeg(finalPath);
-
+            return finalPath;
+        }).runSubscriptionOn(io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool())
+        .chain(finalPath -> {
             Video video = new Video();
             video.pfad = "/" + subDir + uniqueFileName;
-            video.title = title != null && !title.isBlank() ? title : fileName;
-            video.description = description;
+            video.title = videoTitle;
+            video.description = videoDesc;
             video.priority = 3;
 
             Long storyId = null;
-            if (storyIdStr != null && !storyIdStr.isBlank()) {
-                try { storyId = Long.parseLong(storyIdStr); } catch (NumberFormatException ignored) {}
+            if (sid != null && !sid.isBlank()) {
+                try { storyId = Long.parseLong(sid); } catch (NumberFormatException ignored) {}
             }
-
-            final Long sid = storyId;
-            if (sid != null) {
-                return storyService.findById(sid).chain(story -> {
+            final Long storyIdLong = storyId;
+            if (storyIdLong != null) {
+                return storyService.findById(storyIdLong).chain(story -> {
                     if (story != null) video.story = story;
                     return videoService.create(video);
                 }).map(v -> Response.ok(v).build());
             }
             return videoService.create(video).map(v -> Response.ok(v).build());
-
-        } catch (Exception e) {
+        }).onFailure().recoverWithItem(e -> {
             log.error("Assembly-Fehler: {}", e.getMessage(), e);
             cleanupTmp(config.capturesPath, uploadId);
-            return Uni.createFrom().item(
-                Response.serverError().entity(Map.of("message", "Assembly-Fehler: " + e.getMessage())).build());
-        }
+            return Response.serverError().entity(Map.of("message", "Assembly-Fehler: " + e.getMessage())).build();
+        });
     }
 
     private void cleanupTmp(String capturesPath, String uploadId) {
