@@ -94,8 +94,7 @@ public class VideoResource {
         return appConfigService.getValue("jahrbuch.captures.path")
                 .map(p -> p != null ? p : defaultCapturesPath)
                 .chain(capturesPath -> Video.<Video>listAll()
-                        .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
-                        .map(videos -> {
+                        .chain(videos -> Uni.createFrom().<Map<String, Object>>item(() -> {
                             int transcoded = 0, snapshots = 0, skipped = 0, errors = 0;
                             for (Video v : videos) {
                                 if (v.pfad == null || v.deleted) { skipped++; continue; }
@@ -123,7 +122,7 @@ public class VideoResource {
                             return Map.<String, Object>of(
                                     "transcoded", transcoded, "snapshots", snapshots,
                                     "skipped", skipped, "errors", errors);
-                        }));
+                        }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool())));
     }
 
     private String detectCodec(java.nio.file.Path videoPath) {
