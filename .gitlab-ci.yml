@@ -1,51 +1,22 @@
 stages:
   - test
-  - deploy
-
-variables:
-  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
-
-cache:
-  key: "maven-$CI_COMMIT_REF_SLUG"
-  paths:
-    - .m2/repository/
 
 test:
   stage: test
-  image: eclipse-temurin:17-jdk-jammy
+  image: eclipse-temurin:21-jdk
+  services:
+    - postgres:latest
+  variables:
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    POSTGRES_DB: postgres
   before_script:
-    - ./mvnw install:install-file
-        -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
-        -DgroupId=org.gphoto -DartifactId=gphoto2-java
-        -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
+    - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
+      -DgroupId=org.gphoto -DartifactId=gphoto2-java
+      -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
   script:
     - ./mvnw test -B
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push"
-
-deploy:
-  stage: deploy
-  tags:
-    - shell   # Runner mit Shell-Executor + Docker + flyctl auf lokalem Rechner
-  before_script:
-    - ./mvnw install:install-file
-        -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
-        -DgroupId=org.gphoto -DartifactId=gphoto2-java
-        -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
-    - echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-  script:
-    - |
-      APP_VERSION="fly-$(echo $CI_COMMIT_SHA | cut -c1-7) ($(date -u +%Y-%m-%d))"
-      REACT_APP_VERSION="$APP_VERSION" ./mvnw -Pnative,frontend,fly clean package \
-        k8s:build k8s:push -B -Dquarkus.native.container-build=true
-      SHA=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
-      docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:fly-$SHA
-      docker push drdboehm/jahrbuch-generator:fly-$SHA
-      flyctl deploy --image drdboehm/jahrbuch-generator:fly
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-  needs:
-    - test
-  environment:
-    name: production
-    url: https://jahrbuch-generator.fly.dev
+  cache:
+    key: maven-$CI_COMMIT_REF_SLUG
+    paths:
+      - ~/.m2/repository
