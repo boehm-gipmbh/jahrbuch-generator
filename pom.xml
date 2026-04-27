@@ -419,7 +419,7 @@
             <properties>
                 <quarkus.native.enabled>true</quarkus.native.enabled>
                 <quarkus.native.additional-build-args>
-                    -H:ResourceConfigurationFiles=resources-config.json
+                    -H:ResourceConfigurationFiles=resources-config.json,--initialize-at-run-time=com.itextpdf.kernel.font.FontUtil
                 </quarkus.native.additional-build-args>
                 <quarkus.native.container-build>true</quarkus.native.container-build>
                 <!--                <quarkus.native.builder-image>quay.io/quarkus/ubi-quarkus-mandrel:22.3.0.1-Final-java17</quarkus.native.builder-image>-->
