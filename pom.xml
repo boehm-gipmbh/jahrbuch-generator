@@ -19,6 +19,7 @@
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <surefire-plugin.version>3.0.0-M5</surefire-plugin.version>
+        <itext7.version>8.0.5</itext7.version>
         <exec-maven-plugin.version>3.0.0</exec-maven-plugin.version>
         <jkube.version>1.8.0</jkube.version>
         <jkube.generator.name>drdboehm/jahrbuch-generator:latest</jkube.generator.name>
@@ -109,6 +110,12 @@
             <groupId>org.gphoto</groupId>
             <artifactId>gphoto2-java</artifactId>
             <version>1.5-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.itextpdf</groupId>
+            <artifactId>itext7-core</artifactId>
+            <version>${itext7.version}</version>
+            <type>pom</type>
         </dependency>
         <!-- Ersetze die aktuelle quarkus-lombok Dependency mit dieser: -->
         <dependency>
