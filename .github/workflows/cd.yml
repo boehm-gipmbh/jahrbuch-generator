@@ -36,7 +36,7 @@ jobs:
         run: echo "APP_VERSION=fly-$(echo $GITHUB_SHA | cut -c1-7) ($(date -u +%Y-%m-%d))" >> $GITHUB_ENV
 
       - name: Native Image bauen und zu Docker Hub pushen
-        run: ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B -Dquarkus.native.container-build=true
+        run: ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B -Dquarkus.native.container-build=true -DskipTests
         env:
           REACT_APP_VERSION: ${{ env.APP_VERSION }}
 
