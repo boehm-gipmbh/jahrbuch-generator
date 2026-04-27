@@ -248,7 +248,54 @@ even private ones, as a hostname. You can learn more about this service at https
 Eclipse JKube can generate the required Kubernetes manifests for our application based on the configuration in the `pom.xml` file. To create the cluster configuration manifests, you can run the following command:
 ```shell script
 ./mvnw k8s:resource
-``` 
+```
 
+# Production — Fly.io
 
+## Deployment URL
+https://jahrbuch-generator.fly.dev
 
+## Repositories
+- Backend: `git@github.com:boehm-gipmbh/jahrbuch-generator.git`
+- Frontend: `git@github.com:boehm-gipmbh/jahrbuch-generator-frontend.git`
+
+## Datenbank-Backup
+Dump der Produktionsdatenbank ziehen:
+```shell script
+flyctl ssh console --app jahrbuch-generator-pg \
+  --command "sh -c 'pg_dump -U postgres -p 5433 postgres | gzip > /tmp/dump.sql.gz && echo DONE'"
+flyctl ssh sftp get --app jahrbuch-generator-pg /tmp/dump.sql.gz ./back/dump_$(date +%Y%m%d).sql.gz
+```
+
+## PostgreSQL-Konfiguration (jahrbuch-generator-pg)
+Die Postgres-Maschine läuft mit **256MB RAM** (shared-cpu-1x). Um OOM-Kills zu vermeiden, sind folgende Werte gesetzt:
+
+| Parameter | Wert | Begründung |
+|---|---|---|
+| `max_connections` | 25 | App verbindet via PgBouncer — 300 war zu viel für 256MB |
+| `shared_buffers` | 64MB | 25% des verfügbaren RAMs |
+
+Konfiguration ändern:
+```shell script
+flyctl postgres config update --app jahrbuch-generator-pg --max-connections 25 --yes
+flyctl postgres config update --app jahrbuch-generator-pg --shared-buffers 64 --yes
+```
+
+# Frontend — FilterBar
+
+Der `FilterBar` (`src/FilterBar.js`) ist zweizeilig aufgebaut:
+- **Zeile 1:** Suche, Datumsfelder, Stories-Filter, Sortierung
+- **Zeile 2:** Metadata-Switches (nur in der Bilder-Ansicht)
+
+## Metadata-Filter (Bilder)
+Die Switches filtern Bilder nach fehlenden Metadaten. Verknüpfungslogik:
+
+```
+(Ohne Titel OR Ohne Beschreibung) AND Ohne Story
+```
+
+| Switch | Default | Bedeutung |
+|---|---|---|
+| Ohne Titel | ON | Bilder ohne Titel anzeigen |
+| Ohne Beschreibung | ON | Bilder ohne Beschreibung anzeigen |
+| Ohne Story | OFF | zusätzlich: nur Bilder ohne Story-Zuweisung |
