@@ -12,6 +12,7 @@ import de.jamsintown.story.Story;
 import de.jamsintown.text.Text;
 import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.UserService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.quarkus.panache.common.Sort;
 import io.quarkus.security.UnauthorizedException;
 import io.smallrye.mutiny.Multi;
@@ -42,6 +43,7 @@ public class PdfService {
         this.userService = userService;
     }
 
+    @WithSession
     public Uni<byte[]> generateForGroup(Long groupId) {
         return userService.getCurrentUser()
             .chain(user -> Gruppe.<Gruppe>findById(groupId)
