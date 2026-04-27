@@ -10,12 +10,15 @@ import com.itextpdf.layout.properties.UnitValue;
 import de.jamsintown.bild.Bild;
 import de.jamsintown.story.Story;
 import de.jamsintown.text.Text;
+import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.UserService;
 import io.quarkus.panache.common.Sort;
+import io.quarkus.security.UnauthorizedException;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import io.smallrye.common.annotation.Blocking;
@@ -39,9 +42,19 @@ public class PdfService {
         this.userService = userService;
     }
 
-    public Uni<byte[]> generateForUser() {
+    public Uni<byte[]> generateForGroup(Long groupId) {
         return userService.getCurrentUser()
-            .chain(user -> Story.<Story>find("user = ?1", Sort.by("created"), user).list())
+            .chain(user -> Gruppe.<Gruppe>findById(groupId)
+                .onItem().ifNull().failWith(() -> new NotFoundException("Gruppe nicht gefunden: " + groupId))
+                .onItem().invoke(gruppe -> {
+                    boolean isMember = user.groups != null && user.groups.stream().anyMatch(g -> groupId.equals(g.id));
+                    boolean isManager = (user.managedGroup != null && groupId.equals(user.managedGroup.id))
+                        || (user.managedGroups != null && user.managedGroups.stream().anyMatch(g -> groupId.equals(g.id)));
+                    if (!isMember && !isManager) {
+                        throw new UnauthorizedException("Kein Zugriff auf Gruppe: " + groupId);
+                    }
+                }))
+            .chain(gruppe -> Story.<Story>find("group = ?1", Sort.by("created"), gruppe).list())
             .chain(stories -> Multi.createFrom().iterable(stories)
                 .onItem().transformToUniAndConcatenate(this::loadStoryData)
                 .collect().asList())
