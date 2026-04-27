@@ -30,10 +30,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: JDK 17 einrichten
+      - name: JDK 21 einrichten
         uses: actions/setup-java@v4
         with:
-          java-version: 17
+          java-version: 21
           distribution: temurin
           cache: maven
 
