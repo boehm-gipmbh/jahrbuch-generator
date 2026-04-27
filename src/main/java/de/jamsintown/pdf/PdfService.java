@@ -43,8 +43,15 @@ public class PdfService {
         this.userService = userService;
     }
 
-    @WithSession
     public Uni<byte[]> generateForGroup(Long groupId) {
+        return loadAllStoryData(groupId)
+            .chain(storyDataList -> Uni.createFrom()
+                .item(() -> renderPdf(storyDataList))
+                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
+    }
+
+    @WithSession
+    Uni<List<StoryData>> loadAllStoryData(Long groupId) {
         return userService.getCurrentUser()
             .chain(user -> Gruppe.<Gruppe>findById(groupId)
                 .onItem().ifNull().failWith(() -> new NotFoundException("Gruppe nicht gefunden: " + groupId))
@@ -59,10 +66,7 @@ public class PdfService {
             .chain(gruppe -> Story.<Story>find("group = ?1", Sort.by("created"), gruppe).list())
             .chain(stories -> Multi.createFrom().iterable(stories)
                 .onItem().transformToUniAndConcatenate(this::loadStoryData)
-                .collect().asList())
-            .chain(storyDataList -> Uni.createFrom()
-                .item(() -> renderPdf(storyDataList))
-                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
+                .collect().asList());
     }
 
     private Uni<StoryData> loadStoryData(Story story) {
