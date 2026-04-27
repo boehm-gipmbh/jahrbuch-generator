@@ -21,7 +21,7 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.NotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import io.smallrye.common.annotation.Blocking;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 
 import java.io.ByteArrayOutputStream;
 import java.util.Comparator;
@@ -58,7 +58,9 @@ public class PdfService {
             .chain(stories -> Multi.createFrom().iterable(stories)
                 .onItem().transformToUniAndConcatenate(this::loadStoryData)
                 .collect().asList())
-            .map(this::renderPdf);
+            .chain(storyDataList -> Uni.createFrom()
+                .item(() -> renderPdf(storyDataList))
+                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
     }
 
     private Uni<StoryData> loadStoryData(Story story) {
@@ -77,7 +79,6 @@ public class PdfService {
             .map(t -> new StoryData(story, t.getItem1(), t.getItem2()));
     }
 
-    @Blocking
     byte[] renderPdf(List<StoryData> stories) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (Document doc = new Document(new PdfDocument(new PdfWriter(out)), PageSize.A4)) {
