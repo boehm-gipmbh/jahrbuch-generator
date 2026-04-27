@@ -1,12 +1,14 @@
 package de.jamsintown.pdf;
 
 import io.smallrye.mutiny.Uni;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 @Path("/api/v1/pdf")
+@RolesAllowed("user")
 public class PdfResource {
 
     private final PdfService pdfService;

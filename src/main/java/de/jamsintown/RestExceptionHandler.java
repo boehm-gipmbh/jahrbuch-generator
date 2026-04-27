@@ -1,6 +1,8 @@
 package de.jamsintown;
 
+import io.quarkus.security.UnauthorizedException;
 import io.vertx.pgclient.PgException;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
 import jakarta.ws.rs.ext.Provider;
@@ -16,6 +18,22 @@ import java.util.Optional;
 public class RestExceptionHandler implements ExceptionMapper<HibernateException> {
 
   private static final String PG_UNIQUE_VIOLATION_ERROR = "23505";
+
+  @Provider
+  public static class NotFoundExceptionMapper implements ExceptionMapper<NotFoundException> {
+    @Override
+    public Response toResponse(NotFoundException e) {
+      return Response.status(Response.Status.NOT_FOUND).entity(e.getMessage()).build();
+    }
+  }
+
+  @Provider
+  public static class UnauthorizedExceptionMapper implements ExceptionMapper<UnauthorizedException> {
+    @Override
+    public Response toResponse(UnauthorizedException e) {
+      return Response.status(Response.Status.UNAUTHORIZED).build();
+    }
+  }
 
   @Override
   public Response toResponse(HibernateException exception) {
