@@ -66,19 +66,17 @@ public class PdfService {
     }
 
     private Uni<StoryData> loadStoryData(Story story) {
-        Uni<List<Bild>> bilderUni = Bild.<Bild>find(
+        return Bild.<Bild>find(
             "story = ?1 AND deleted = false",
             Sort.by("storyColumn").and("storyPosition"),
             story
-        ).list();
-        Uni<List<Text>> texteUni = Text.<Text>find(
+        ).list()
+        .chain(bilder -> Text.<Text>find(
             "story = ?1 AND deleted = false",
             Sort.by("storyColumn").and("storyPosition"),
             story
-        ).list();
-        return Uni.combine().all().unis(bilderUni, texteUni)
-            .asTuple()
-            .map(t -> new StoryData(story, t.getItem1(), t.getItem2()));
+        ).list()
+        .map(texte -> new StoryData(story, bilder, texte)));
     }
 
     byte[] renderPdf(List<StoryData> stories) {
