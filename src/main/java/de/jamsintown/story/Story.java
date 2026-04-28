@@ -39,6 +39,9 @@ public class Story extends PanacheEntity {
     @Column(name = "layout", length = 10)
     public String layout = "2col";
 
+    @Column(name = "order_position")
+    public Integer orderPosition = 0;
+
     @Version
     public int version;
 }

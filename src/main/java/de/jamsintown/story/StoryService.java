@@ -6,6 +6,7 @@ import de.jamsintown.video.Video;
 import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
+import io.quarkus.panache.common.Sort;
 import io.quarkus.security.UnauthorizedException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -47,11 +48,32 @@ public class StoryService {
         return userService.getCurrentUser()
                 .chain(user -> {
                     Gruppe g = user.activeGroup;
+                    Sort sort = Sort.by("orderPosition").and("created");
                     if (g != null) {
-                        return Story.<Story>find("group = ?1", g).list();
+                        return Story.<Story>find("group = ?1", sort, g).list();
                     }
-                    return Story.<Story>find("user = ?1 and group is null", user).list();
+                    return Story.<Story>find("user = ?1 and group is null", sort, user).list();
                 });
+    }
+
+    @WithTransaction
+    public Uni<Void> reorderStories(List<Long> orderedIds) {
+        if (orderedIds == null || orderedIds.isEmpty()) {
+            return Uni.createFrom().voidItem();
+        }
+        return userService.getCurrentUser().chain(user -> {
+            Gruppe g = user.activeGroup;
+            List<Uni<?>> updates = new ArrayList<>();
+            for (int i = 0; i < orderedIds.size(); i++) {
+                final int pos = i;
+                final Long storyId = orderedIds.get(i);
+                Uni<?> update = g != null
+                    ? Story.update("orderPosition = ?1 WHERE id = ?2 AND group = ?3", pos, storyId, g)
+                    : Story.update("orderPosition = ?1 WHERE id = ?2 AND user = ?3 AND group IS NULL", pos, storyId, user);
+                updates.add(update);
+            }
+            return Uni.combine().all().unis(updates).discardItems();
+        });
     }
 
     @WithTransaction
