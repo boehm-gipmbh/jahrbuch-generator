@@ -18,6 +18,7 @@ import com.itextpdf.layout.element.Paragraph;
 import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.properties.TextAlignment;
 import com.itextpdf.layout.properties.UnitValue;
+import com.itextpdf.layout.properties.VerticalAlignment;
 import de.jamsintown.bild.Bild;
 import de.jamsintown.story.Story;
 import de.jamsintown.text.Text;
@@ -227,7 +228,7 @@ public class PdfService {
 
         for (Item item : items) {
             if (item.isBild()) {
-                doc.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), 320f));
+                doc.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
             } else {
                 doc.add(buildTextDiv(item.text()));
             }
@@ -252,26 +253,21 @@ public class PdfService {
         ).sorted(Comparator.comparingInt(Item::pos)).toList();
 
         Table table = new Table(new float[]{1f, 1f}).useAllAvailableWidth().setMarginBottom(8);
-        int maxRows = Math.max(col0.size(), col1.size());
 
-        for (int i = 0; i < maxRows; i++) {
-            Cell leftCell = new Cell().setBorder(null).setPaddingRight(6);
-            if (i < col0.size()) {
-                Item item = col0.get(i);
-                if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), 220f));
-                else leftCell.add(buildTextDiv(item.text()));
-            }
-
-            Cell rightCell = new Cell().setBorder(null).setPaddingLeft(6);
-            if (i < col1.size()) {
-                Item item = col1.get(i);
-                if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), 220f));
-                else rightCell.add(buildTextDiv(item.text()));
-            }
-
-            table.addCell(leftCell);
-            table.addCell(rightCell);
+        Cell leftCell = new Cell().setBorder(null).setPaddingRight(6).setVerticalAlignment(VerticalAlignment.TOP);
+        for (Item item : col0) {
+            if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+            else leftCell.add(buildTextDiv(item.text()));
         }
+
+        Cell rightCell = new Cell().setBorder(null).setPaddingLeft(6).setVerticalAlignment(VerticalAlignment.TOP);
+        for (Item item : col1) {
+            if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+            else rightCell.add(buildTextDiv(item.text()));
+        }
+
+        table.addCell(leftCell);
+        table.addCell(rightCell);
         doc.add(table);
     }
 
@@ -285,24 +281,18 @@ public class PdfService {
                 .map(t -> new Item(t.storyPosition != null ? t.storyPosition : 0, false, null, t))
         ).sorted(Comparator.comparingInt(Item::pos)).toList();
 
-        List<List<Item>> cols = List.of(colItems.apply(0), colItems.apply(1), colItems.apply(2));
-
         Table table = new Table(new float[]{1f, 1f, 1f}).useAllAvailableWidth().setMarginBottom(8);
-        int maxRows = cols.stream().mapToInt(List::size).max().orElse(0);
 
-        for (int i = 0; i < maxRows; i++) {
-            for (int c = 0; c < 3; c++) {
-                float padLeft = c > 0 ? 4 : 0;
-                float padRight = c < 2 ? 4 : 0;
-                Cell cell = new Cell().setBorder(null).setPaddingLeft(padLeft).setPaddingRight(padRight);
-                List<Item> col = cols.get(c);
-                if (i < col.size()) {
-                    Item item = col.get(i);
-                    if (item.isBild()) cell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), 160f));
-                    else cell.add(buildTextDiv(item.text()));
-                }
-                table.addCell(cell);
+        for (int c = 0; c < 3; c++) {
+            float padLeft = c > 0 ? 4 : 0;
+            float padRight = c < 2 ? 4 : 0;
+            Cell cell = new Cell().setBorder(null).setPaddingLeft(padLeft).setPaddingRight(padRight)
+                .setVerticalAlignment(VerticalAlignment.TOP);
+            for (Item item : colItems.apply(c)) {
+                if (item.isBild()) cell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+                else cell.add(buildTextDiv(item.text()));
             }
+            table.addCell(cell);
         }
         doc.add(table);
     }
@@ -325,14 +315,14 @@ public class PdfService {
         }
     }
 
-    private Div buildBildDiv(Bild bild, UnitValue width, float maxHeight) {
+    private Div buildBildDiv(Bild bild, UnitValue width) {
         Div div = new Div().setMarginBottom(6);
         String path = capturesPath + bild.getPfad().replaceFirst("^/", "");
         try {
             byte[] imageBytes = loadScaledImageBytes(path);
             Image img = imageBytes != null
-                ? new Image(ImageDataFactory.create(imageBytes)).setWidth(width).setMaxHeight(maxHeight)
-                : new Image(ImageDataFactory.create(path)).setWidth(width).setMaxHeight(maxHeight);
+                ? new Image(ImageDataFactory.create(imageBytes)).setWidth(width)
+                : new Image(ImageDataFactory.create(path)).setWidth(width);
             div.add(img);
             String title = bild.getTitle();
             if (title != null && !title.isBlank()) {
