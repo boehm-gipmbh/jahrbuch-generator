@@ -112,17 +112,17 @@ public class PdfService {
             ? Bild.<Bild>find("group = ?1 AND story IS NULL AND deleted = false", Sort.by("created"), gruppe).list()
             : Uni.createFrom().item(List.of());
 
-        return bilderUni.chain(bilder ->
-            (options.includePendingTexte()
+        return bilderUni.chain(bilder -> {
+            Uni<List<Text>> texteUni = options.includePendingTexte()
                 ? Text.<Text>find("group = ?1 AND story IS NULL AND deleted = false", Sort.by("created"), gruppe).list()
-                : Uni.createFrom().<List<Text>>item(List.of()))
-            .map(texte -> {
+                : Uni.createFrom().item(List.of());
+            return texteUni.map(texte -> {
                 if (bilder.isEmpty() && texte.isEmpty()) return storyDataList;
                 List<StoryData> result = new ArrayList<>(storyDataList);
                 result.add(new StoryData(null, bilder, texte));
                 return result;
-            })
-        );
+            });
+        });
     }
 
     private Uni<StoryData> loadStoryData(Story story) {
