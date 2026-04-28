@@ -18,6 +18,12 @@ import com.itextpdf.layout.element.Paragraph;
 import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.properties.TextAlignment;
 import com.itextpdf.layout.properties.UnitValue;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import de.jamsintown.bild.Bild;
 import de.jamsintown.story.Story;
 import de.jamsintown.text.Text;
@@ -307,11 +313,42 @@ public class PdfService {
         doc.add(table);
     }
 
+    private static final int MAX_IMAGE_PX = 1200;
+
+    private byte[] loadScaledImageBytes(String path) {
+        try {
+            BufferedImage original = ImageIO.read(new java.io.File(path));
+            if (original == null) return Files.readAllBytes(Paths.get(path));
+            int w = original.getWidth();
+            int h = original.getHeight();
+            if (w <= MAX_IMAGE_PX && h <= MAX_IMAGE_PX) {
+                return Files.readAllBytes(Paths.get(path));
+            }
+            double scale = (double) MAX_IMAGE_PX / Math.max(w, h);
+            int newW = (int) (w * scale);
+            int newH = (int) (h * scale);
+            BufferedImage scaled = new BufferedImage(newW, newH, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = scaled.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(original, 0, 0, newW, newH, null);
+            g.dispose();
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(scaled, "jpeg", baos);
+            return baos.toByteArray();
+        } catch (Exception e) {
+            log.warn("Bild konnte nicht skaliert werden: {}", path);
+            return null;
+        }
+    }
+
     private Div buildBildDiv(Bild bild, UnitValue width) {
         Div div = new Div().setMarginBottom(6);
         String path = capturesPath + bild.getPfad().replaceFirst("^/", "");
         try {
-            Image img = new Image(ImageDataFactory.create(path)).setWidth(width);
+            byte[] imageBytes = loadScaledImageBytes(path);
+            Image img = imageBytes != null
+                ? new Image(ImageDataFactory.create(imageBytes)).setWidth(width)
+                : new Image(ImageDataFactory.create(path)).setWidth(width);
             div.add(img);
             String title = bild.getTitle();
             if (title != null && !title.isBlank()) {
