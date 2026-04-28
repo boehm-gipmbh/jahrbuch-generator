@@ -1,4 +1,4 @@
-ALTER TABLE stories ADD COLUMN order_position INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS order_position INTEGER NOT NULL DEFAULT 0;
 
 UPDATE stories SET order_position = sub.rn
 FROM (
