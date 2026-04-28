@@ -208,11 +208,13 @@ public class PdfService {
             }
         }
 
-        boolean twoCol = story != null && !"1col".equals(story.layout);
-        if (twoCol) {
-            renderTwoColumn(doc, sd);
-        } else {
+        String layout = story != null ? story.layout : null;
+        if ("grid".equals(layout)) {
+            renderThreeColumn(doc, sd);
+        } else if ("1col".equals(layout)) {
             renderOneColumn(doc, sd);
+        } else {
+            renderTwoColumn(doc, sd);
         }
     }
 
@@ -269,6 +271,38 @@ public class PdfService {
 
             table.addCell(leftCell);
             table.addCell(rightCell);
+        }
+        doc.add(table);
+    }
+
+    private void renderThreeColumn(Document doc, StoryData sd) {
+        record Item(int pos, boolean isBild, Bild bild, Text text) {}
+
+        java.util.function.IntFunction<List<Item>> colItems = c -> Stream.concat(
+            sd.bilder().stream().filter(b -> c == 0 ? (b.storyColumn == null || b.storyColumn == 0) : b.storyColumn != null && b.storyColumn == c)
+                .map(b -> new Item(b.storyPosition != null ? b.storyPosition : 0, true, b, null)),
+            sd.texte().stream().filter(t -> c == 0 ? (t.storyColumn == null || t.storyColumn == 0) : t.storyColumn != null && t.storyColumn == c)
+                .map(t -> new Item(t.storyPosition != null ? t.storyPosition : 0, false, null, t))
+        ).sorted(Comparator.comparingInt(Item::pos)).toList();
+
+        List<List<Item>> cols = List.of(colItems.apply(0), colItems.apply(1), colItems.apply(2));
+
+        Table table = new Table(new float[]{1f, 1f, 1f}).useAllAvailableWidth().setMarginBottom(8);
+        int maxRows = cols.stream().mapToInt(List::size).max().orElse(0);
+
+        for (int i = 0; i < maxRows; i++) {
+            for (int c = 0; c < 3; c++) {
+                float padLeft = c > 0 ? 4 : 0;
+                float padRight = c < 2 ? 4 : 0;
+                Cell cell = new Cell().setBorder(null).setPaddingLeft(padLeft).setPaddingRight(padRight);
+                List<Item> col = cols.get(c);
+                if (i < col.size()) {
+                    Item item = col.get(i);
+                    if (item.isBild()) cell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+                    else cell.add(buildTextDiv(item.text()));
+                }
+                table.addCell(cell);
+            }
         }
         doc.add(table);
     }

@@ -159,6 +159,16 @@ class PdfServiceTest {
     }
 
     @Test
+    void renderPdf_gridLayout_dreiSpalten_keinFehler() {
+        Bild b0 = bild("/a.jpg", "A"); b0.storyColumn = 0;
+        Bild b1 = bild("/b.jpg", "B"); b1.storyColumn = 1;
+        Bild b2 = bild("/c.jpg", "C"); b2.storyColumn = 2;
+        var sd = new PdfService.StoryData(story("Grid Story", "grid"), List.of(b0, b1, b2), List.of());
+        byte[] result = service.renderPdf(List.of(sd), null);
+        assertTrue(isPdf(result));
+    }
+
+    @Test
     void renderPdf_alleOptionen_kombiniert() {
         var sd = new PdfService.StoryData(story("Story", "2col"),
             List.of(bild("/bild.jpg", "Titel")),
