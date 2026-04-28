@@ -307,11 +307,32 @@ public class PdfService {
         doc.add(table);
     }
 
+    private byte[] loadScaledImageBytes(String path) {
+        try {
+            Process p = new ProcessBuilder(
+                "convert", path, "-resize", "1200x1200>", "-quality", "80", "jpeg:-"
+            ).start();
+            byte[] bytes = p.getInputStream().readAllBytes();
+            int exit = p.waitFor();
+            if (exit != 0 || bytes.length == 0) {
+                log.warn("ImageMagick konnte Bild nicht skalieren (exit {}): {}", exit, path);
+                return null;
+            }
+            return bytes;
+        } catch (Exception e) {
+            log.warn("Bildskalierung fehlgeschlagen: {}", path);
+            return null;
+        }
+    }
+
     private Div buildBildDiv(Bild bild, UnitValue width) {
         Div div = new Div().setMarginBottom(6);
         String path = capturesPath + bild.getPfad().replaceFirst("^/", "");
         try {
-            Image img = new Image(ImageDataFactory.create(path)).setWidth(width);
+            byte[] imageBytes = loadScaledImageBytes(path);
+            Image img = imageBytes != null
+                ? new Image(ImageDataFactory.create(imageBytes)).setWidth(width)
+                : new Image(ImageDataFactory.create(path)).setWidth(width);
             div.add(img);
             String title = bild.getTitle();
             if (title != null && !title.isBlank()) {
