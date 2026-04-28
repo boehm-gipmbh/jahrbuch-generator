@@ -4,7 +4,7 @@ UPDATE stories SET order_position = sub.rn
 FROM (
     SELECT id,
         ROW_NUMBER() OVER (
-            PARTITION BY COALESCE(group_id::text, 'u' || user_id::text)
+            PARTITION BY COALESCE(stories.group_id::text, 'u' || stories.user_id::text)
             ORDER BY created
         ) - 1 AS rn
     FROM stories
