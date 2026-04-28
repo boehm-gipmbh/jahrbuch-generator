@@ -66,6 +66,21 @@ export DEV_DB_USERNAME=postgres && export DEV_DB_PASSWORD=postgres && ./mvnw com
 
 Das Backend läuft auf http://localhost:8080.
 
+
+NOTE: Wenn die lokale DB auf einem anderen Port läuft (z. B. 5434 nach einem Produktions-Spiegel), DB-URLs per `-D`-Flag überschreiben:
+
+[source,bash]
+----
+export DEV_DB_USERNAME=postgres && export DEV_DB_PASSWORD=postgres && ./mvnw compile quarkus:dev -Dquarkus.profile=local -Dquarkus.datasource.reactive.url=postgresql://localhost:5434/postgres?ssl=false -Dquarkus.datasource.jdbc.url=jdbc:postgresql://localhost:5434/postgres
+----
+
+NOTE: Wenn Port 8080 belegt ist (z. B. durch GitLab Puma), Quarkus-Port überschreiben. Kompletter Override mit abweichendem HTTP-Port und DB-Port:
+
+[source,bash]
+----
+export DEV_DB_USERNAME=postgres && export DEV_DB_PASSWORD=postgres && ./mvnw compile quarkus:dev -Dquarkus.profile=local -Dquarkus.http.port=8090 -Dquarkus.datasource.reactive.url=postgresql://localhost:5434/postgres?ssl=false -Dquarkus.datasource.jdbc.url=jdbc:postgresql://localhost:5434/postgres
+----
+
 === Schritt 5: Frontend starten (separates Terminal)
 
 [source,bash]
@@ -74,6 +89,17 @@ cd src/main/frontend && npm start
 ----
 
 Das Frontend läuft auf http://localhost:3000 und proxied API-Calls auf :8080.
+
+NOTE: Wenn das Backend auf einem anderen Port läuft (z. B. 8090), muss das Frontend das wissen.
+`REACT_APP_API_URL` ist in `.env.development` als relativer Pfad definiert — der CRA-Dev-Server leitet ihn per `proxy` (`package.json`) weiter, das fest auf `:8080` zeigt.
+Lösung: `.env.local` anlegen (von Git ignoriert) und einen absoluten URL setzen:
+
+[source,bash]
+----
+echo "REACT_APP_API_URL=http://localhost:8090/api/v1" > src/main/frontend/.env.local
+----
+
+Danach `npm start` neu starten. Die Datei löschen, um zum Standard zurückzukehren.
 
 === Kompletter Reset als Einzeiler (Schritte 1+2)
 
@@ -107,10 +133,12 @@ In separatem Terminal offen lassen, dann:
 
 [source,bash]
 ----
-export $(cat .env | xargs) && docker run --rm --network=host -e PGPASSWORD=$DEV_DB_PASSWORD postgres:17 pg_dump -h localhost -p 5433 -U postgres -d postgres > prod_dump_$(date +%Y%m%d).sql
+export $(grep -v '^#' .env | grep -v '^$' | xargs) && docker run --rm --network=host -e PGPASSWORD=$DEV_DB_PASSWORD postgres:17 pg_dump -h localhost -p 5433 -U postgres -d postgres > prod_dump_$(date +%Y%m%d).sql
 ----
 
 NOTE: pg_dump gibt ggf. eine Warnung über zirkuläre Foreign Keys (Tabelle "nodes") — bei einem Full Dump unkritisch.
+
+NOTE: `export $(cat .env | xargs)` schlägt fehl wenn die `.env` Kommentare enthält. Stattdessen `grep -v '^#' .env | grep -v '^$'` verwenden (filtert Kommentare und Leerzeilen).
 
 === Option B: Produktion in lokale Docker-DB spiegeln
 
@@ -123,7 +151,7 @@ In separatem Terminal offen lassen, dann:
 
 [source,bash]
 ----
-export $(cat .env | xargs) && docker run --rm --network=host -e PGPASSWORD=$DEV_DB_PASSWORD postgres:17 pg_dump -h localhost -p 5433 -U postgres -d postgres | PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d postgres
+export $(grep -v '^#' .env | grep -v '^$' | xargs) && docker run --rm --network=host -e PGPASSWORD=$DEV_DB_PASSWORD postgres:17 pg_dump -h localhost -p 5433 -U postgres -d postgres | docker run --rm -i --network=host -e PGPASSWORD=postgres postgres:17 psql -h localhost -p 5432 -U postgres -d postgres
 ----
 
 Danach Quarkus mit lokalem Profil starten (Schritt 4 oben).
@@ -225,7 +253,7 @@ Mit Frontend:
 
 [source,bash]
 ----
-export $(cat .env | xargs) && ./target/*-runner -Dquarkus.datasource.reactive.url=postgresql://localhost:5433/postgres -Dquarkus.datasource.username=postgres -Dquarkus.datasource.password=$DEV_DB_PASSWORD -Djahrbuch.captures.path=$(pwd)/captures/ -Djava.awt.headless=true
+export $(grep -v '^#' .env | grep -v '^$' | xargs) && ./target/*-runner -Dquarkus.datasource.reactive.url=postgresql://localhost:5433/postgres -Dquarkus.datasource.username=postgres -Dquarkus.datasource.password=$DEV_DB_PASSWORD -Djahrbuch.captures.path=$(pwd)/captures/ -Djava.awt.headless=true
 ----
 
 === 4. API testen mit curl

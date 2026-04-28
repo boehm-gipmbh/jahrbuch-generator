@@ -1,11 +1,22 @@
 package de.jamsintown.pdf;
 
 import com.itextpdf.io.image.ImageDataFactory;
+import com.itextpdf.kernel.events.Event;
+import com.itextpdf.kernel.events.IEventHandler;
+import com.itextpdf.kernel.events.PdfDocumentEvent;
 import com.itextpdf.kernel.geom.PageSize;
 import com.itextpdf.kernel.pdf.PdfDocument;
+import com.itextpdf.kernel.pdf.PdfPage;
 import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.layout.Canvas;
 import com.itextpdf.layout.Document;
-import com.itextpdf.layout.element.*;
+import com.itextpdf.layout.element.AreaBreak;
+import com.itextpdf.layout.element.Cell;
+import com.itextpdf.layout.element.Div;
+import com.itextpdf.layout.element.Image;
+import com.itextpdf.layout.element.Paragraph;
+import com.itextpdf.layout.element.Table;
+import com.itextpdf.layout.properties.TextAlignment;
 import com.itextpdf.layout.properties.UnitValue;
 import de.jamsintown.bild.Bild;
 import de.jamsintown.story.Story;
@@ -25,8 +36,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
 
 import java.io.ByteArrayOutputStream;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -44,14 +55,18 @@ public class PdfService {
     }
 
     public Uni<byte[]> generateForGroup(Long groupId) {
-        return loadAllStoryData(groupId)
+        return generateForGroup(groupId, null);
+    }
+
+    public Uni<byte[]> generateForGroup(Long groupId, PdfOptions options) {
+        return loadAllStoryData(groupId, options)
             .chain(storyDataList -> Uni.createFrom()
-                .item(() -> renderPdf(storyDataList))
+                .item(() -> renderPdf(storyDataList, options))
                 .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
     }
 
     @WithSession
-    Uni<List<StoryData>> loadAllStoryData(Long groupId) {
+    Uni<List<StoryData>> loadAllStoryData(Long groupId, PdfOptions options) {
         return userService.getCurrentUser()
             .chain(user -> Gruppe.<Gruppe>findById(groupId)
                 .onItem().ifNull().failWith(() -> new NotFoundException("Gruppe nicht gefunden: " + groupId))
@@ -63,10 +78,51 @@ public class PdfService {
                         throw new UnauthorizedException("Kein Zugriff auf Gruppe: " + groupId);
                     }
                 }))
-            .chain(gruppe -> Story.<Story>find("group = ?1", Sort.by("created"), gruppe).list())
-            .chain(stories -> Multi.createFrom().iterable(stories)
-                .onItem().transformToUniAndConcatenate(this::loadStoryData)
-                .collect().asList());
+            .chain(gruppe -> loadStoriesOrdered(gruppe, options)
+                .chain(stories -> Multi.createFrom().iterable(stories)
+                    .onItem().transformToUniAndConcatenate(this::loadStoryData)
+                    .collect().asList())
+                .chain(storyDataList -> appendPendingData(storyDataList, gruppe, options)));
+    }
+
+    private Uni<List<Story>> loadStoriesOrdered(Gruppe gruppe, PdfOptions options) {
+        if (options != null && options.storyIds() != null) {
+            if (options.storyIds().isEmpty()) {
+                return Uni.createFrom().item(List.of());
+            }
+            return Story.<Story>find("group = ?1 AND id IN ?2", gruppe, options.storyIds())
+                .list()
+                .map(stories -> {
+                    Map<Long, Story> byId = stories.stream().collect(Collectors.toMap(s -> s.id, s -> s));
+                    return options.storyIds().stream()
+                        .map(byId::get)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+                });
+        }
+        return Story.<Story>find("group = ?1", Sort.by("created"), gruppe).list();
+    }
+
+    private Uni<List<StoryData>> appendPendingData(List<StoryData> storyDataList, Gruppe gruppe, PdfOptions options) {
+        if (options == null || (!options.includePendingBilder() && !options.includePendingTexte())) {
+            return Uni.createFrom().item(storyDataList);
+        }
+
+        Uni<List<Bild>> bilderUni = options.includePendingBilder()
+            ? Bild.<Bild>find("group = ?1 AND story IS NULL AND deleted = false", Sort.by("created"), gruppe).list()
+            : Uni.createFrom().item(List.of());
+
+        return bilderUni.chain(bilder ->
+            (options.includePendingTexte()
+                ? Text.<Text>find("group = ?1 AND story IS NULL AND deleted = false", Sort.by("created"), gruppe).list()
+                : Uni.createFrom().<List<Text>>item(List.of()))
+            .map(texte -> {
+                if (bilder.isEmpty() && texte.isEmpty()) return storyDataList;
+                List<StoryData> result = new ArrayList<>(storyDataList);
+                result.add(new StoryData(null, bilder, texte));
+                return result;
+            })
+        );
     }
 
     private Uni<StoryData> loadStoryData(Story story) {
@@ -83,41 +139,76 @@ public class PdfService {
         .map(texte -> new StoryData(story, bilder, texte)));
     }
 
-    byte[] renderPdf(List<StoryData> stories) {
+    byte[] renderPdf(List<StoryData> stories, PdfOptions options) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (Document doc = new Document(new PdfDocument(new PdfWriter(out)), PageSize.A4)) {
+        try {
+            PdfDocument pdfDoc = new PdfDocument(new PdfWriter(out));
+            Document doc = new Document(pdfDoc, PageSize.A4);
+            doc.setMargins(40, 40, 50, 40);
+
+            if (options != null && options.pageNumbers()) {
+                pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PageNumberHandler());
+            }
+
             if (stories.isEmpty()) {
                 doc.add(new Paragraph("Keine Stories vorhanden."));
+                doc.close();
                 return out.toByteArray();
             }
+
+            if (options != null && options.coverPage()) {
+                String title = options.coverTitle() != null && !options.coverTitle().isBlank()
+                    ? options.coverTitle() : "Jahrbuch";
+                renderCoverPage(doc, title);
+                doc.add(new AreaBreak());
+            }
+
             for (int i = 0; i < stories.size(); i++) {
                 renderStory(doc, stories.get(i));
                 if (i < stories.size() - 1) {
                     doc.add(new AreaBreak());
                 }
             }
+
+            doc.close();
         } catch (Exception e) {
             throw new RuntimeException("PDF-Generierung fehlgeschlagen", e);
         }
         return out.toByteArray();
     }
 
+    private void renderCoverPage(Document doc, String title) {
+        float pageHeight = doc.getPdfDocument().getDefaultPageSize().getHeight();
+        doc.add(new Paragraph(title)
+            .setFontSize(36)
+            .setBold()
+            .setTextAlignment(TextAlignment.CENTER)
+            .setMarginTop(pageHeight / 2 - 80));
+    }
+
     private void renderStory(Document doc, StoryData sd) {
         Story story = sd.story();
 
-        doc.add(new Paragraph(story.name)
-            .setFontSize(18)
-            .setBold()
-            .setMarginBottom(4));
+        if (story == null) {
+            doc.add(new Paragraph("Sonstige")
+                .setFontSize(18)
+                .setBold()
+                .setMarginBottom(4));
+        } else {
+            doc.add(new Paragraph(story.name)
+                .setFontSize(18)
+                .setBold()
+                .setMarginBottom(4));
 
-        if (story.description != null && !story.description.isBlank()) {
-            doc.add(new Paragraph(story.description)
-                .setFontSize(10)
-                .setItalic()
-                .setMarginBottom(8));
+            if (story.description != null && !story.description.isBlank()) {
+                doc.add(new Paragraph(story.description)
+                    .setFontSize(10)
+                    .setItalic()
+                    .setMarginBottom(8));
+            }
         }
 
-        boolean twoCol = !"1col".equals(story.layout);
+        boolean twoCol = story != null && !"1col".equals(story.layout);
         if (twoCol) {
             renderTwoColumn(doc, sd);
         } else {
@@ -162,14 +253,14 @@ public class PdfService {
         int maxRows = Math.max(col0.size(), col1.size());
 
         for (int i = 0; i < maxRows; i++) {
-            Cell leftCell = new Cell().setBorder(null);
+            Cell leftCell = new Cell().setBorder(null).setPaddingRight(6);
             if (i < col0.size()) {
                 Item item = col0.get(i);
                 if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
                 else leftCell.add(buildTextDiv(item.text()));
             }
 
-            Cell rightCell = new Cell().setBorder(null);
+            Cell rightCell = new Cell().setBorder(null).setPaddingLeft(6);
             if (i < col1.size()) {
                 Item item = col1.get(i);
                 if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
@@ -190,7 +281,7 @@ public class PdfService {
             div.add(img);
             String title = bild.getTitle();
             if (title != null && !title.isBlank()) {
-                div.add(new Paragraph(title).setFontSize(8).setMarginTop(2));
+                div.add(new Paragraph(title).setFontSize(8).setItalic().setTextAlignment(TextAlignment.CENTER).setMarginTop(2));
             }
         } catch (Exception e) {
             log.warn("Bild nicht gefunden: {}", path);
@@ -208,6 +299,25 @@ public class PdfService {
             div.add(new Paragraph(text.description).setFontSize(10));
         }
         return div;
+    }
+
+    private static class PageNumberHandler implements IEventHandler {
+        @Override
+        public void handleEvent(Event event) {
+            PdfDocumentEvent docEvent = (PdfDocumentEvent) event;
+            PdfPage page = docEvent.getPage();
+            PdfDocument pdf = docEvent.getDocument();
+            int pageNum = pdf.getPageNumber(page);
+            com.itextpdf.kernel.geom.Rectangle rect = page.getPageSize();
+            try (Canvas canvas = new Canvas(page, rect)) {
+                canvas.showTextAligned(
+                    new Paragraph(String.valueOf(pageNum)).setFontSize(9),
+                    rect.getWidth() / 2,
+                    20,
+                    TextAlignment.CENTER
+                );
+            }
+        }
     }
 
     record StoryData(Story story, List<Bild> bilder, List<Text> texte) {}
