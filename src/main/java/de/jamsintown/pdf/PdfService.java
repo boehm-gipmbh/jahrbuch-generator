@@ -227,7 +227,7 @@ public class PdfService {
 
         for (Item item : items) {
             if (item.isBild()) {
-                doc.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+                doc.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), 320f));
             } else {
                 doc.add(buildTextDiv(item.text()));
             }
@@ -258,14 +258,14 @@ public class PdfService {
             Cell leftCell = new Cell().setBorder(null).setPaddingRight(6);
             if (i < col0.size()) {
                 Item item = col0.get(i);
-                if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+                if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), 220f));
                 else leftCell.add(buildTextDiv(item.text()));
             }
 
             Cell rightCell = new Cell().setBorder(null).setPaddingLeft(6);
             if (i < col1.size()) {
                 Item item = col1.get(i);
-                if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+                if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), 220f));
                 else rightCell.add(buildTextDiv(item.text()));
             }
 
@@ -298,7 +298,7 @@ public class PdfService {
                 List<Item> col = cols.get(c);
                 if (i < col.size()) {
                     Item item = col.get(i);
-                    if (item.isBild()) cell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+                    if (item.isBild()) cell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), 160f));
                     else cell.add(buildTextDiv(item.text()));
                 }
                 table.addCell(cell);
@@ -325,14 +325,14 @@ public class PdfService {
         }
     }
 
-    private Div buildBildDiv(Bild bild, UnitValue width) {
+    private Div buildBildDiv(Bild bild, UnitValue width, float maxHeight) {
         Div div = new Div().setMarginBottom(6);
         String path = capturesPath + bild.getPfad().replaceFirst("^/", "");
         try {
             byte[] imageBytes = loadScaledImageBytes(path);
             Image img = imageBytes != null
-                ? new Image(ImageDataFactory.create(imageBytes)).setWidth(width)
-                : new Image(ImageDataFactory.create(path)).setWidth(width);
+                ? new Image(ImageDataFactory.create(imageBytes)).setWidth(width).setMaxHeight(maxHeight)
+                : new Image(ImageDataFactory.create(path)).setWidth(width).setMaxHeight(maxHeight);
             div.add(img);
             String title = bild.getTitle();
             if (title != null && !title.isBlank()) {
