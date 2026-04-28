@@ -1,0 +1,12 @@
+ALTER TABLE stories ADD COLUMN order_position INTEGER NOT NULL DEFAULT 0;
+
+UPDATE stories SET order_position = sub.rn
+FROM (
+    SELECT id,
+        ROW_NUMBER() OVER (
+            PARTITION BY COALESCE(group_id::text, 'u' || user_id::text)
+            ORDER BY created
+        ) - 1 AS rn
+    FROM stories
+) sub
+WHERE stories.id = sub.id;

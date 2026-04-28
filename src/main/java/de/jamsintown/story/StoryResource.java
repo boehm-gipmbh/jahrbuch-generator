@@ -72,4 +72,11 @@ public class StoryResource {
     return storyService.reorder(id, items);
   }
 
+  @PUT
+  @Consumes(MediaType.APPLICATION_JSON)
+  @Path("/reorder")
+  public Uni<Void> reorderStories(List<Long> orderedIds) {
+    return storyService.reorderStories(orderedIds);
+  }
+
 }
