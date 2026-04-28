@@ -18,12 +18,6 @@ import com.itextpdf.layout.element.Paragraph;
 import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.properties.TextAlignment;
 import com.itextpdf.layout.properties.UnitValue;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
-import javax.imageio.ImageIO;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import de.jamsintown.bild.Bild;
 import de.jamsintown.story.Story;
 import de.jamsintown.text.Text;
@@ -313,30 +307,20 @@ public class PdfService {
         doc.add(table);
     }
 
-    private static final int MAX_IMAGE_PX = 1200;
-
     private byte[] loadScaledImageBytes(String path) {
         try {
-            BufferedImage original = ImageIO.read(new java.io.File(path));
-            if (original == null) return Files.readAllBytes(Paths.get(path));
-            int w = original.getWidth();
-            int h = original.getHeight();
-            if (w <= MAX_IMAGE_PX && h <= MAX_IMAGE_PX) {
-                return Files.readAllBytes(Paths.get(path));
+            Process p = new ProcessBuilder(
+                "convert", path, "-resize", "1200x1200>", "-quality", "80", "jpeg:-"
+            ).start();
+            byte[] bytes = p.getInputStream().readAllBytes();
+            int exit = p.waitFor();
+            if (exit != 0 || bytes.length == 0) {
+                log.warn("ImageMagick konnte Bild nicht skalieren (exit {}): {}", exit, path);
+                return null;
             }
-            double scale = (double) MAX_IMAGE_PX / Math.max(w, h);
-            int newW = (int) (w * scale);
-            int newH = (int) (h * scale);
-            BufferedImage scaled = new BufferedImage(newW, newH, BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = scaled.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.drawImage(original, 0, 0, newW, newH, null);
-            g.dispose();
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(scaled, "jpeg", baos);
-            return baos.toByteArray();
+            return bytes;
         } catch (Exception e) {
-            log.warn("Bild konnte nicht skaliert werden: {}", path);
+            log.warn("Bildskalierung fehlgeschlagen: {}", path);
             return null;
         }
     }
