@@ -252,15 +252,15 @@ public class PdfService {
                 .map(t -> new Item(t.storyPosition != null ? t.storyPosition : 0, false, null, t))
         ).sorted(Comparator.comparingInt(Item::pos)).toList();
 
-        Table table = new Table(new float[]{1f, 1f}).useAllAvailableWidth().setMarginBottom(8);
+        Table table = new Table(UnitValue.createPercentArray(new float[]{1, 1})).useAllAvailableWidth().setMarginBottom(8);
 
-        Cell leftCell = new Cell().setBorder(null).setPaddingRight(6).setVerticalAlignment(VerticalAlignment.TOP);
+        Cell leftCell = new Cell().setBorder(null).setPaddingRight(3).setVerticalAlignment(VerticalAlignment.TOP);
         for (Item item : col0) {
             if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
             else leftCell.add(buildTextDiv(item.text()));
         }
 
-        Cell rightCell = new Cell().setBorder(null).setPaddingLeft(6).setVerticalAlignment(VerticalAlignment.TOP);
+        Cell rightCell = new Cell().setBorder(null).setPaddingLeft(3).setVerticalAlignment(VerticalAlignment.TOP);
         for (Item item : col1) {
             if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
             else rightCell.add(buildTextDiv(item.text()));
@@ -281,11 +281,11 @@ public class PdfService {
                 .map(t -> new Item(t.storyPosition != null ? t.storyPosition : 0, false, null, t))
         ).sorted(Comparator.comparingInt(Item::pos)).toList();
 
-        Table table = new Table(new float[]{1f, 1f, 1f}).useAllAvailableWidth().setMarginBottom(8);
+        Table table = new Table(UnitValue.createPercentArray(new float[]{1, 1, 1})).useAllAvailableWidth().setMarginBottom(8);
 
         for (int c = 0; c < 3; c++) {
-            float padLeft = c > 0 ? 4 : 0;
-            float padRight = c < 2 ? 4 : 0;
+            float padLeft = c > 0 ? 3 : 0;
+            float padRight = c < 2 ? 3 : 0;
             Cell cell = new Cell().setBorder(null).setPaddingLeft(padLeft).setPaddingRight(padRight)
                 .setVerticalAlignment(VerticalAlignment.TOP);
             for (Item item : colItems.apply(c)) {
