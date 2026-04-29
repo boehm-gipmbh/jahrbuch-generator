@@ -341,7 +341,7 @@ public class PdfService {
             div.add(new Paragraph(text.title).setFontSize(12).setBold());
         }
         if (text.description != null && !text.description.isBlank()) {
-            div.add(new Paragraph(text.description).setFontSize(10));
+            div.add(new Paragraph(text.description).setFontSize(10).setTextAlignment(TextAlignment.JUSTIFIED));
         }
         return div;
     }
