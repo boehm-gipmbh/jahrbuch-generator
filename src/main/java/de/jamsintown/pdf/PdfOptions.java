@@ -8,5 +8,6 @@ public record PdfOptions(
     boolean includePendingTexte,
     boolean coverPage,
     String coverTitle,
-    boolean pageNumbers
+    boolean pageNumbers,
+    String passepartoutStyle
 ) {}
