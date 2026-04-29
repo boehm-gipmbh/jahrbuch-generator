@@ -387,37 +387,45 @@ public class PdfService {
             float w = r.getWidth(), h = r.getHeight();
 
             DeviceRgb primary, fill;
-            float innerLineWidth, fillOpacity, strokeOpacity;
-            boolean diamonds, squares, circles, doubleInner;
+            float bw, ol, cs, innerLineWidth, fillOpacity, strokeOpacity;
+            boolean diamonds, squares, doubleInner;
+            int flowerPetals;
+            boolean midSideFlowers;
 
             switch (style) {
                 case "silber" -> {
                     primary = new DeviceRgb(0.60f, 0.60f, 0.64f);
                     fill    = new DeviceRgb(0.94f, 0.94f, 0.96f);
+                    bw = 26f; ol = 8f; cs = 4.5f;
                     innerLineWidth = 1.8f; fillOpacity = 0.15f; strokeOpacity = 0.65f;
-                    diamonds = false; squares = true; circles = false; doubleInner = false;
+                    diamonds = false; squares = true; doubleInner = false;
+                    flowerPetals = 0; midSideFlowers = false;
                 }
                 case "vintage" -> {
-                    primary = new DeviceRgb(0.52f, 0.33f, 0.08f);
-                    fill    = new DeviceRgb(0.97f, 0.92f, 0.82f);
-                    innerLineWidth = 0.7f; fillOpacity = 0.18f; strokeOpacity = 0.60f;
-                    diamonds = false; squares = false; circles = false; doubleInner = true;
+                    primary = new DeviceRgb(0.55f, 0.32f, 0.10f);
+                    fill    = new DeviceRgb(0.98f, 0.94f, 0.87f);
+                    bw = 34f; ol = 8f; cs = 5.5f;
+                    innerLineWidth = 0.8f; fillOpacity = 0.20f; strokeOpacity = 0.62f;
+                    diamonds = false; squares = false; doubleInner = true;
+                    flowerPetals = 4; midSideFlowers = true;
                 }
                 case "festlich" -> {
                     primary = new DeviceRgb(0.43f, 0.04f, 0.08f);
-                    fill    = new DeviceRgb(0.98f, 0.91f, 0.91f);
-                    innerLineWidth = 2.2f; fillOpacity = 0.12f; strokeOpacity = 0.68f;
-                    diamonds = false; squares = false; circles = true; doubleInner = false;
+                    fill    = new DeviceRgb(0.99f, 0.91f, 0.92f);
+                    bw = 38f; ol = 8f; cs = 6.0f;
+                    innerLineWidth = 1.8f; fillOpacity = 0.14f; strokeOpacity = 0.68f;
+                    diamonds = false; squares = false; doubleInner = false;
+                    flowerPetals = 5; midSideFlowers = true;
                 }
                 default -> { // "gold"
                     primary = new DeviceRgb(0.74f, 0.56f, 0.08f);
                     fill    = new DeviceRgb(0.99f, 0.97f, 0.89f);
+                    bw = 26f; ol = 8f; cs = 4.5f;
                     innerLineWidth = 1.2f; fillOpacity = 0.18f; strokeOpacity = 0.65f;
-                    diamonds = true; squares = false; circles = false; doubleInner = false;
+                    diamonds = true; squares = false; doubleInner = false;
+                    flowerPetals = 0; midSideFlowers = false;
                 }
             }
-
-            float bw = 26f, ol = 8f, cs = 4.5f;
 
             PdfCanvas cv = new PdfCanvas(page.newContentStreamAfter(), page.getResources(), pdf);
             try {
@@ -431,7 +439,7 @@ public class PdfService {
                 cv.rectangle(w - bw, bw, bw, h - 2 * bw).fill();
                 cv.restoreState();
 
-                // outer thin line (not for vintage — double inner replaces it)
+                // outer thin line
                 if (!doubleInner) {
                     cv.saveState();
                     cv.setExtGState(new PdfExtGState().setStrokeOpacity(strokeOpacity * 0.7f));
@@ -441,7 +449,7 @@ public class PdfService {
                     cv.restoreState();
                 }
 
-                // inner border
+                // inner border + ornaments
                 cv.saveState();
                 cv.setExtGState(new PdfExtGState().setFillOpacity(strokeOpacity).setStrokeOpacity(strokeOpacity));
                 cv.setStrokeColor(primary);
@@ -450,9 +458,8 @@ public class PdfService {
                 cv.rectangle(bw, bw, w - 2 * bw, h - 2 * bw).stroke();
 
                 if (doubleInner) {
-                    float gap = 4f;
                     cv.setLineWidth(0.5f);
-                    cv.rectangle(bw + gap, bw + gap, w - 2 * (bw + gap), h - 2 * (bw + gap)).stroke();
+                    cv.rectangle(bw + 4f, bw + 4f, w - 2 * (bw + 4f), h - 2 * (bw + 4f)).stroke();
                 }
 
                 float[][] corners = {{bw, bw}, {w - bw, bw}, {bw, h - bw}, {w - bw, h - bw}};
@@ -465,21 +472,34 @@ public class PdfService {
                     cv.fillStroke();
                 } else if (squares) {
                     float hs = cs * 0.75f;
-                    for (float[] c : corners) {
-                        cv.rectangle(c[0] - hs, c[1] - hs, hs * 2, hs * 2);
-                    }
+                    for (float[] c : corners) cv.rectangle(c[0] - hs, c[1] - hs, hs * 2, hs * 2);
                     cv.fillStroke();
-                } else if (circles) {
-                    for (float[] c : corners) {
-                        cv.circle(c[0], c[1], cs * 0.8f);
+                } else if (flowerPetals > 0) {
+                    for (float[] c : corners) drawFlower(cv, c[0], c[1], cs, flowerPetals);
+                    if (midSideFlowers) {
+                        float sr = cs * 0.65f;
+                        drawFlower(cv, w / 2, bw / 2,      sr, flowerPetals);
+                        drawFlower(cv, w / 2, h - bw / 2,  sr, flowerPetals);
+                        drawFlower(cv, bw / 2, h / 2,      sr, flowerPetals);
+                        drawFlower(cv, w - bw / 2, h / 2,  sr, flowerPetals);
                     }
-                    cv.fillStroke();
                 }
 
                 cv.restoreState();
             } finally {
                 cv.release();
             }
+        }
+
+        private static void drawFlower(PdfCanvas cv, float cx, float cy, float r, int petals) {
+            for (int i = 0; i < petals; i++) {
+                double angle = Math.PI * 2.0 * i / petals - Math.PI / 2;
+                float pcx = cx + (float)(Math.cos(angle) * r * 0.72f);
+                float pcy = cy + (float)(Math.sin(angle) * r * 0.72f);
+                cv.circle(pcx, pcy, r * 0.52f);
+            }
+            cv.circle(cx, cy, r * 0.36f);
+            cv.fill();
         }
     }
 
