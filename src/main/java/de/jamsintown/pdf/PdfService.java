@@ -1,6 +1,7 @@
 package de.jamsintown.pdf;
 
 import com.itextpdf.io.image.ImageDataFactory;
+import com.itextpdf.kernel.colors.DeviceRgb;
 import com.itextpdf.kernel.events.Event;
 import com.itextpdf.kernel.events.IEventHandler;
 import com.itextpdf.kernel.events.PdfDocumentEvent;
@@ -8,6 +9,8 @@ import com.itextpdf.kernel.geom.PageSize;
 import com.itextpdf.kernel.pdf.PdfDocument;
 import com.itextpdf.kernel.pdf.PdfPage;
 import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.kernel.pdf.canvas.PdfCanvas;
+import com.itextpdf.kernel.pdf.extgstate.PdfExtGState;
 import com.itextpdf.layout.Canvas;
 import com.itextpdf.layout.Document;
 import com.itextpdf.layout.element.AreaBreak;
@@ -149,6 +152,9 @@ public class PdfService {
 
             if (options != null && options.pageNumbers()) {
                 pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PageNumberHandler());
+            }
+            if (options != null && options.passepartoutStyle() != null && !options.passepartoutStyle().isBlank() && !"none".equals(options.passepartoutStyle())) {
+                pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PassepartoutHandler(options.passepartoutStyle()));
             }
 
             if (stories.isEmpty()) {
@@ -361,6 +367,118 @@ public class PdfService {
                     20,
                     TextAlignment.CENTER
                 );
+            }
+        }
+    }
+
+    private static class PassepartoutHandler implements IEventHandler {
+        private final String style;
+
+        PassepartoutHandler(String style) {
+            this.style = style;
+        }
+
+        @Override
+        public void handleEvent(Event event) {
+            PdfDocumentEvent docEvent = (PdfDocumentEvent) event;
+            PdfPage page = docEvent.getPage();
+            PdfDocument pdf = docEvent.getDocument();
+            com.itextpdf.kernel.geom.Rectangle r = page.getPageSize();
+            float w = r.getWidth(), h = r.getHeight();
+
+            DeviceRgb primary, fill;
+            float innerLineWidth, fillOpacity, strokeOpacity;
+            boolean diamonds, squares, circles, doubleInner;
+
+            switch (style) {
+                case "silber" -> {
+                    primary = new DeviceRgb(0.60f, 0.60f, 0.64f);
+                    fill    = new DeviceRgb(0.94f, 0.94f, 0.96f);
+                    innerLineWidth = 1.8f; fillOpacity = 0.15f; strokeOpacity = 0.65f;
+                    diamonds = false; squares = true; circles = false; doubleInner = false;
+                }
+                case "vintage" -> {
+                    primary = new DeviceRgb(0.52f, 0.33f, 0.08f);
+                    fill    = new DeviceRgb(0.97f, 0.92f, 0.82f);
+                    innerLineWidth = 0.7f; fillOpacity = 0.18f; strokeOpacity = 0.60f;
+                    diamonds = false; squares = false; circles = false; doubleInner = true;
+                }
+                case "festlich" -> {
+                    primary = new DeviceRgb(0.43f, 0.04f, 0.08f);
+                    fill    = new DeviceRgb(0.98f, 0.91f, 0.91f);
+                    innerLineWidth = 2.2f; fillOpacity = 0.12f; strokeOpacity = 0.68f;
+                    diamonds = false; squares = false; circles = true; doubleInner = false;
+                }
+                default -> { // "gold"
+                    primary = new DeviceRgb(0.74f, 0.56f, 0.08f);
+                    fill    = new DeviceRgb(0.99f, 0.97f, 0.89f);
+                    innerLineWidth = 1.2f; fillOpacity = 0.18f; strokeOpacity = 0.65f;
+                    diamonds = true; squares = false; circles = false; doubleInner = false;
+                }
+            }
+
+            float bw = 26f, ol = 8f, cs = 4.5f;
+
+            PdfCanvas cv = new PdfCanvas(page.newContentStreamAfter(), page.getResources(), pdf);
+            try {
+                // semi-transparent fill on border strip
+                cv.saveState();
+                cv.setExtGState(new PdfExtGState().setFillOpacity(fillOpacity));
+                cv.setFillColor(fill);
+                cv.rectangle(0, h - bw, w, bw).fill();
+                cv.rectangle(0, 0, w, bw).fill();
+                cv.rectangle(0, bw, bw, h - 2 * bw).fill();
+                cv.rectangle(w - bw, bw, bw, h - 2 * bw).fill();
+                cv.restoreState();
+
+                // outer thin line (not for vintage — double inner replaces it)
+                if (!doubleInner) {
+                    cv.saveState();
+                    cv.setExtGState(new PdfExtGState().setStrokeOpacity(strokeOpacity * 0.7f));
+                    cv.setStrokeColor(primary);
+                    cv.setLineWidth(0.5f);
+                    cv.rectangle(ol, ol, w - 2 * ol, h - 2 * ol).stroke();
+                    cv.restoreState();
+                }
+
+                // inner border
+                cv.saveState();
+                cv.setExtGState(new PdfExtGState().setFillOpacity(strokeOpacity).setStrokeOpacity(strokeOpacity));
+                cv.setStrokeColor(primary);
+                cv.setFillColor(primary);
+                cv.setLineWidth(innerLineWidth);
+                cv.rectangle(bw, bw, w - 2 * bw, h - 2 * bw).stroke();
+
+                if (doubleInner) {
+                    float gap = 4f;
+                    cv.setLineWidth(0.5f);
+                    cv.rectangle(bw + gap, bw + gap, w - 2 * (bw + gap), h - 2 * (bw + gap)).stroke();
+                }
+
+                float[][] corners = {{bw, bw}, {w - bw, bw}, {bw, h - bw}, {w - bw, h - bw}};
+
+                if (diamonds) {
+                    for (float[] c : corners) {
+                        cv.moveTo(c[0], c[1] - cs).lineTo(c[0] + cs, c[1])
+                          .lineTo(c[0], c[1] + cs).lineTo(c[0] - cs, c[1]).closePath();
+                    }
+                    cv.fillStroke();
+                } else if (squares) {
+                    float hs = cs * 0.75f;
+                    for (float[] c : corners) {
+                        cv.rectangle(c[0] - hs, c[1] - hs, hs * 2, hs * 2);
+                    }
+                    cv.fillStroke();
+                } else if (circles) {
+                    for (float[] c : corners) {
+                        cv.circle(c[0], c[1], cs * 0.8f);
+                    }
+                    cv.fillStroke();
+                }
+
+                cv.restoreState();
+            } finally {
+                cv.release();
             }
         }
     }
