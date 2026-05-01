@@ -238,6 +238,10 @@ public class InvitationTokenService {
 
   private Uni<Void> sendInvitationMailIfSet(InvitationToken token) {
     if (token.recipientEmail != null && !token.recipientEmail.isBlank()) {
+      if (!EMAIL_PATTERN.matcher(token.recipientEmail).matches()) {
+        LOG.warnf("Ungültige E-Mail-Adresse '%s' — Mail wird nicht gesendet", token.recipientEmail);
+        return Uni.createFrom().voidItem();
+      }
       token.sentAt = ZonedDateTime.now();
       InvitationSend send = new InvitationSend();
       send.token = token;
@@ -296,6 +300,9 @@ public class InvitationTokenService {
             ? recipientEmail : t.recipientEmail;
         if (email == null || email.isBlank()) {
           throw new ClientErrorException("Keine E-Mail-Adresse angegeben", Response.Status.BAD_REQUEST);
+        }
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+          throw new ClientErrorException("Ungültige E-Mail-Adresse: " + email, Response.Status.BAD_REQUEST);
         }
         t.recipientEmail = email;
         t.sentAt = ZonedDateTime.now();
