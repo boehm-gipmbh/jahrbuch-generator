@@ -63,6 +63,14 @@ class BilderUploadResourceTest {
             void generateThumbnail(Path path) {
                 // ImageMagick nicht verfügbar im Test — Thumbnail-Generierung überspringen
             }
+            @Override
+            protected <T> io.smallrye.mutiny.Uni<T> executeBlockingFileIO(java.util.concurrent.Callable<T> callable) {
+                try {
+                    return io.smallrye.mutiny.Uni.createFrom().item(callable.call());
+                } catch (Exception e) {
+                    return io.smallrye.mutiny.Uni.createFrom().failure(e);
+                }
+            }
         };
     }
 

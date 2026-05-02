@@ -139,20 +139,15 @@ public class BilderUploadResource {
         final Long finalStoryId = storyId;
 
         // Datei-I/O auf Worker-Thread auslagern — Event-Loop nicht blockieren
-        return vertx.<java.nio.file.Path>executeBlocking(() -> {
-            try {
-                java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
-                Files.createDirectories(dirPath);
-                java.nio.file.Path targetPath = dirPath.resolve(uniqueFileName);
-                try (InputStream fileInputStream = filePart.getFileItem().getInputStream()) {
-                    Files.copy(fileInputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                }
-                generateThumbnail(targetPath);
-                return targetPath;
-            } catch (IOException e) {
-                throw new WebApplicationException("Fehler beim Speichern: " + e.getMessage(),
-                        Response.Status.INTERNAL_SERVER_ERROR);
+        return executeBlockingFileIO(() -> {
+            java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
+            Files.createDirectories(dirPath);
+            java.nio.file.Path targetPath = dirPath.resolve(uniqueFileName);
+            try (InputStream fileInputStream = filePart.getFileItem().getInputStream()) {
+                Files.copy(fileInputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
             }
+            generateThumbnail(targetPath);
+            return targetPath;
         }).chain(targetPath -> {
             Bild bild = new Bild();
             bild.setPfad("/" + subDir + uniqueFileName);
@@ -276,6 +271,10 @@ public class BilderUploadResource {
         int dot = fileName.lastIndexOf('.');
         String base = dot > 0 ? fileName.substring(0, dot) : fileName;
         return base + "_thumb.jpg";
+    }
+
+    protected <T> Uni<T> executeBlockingFileIO(java.util.concurrent.Callable<T> callable) {
+        return vertx.executeBlocking(callable);
     }
 
     void generateThumbnail(java.nio.file.Path originalPath) throws Exception {
