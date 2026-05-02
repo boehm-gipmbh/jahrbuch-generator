@@ -155,7 +155,20 @@ public class AuthResource {
           throw new ClientErrorException("Einladungslink hat keine Gruppe", Response.Status.NOT_FOUND);
         }
         return userService.getCurrentUser()
-          .chain(user -> gruppeService.addToGroup(user, invitation.group));
+          .chain(user -> gruppeService.addToGroup(user, invitation.group)
+              .chain(ignored -> {
+                if ("group-admin".equals(invitation.role)) {
+                  user.managedGroup = invitation.group;
+                  if (user.managedGroups == null) user.managedGroups = new java.util.HashSet<>();
+                  user.managedGroups.add(invitation.group);
+                  if (!user.roles.contains("group-admin")) {
+                    user.roles = new java.util.ArrayList<>(user.roles);
+                    user.roles.add("group-admin");
+                  }
+                  return user.<User>persistAndFlush().replaceWithVoid();
+                }
+                return Uni.createFrom().voidItem();
+              }));
       });
   }
 }

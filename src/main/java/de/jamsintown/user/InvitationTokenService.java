@@ -425,15 +425,38 @@ public class InvitationTokenService {
             for (BatchEntry entry : valid) {
               if (registered.contains(entry.email())) {
                 boolean isInGroup = inGroup.contains(entry.email());
-                String status = isInGroup ? "already_registered" : "registered_not_in_group";
-                String msg = isInGroup ? "Bereits in der Gruppe" : "Account vorhanden, noch nicht in der Gruppe";
-                results.add(new BatchInvitationResult(entry.email(), status, msg));
-                if (!alreadySent.contains(entry.email())) {
-                  InvitationSend send = new InvitationSend();
-                  send.token = token;
-                  send.sentTo = entry.email();
-                  send.status = status;
-                  chain = chain.chain(r -> send.<InvitationSend>persistAndFlush().replaceWith(r));
+                if (isInGroup) {
+                  results.add(new BatchInvitationResult(entry.email(), "already_registered", "Bereits in der Gruppe"));
+                  if (!alreadySent.contains(entry.email())) {
+                    InvitationSend send = new InvitationSend();
+                    send.token = token;
+                    send.sentTo = entry.email();
+                    send.status = "already_registered";
+                    chain = chain.chain(r -> send.<InvitationSend>persistAndFlush().replaceWith(r));
+                  }
+                } else if (!alreadySent.contains(entry.email())) {
+                  // Bestehender User, noch nicht in der Gruppe → Einladungsmail senden
+                  String role = entry.role() != null && !entry.role().isBlank() ? entry.role() : token.role;
+                  InvitationToken mailToken = new InvitationToken();
+                  mailToken.token = token.token;
+                  mailToken.recipientEmail = entry.email();
+                  mailToken.label = token.label;
+                  mailToken.role = role;
+                  mailToken.expiresAt = token.expiresAt;
+                  mailToken.createdBy = token.createdBy;
+                  final String sentTo = entry.email();
+                  chain = chain.chain(r -> invitationEmailService.sendInvitationMail(mailToken)
+                      .chain(resendId -> {
+                        InvitationSend send = new InvitationSend();
+                        send.token = token;
+                        send.sentTo = sentTo;
+                        send.resendMessageId = resendId;
+                        send.status = "registered_not_in_group";
+                        return send.<InvitationSend>persistAndFlush()
+                            .map(s -> { r.add(new BatchInvitationResult(sentTo, "sent", "Versendet (bestehendes Konto)")); return r; });
+                      }));
+                } else {
+                  results.add(new BatchInvitationResult(entry.email(), "registered_not_in_group", "Account vorhanden, bereits eingeladen"));
                 }
                 continue;
               }
@@ -570,6 +593,8 @@ public class InvitationTokenService {
                   .chain(ignored -> {
                     if ("group-admin".equals(t.role)) {
                       savedUser.managedGroup = t.group;
+                      if (savedUser.managedGroups == null) savedUser.managedGroups = new java.util.HashSet<>();
+                      savedUser.managedGroups.add(t.group);
                       return savedUser.<User>persistAndFlush();
                     }
                     return Uni.createFrom().item(savedUser);
