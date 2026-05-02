@@ -1,0 +1,8 @@
+  test1@example.de
+  test2@example.de user
+  drdboehm@jamsintown.de
+  kein-email
+  info@jamsintown.de   group
+  drdboehm@gmx.de   group
+  papaboehm@jamsintown.de
+  abi86@newtown.de
