@@ -81,113 +81,94 @@ public class BilderUploadResource {
     }
 
     private Uni<Bild> doUploadBildForUser(MultipartFormDataInput input, UploadConfig config, de.jamsintown.user.User user) {
+        Map<String, Collection<FormValue>> formValues = input.getValues();
+        Map<String, List<FormValue>> formParts = new HashMap<>();
+        formValues.forEach((key, collection) -> formParts.put(key, new ArrayList<>(collection)));
+
+        List<FormValue> fileParts = formParts.get("file");
+        if (fileParts == null || fileParts.isEmpty()) {
+            return Uni.createFrom().failure(
+                    new WebApplicationException("Keine Datei gefunden", Response.Status.BAD_REQUEST));
+        }
+
+        FormValue filePart = fileParts.get(0);
+        String fileName = filePart.getFileName();
+        String fileExtension = getFileExtension(fileName);
+
+        if (!isAllowedFileType(fileExtension, config.allowedFileTypes)) {
+            return Uni.createFrom().failure(
+                    new WebApplicationException(
+                            "Nicht unterstütztes Dateiformat. Erlaubte Formate: " + config.allowedFileTypes,
+                            Response.Status.BAD_REQUEST));
+        }
+
+        long fileSize;
+        try { fileSize = filePart.getFileItem().getFileSize(); }
+        catch (Exception e) { fileSize = Long.MAX_VALUE; }
+        if (fileSize > config.maxUploadSize) {
+            return Uni.createFrom().failure(
+                    new WebApplicationException(
+                            "Datei zu groß. Maximale Größe: " + (config.maxUploadSize / 1024 / 1024) + "MB",
+                            Response.Status.BAD_REQUEST));
+        }
+
+        String title, description, storyIdStr;
         try {
-            Map<String, Collection<FormValue>> formValues = input.getValues();
-            // Konvertierung zu einer Map mit List statt Collection
-            Map<String, List<FormValue>> formParts = new HashMap<>();
+            title = getFormValue(formParts, "title");
+            description = getFormValue(formParts, "description");
+            storyIdStr = getFormValue(formParts, "storyId");
+        } catch (Exception e) {
+            return Uni.createFrom().failure(
+                    new WebApplicationException("Fehler beim Lesen der Formulardaten: " + e.getMessage(),
+                            Response.Status.BAD_REQUEST));
+        }
+        Long storyId = null;
+        if (storyIdStr != null && !storyIdStr.isEmpty()) {
+            try { storyId = Long.parseLong(storyIdStr); }
+            catch (NumberFormatException e) { log.error("Ungültige Story-ID: {}", storyIdStr); }
+        }
 
-            formValues.forEach((key, collection) -> {
-                formParts.put(key, new ArrayList<>(collection));
-            });
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String uniqueFileName = timestamp + "_" + UUID.randomUUID() + fileExtension;
+        String subDir = (user.activeGroup != null)
+                ? "gruppen/" + user.activeGroup.id + "/"
+                : "ungrouped/";
 
-            List<FormValue> fileParts = formParts.get("file");
-            String title = getFormValue(formParts, "title");
-            String description = getFormValue(formParts, "description");
-            // Story-ID aus dem Formular extrahieren
-            String storyIdStr = getFormValue(formParts, "storyId");
-            Long storyId = null;
-            if (storyIdStr != null && !storyIdStr.isEmpty()) {
-                try {
-                    storyId = Long.parseLong(storyIdStr);
-                } catch (NumberFormatException e) {
-                    log.error("Ungültige Story-ID: {}", storyIdStr);
+        final String finalTitle = title;
+        final String finalDescription = description;
+        final Long finalStoryId = storyId;
+
+        // Datei-I/O auf Worker-Thread auslagern — Event-Loop nicht blockieren
+        return vertx.<java.nio.file.Path>executeBlocking(() -> {
+            try {
+                java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
+                Files.createDirectories(dirPath);
+                java.nio.file.Path targetPath = dirPath.resolve(uniqueFileName);
+                try (InputStream fileInputStream = filePart.getFileItem().getInputStream()) {
+                    Files.copy(fileInputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
                 }
+                generateThumbnail(targetPath);
+                return targetPath;
+            } catch (IOException e) {
+                throw new WebApplicationException("Fehler beim Speichern: " + e.getMessage(),
+                        Response.Status.INTERNAL_SERVER_ERROR);
             }
-
-            if (fileParts == null || fileParts.isEmpty()) {
-                return Uni.createFrom().failure(
-                        new WebApplicationException(
-                                "Keine Datei gefunden",
-                                Response.Status.BAD_REQUEST
-                        )
-                );
-            }
-
-            FormValue filePart = fileParts.get(0);
-            String fileName = filePart.getFileName();
-            String fileExtension = getFileExtension(fileName);
-
-            // Überprüfung des Dateiformats
-            if (!isAllowedFileType(fileExtension, config.allowedFileTypes)) {
-                return Uni.createFrom().failure(
-                        new WebApplicationException(
-                                "Nicht unterstütztes Dateiformat. Erlaubte Formate: " + config.allowedFileTypes,
-                                Response.Status.BAD_REQUEST
-                        )
-                );
-            }
-
-            // Überprüfung der Dateigröße
-            long fileSize = filePart.getFileItem().getFileSize();
-            if (fileSize > config.maxUploadSize) {
-                return Uni.createFrom().failure(
-                        new WebApplicationException(
-                                "Datei zu groß. Maximale Größe: " + (config.maxUploadSize / 1024 / 1024) + "MB",
-                                Response.Status.BAD_REQUEST
-                        )
-                );
-            }
-
-            // Eindeutigen Dateinamen generieren
-            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-            String uniqueFileName = timestamp + "_" + UUID.randomUUID().toString() + fileExtension;
-
-            // Unterverzeichnis nach aktiver Gruppe bestimmen
-            String subDir = (user.activeGroup != null)
-                    ? "gruppen/" + user.activeGroup.id + "/"
-                    : "ungrouped/";
-
-            // Sicherstellen, dass das Zielverzeichnis existiert
-            java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
-            Files.createDirectories(dirPath);
-
-            // Datei speichern
-            java.nio.file.Path targetPath = dirPath.resolve(uniqueFileName);
-            try (InputStream fileInputStream = filePart.getFileItem().getInputStream()) {
-                Files.copy(fileInputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-            }
-            generateThumbnail(targetPath);
-
-            // Bild-Entität erstellen und in der Datenbank speichern
+        }).chain(targetPath -> {
             Bild bild = new Bild();
             bild.setPfad("/" + subDir + uniqueFileName);
-            bild.setTitle(title);
-            bild.setDescription(description);
-            bild.setPriority(3);  // set default priority to 3 (green)
+            bild.setTitle(finalTitle);
+            bild.setDescription(finalDescription);
+            bild.setPriority(3);
 
-            // Story finden und zuweisen wenn vorhanden
-            if (storyId != null) {
-                // Hier muss ein Story-Service injiziert werden
-                return storyService.findById(storyId)
+            if (finalStoryId != null) {
+                return storyService.findById(finalStoryId)
                         .onItem().transformToUni(story -> {
-                            if (story != null) {
-                                bild.setStory(story);
-                            }
+                            if (story != null) bild.setStory(story);
                             return bildService.create(bild);
                         });
             }
-
-            // hier Speicherung des Bildes in der Datenbank
             return bildService.create(bild);
-        } catch (Exception e) {
-            log.error("Fehler beim Upload: {}", e.getMessage(), e);
-            return Uni.createFrom().failure(
-                    new WebApplicationException(
-                            "Fehler beim Upload: " + e.getMessage(),
-                            Response.Status.INTERNAL_SERVER_ERROR
-                    )
-            );
-        }
+        });
     }
 
     /**
