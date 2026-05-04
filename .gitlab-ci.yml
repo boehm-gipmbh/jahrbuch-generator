@@ -3,25 +3,12 @@ stages:
   - test
   - e2e
 
-.postgres_job:
-  services:
-    - postgres:latest
-  variables:
-    POSTGRES_USER: postgres
-    POSTGRES_PASSWORD: postgres
-    POSTGRES_DB: postgres
-    QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/postgres
-    QUARKUS_DATASOURCE_REACTIVE_URL: postgresql://postgres:5432/postgres?ssl=false
-    QUARKUS_DATASOURCE_USERNAME: postgres
-    QUARKUS_DATASOURCE_PASSWORD: postgres
-
 sync-frontend-pointer:
   stage: sync
   image: alpine/git
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - when: manual
-      allow_failure: true
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_STRATEGY: clone
@@ -46,9 +33,18 @@ sync-frontend-pointer:
     - git push "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:main
 
 test:
-  extends: .postgres_job
   stage: test
   image: eclipse-temurin:21-jdk
+  services:
+    - postgres:latest
+  variables:
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    POSTGRES_DB: postgres
+    QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/postgres
+    QUARKUS_DATASOURCE_REACTIVE_URL: postgresql://postgres:5432/postgres?ssl=false
+    QUARKUS_DATASOURCE_USERNAME: postgres
+    QUARKUS_DATASOURCE_PASSWORD: postgres
   before_script:
     - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
       -DgroupId=org.gphoto -DartifactId=gphoto2-java
@@ -61,10 +57,18 @@ test:
       - ~/.m2/repository
 
 e2e:
-  extends: .postgres_job
   stage: e2e
   image: eclipse-temurin:21-jdk
+  services:
+    - postgres:latest
   variables:
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    POSTGRES_DB: postgres
+    QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/postgres
+    QUARKUS_DATASOURCE_REACTIVE_URL: postgresql://postgres:5432/postgres?ssl=false
+    QUARKUS_DATASOURCE_USERNAME: postgres
+    QUARKUS_DATASOURCE_PASSWORD: postgres
     QUARKUS_FLYWAY_MIGRATE_AT_START: "true"
     JAHRBUCH_CAPTURES_PATH: /tmp/captures/
     DB_HOST: postgres
@@ -72,7 +76,6 @@ e2e:
     DB_PASS: postgres
     DB_NAME: postgres
     PORT: "3000"
-    CI: "true"
   before_script:
     - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     - apt-get install -y nodejs postgresql-client
@@ -89,10 +92,10 @@ e2e:
     - |
       for i in $(seq 1 30); do
         curl -sf http://localhost:8080/api/v1/info && break
-        echo "Warte auf Backend ($i/30)…"
+        echo "Warte auf Backend ($i/30)..."
         sleep 2
       done
-    - npx --prefix src/main/frontend/e2e playwright test --reporter=junit,html
+    - npx --prefix src/main/frontend/e2e playwright test
   artifacts:
     when: always
     reports:
