@@ -1,5 +1,15 @@
 stages:
   - test
+  - e2e
+
+.postgres_vars: &postgres_vars
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_DB: postgres
+  QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/postgres
+  QUARKUS_DATASOURCE_REACTIVE_URL: postgresql://postgres:5432/postgres?ssl=false
+  QUARKUS_DATASOURCE_USERNAME: postgres
+  QUARKUS_DATASOURCE_PASSWORD: postgres
 
 test:
   stage: test
@@ -7,19 +17,71 @@ test:
   services:
     - postgres:latest
   variables:
-    POSTGRES_USER: postgres
-    POSTGRES_PASSWORD: postgres
-    POSTGRES_DB: postgres
-    QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/postgres
-    QUARKUS_DATASOURCE_REACTIVE_URL: postgresql://postgres:5432/postgres?ssl=false
-    QUARKUS_DATASOURCE_USERNAME: postgres
-    QUARKUS_DATASOURCE_PASSWORD: postgres
+    <<: *postgres_vars
   before_script:
     - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
       -DgroupId=org.gphoto -DartifactId=gphoto2-java
       -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
   script:
     - ./mvnw test -B
+  cache:
+    key: maven-$CI_COMMIT_REF_SLUG
+    paths:
+      - ~/.m2/repository
+
+e2e:
+  stage: e2e
+  image: eclipse-temurin:21-jdk
+  services:
+    - postgres:latest
+  variables:
+    <<: *postgres_vars
+    QUARKUS_FLYWAY_MIGRATE_AT_START: "true"
+    JAHRBUCH_CAPTURES_PATH: /tmp/captures/
+    DB_HOST: postgres
+    DB_USER: postgres
+    DB_PASS: postgres
+    DB_NAME: postgres
+    # React dev server Port
+    PORT: "3000"
+    # Playwright kein interaktives TTY
+    CI: "true"
+  before_script:
+    # Node.js 20 installieren
+    - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    - apt-get install -y nodejs postgresql-client
+    # gphoto2-java lokale Abhängigkeit
+    - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
+      -DgroupId=org.gphoto -DartifactId=gphoto2-java
+      -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
+    # Backend bauen (ohne Tests, ohne Frontend-Build)
+    - ./mvnw package -DskipTests -B
+    # captures-Verzeichnis anlegen
+    - mkdir -p /tmp/captures
+    # Frontend-Dependencies installieren
+    - npm ci --prefix src/main/frontend
+    # E2E-Dependencies + Playwright Chromium installieren
+    - npm ci --prefix src/main/frontend/e2e
+    - npx --prefix src/main/frontend/e2e playwright install chromium --with-deps
+  script:
+    # Backend im Hintergrund starten
+    - java -jar target/quarkus-app/quarkus-run.jar &
+    # Warten bis Backend bereit ist (max 60s)
+    - |
+      for i in $(seq 1 30); do
+        curl -sf http://localhost:8080/api/v1/info && break
+        echo "Warte auf Backend ($i/30)…"
+        sleep 2
+      done
+    # Playwright-Tests starten (webServer-Config startet npm start automatisch)
+    - npx --prefix src/main/frontend/e2e playwright test --reporter=junit,html
+  artifacts:
+    when: always
+    reports:
+      junit: src/main/frontend/e2e/test-results/results.xml
+    paths:
+      - src/main/frontend/e2e/playwright-report/
+    expire_in: 1 week
   cache:
     key: maven-$CI_COMMIT_REF_SLUG
     paths:
