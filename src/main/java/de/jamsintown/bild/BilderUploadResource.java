@@ -17,6 +17,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.jboss.resteasy.reactive.server.multipart.FormValue;
 import org.jboss.resteasy.reactive.server.multipart.MultipartFormDataInput;
 
+import com.drew.imaging.ImageMetadataReader;
+import com.drew.metadata.exif.ExifSubIFDDirectory;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,6 +28,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
@@ -149,11 +154,14 @@ public class BilderUploadResource {
             generateThumbnail(targetPath);
             return targetPath;
         }).chain(targetPath -> {
+            ZonedDateTime capturedAt = readExifCapturedAt(targetPath);
+
             Bild bild = new Bild();
             bild.setPfad("/" + subDir + uniqueFileName);
             bild.setTitle(finalTitle);
             bild.setDescription(finalDescription);
             bild.setPriority(3);
+            bild.setCapturedAt(capturedAt);
 
             if (finalStoryId != null) {
                 return storyService.findById(finalStoryId)
@@ -288,6 +296,22 @@ public class BilderUploadResource {
         if (exitCode != 0) {
             throw new IOException("Thumbnail-Generierung fehlgeschlagen (ImageMagick): " + output);
         }
+    }
+
+    private ZonedDateTime readExifCapturedAt(java.nio.file.Path imagePath) {
+        try {
+            com.drew.metadata.Metadata metadata = ImageMetadataReader.readMetadata(imagePath.toFile());
+            ExifSubIFDDirectory dir = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
+            if (dir != null) {
+                java.util.Date date = dir.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL, java.util.TimeZone.getDefault());
+                if (date != null) {
+                    return date.toInstant().atZone(ZoneId.systemDefault());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Kein EXIF-Datum lesbar für {}: {}", imagePath.getFileName(), e.getMessage());
+        }
+        return ZonedDateTime.now();
     }
 
     private void rotateImageFile(java.nio.file.Path imagePath, int degrees) throws Exception {
