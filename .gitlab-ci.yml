@@ -113,6 +113,15 @@ e2e:
       - src/main/frontend/e2e/playwright-report/
     expire_in: 1 week
   cache:
-    key: maven-$CI_COMMIT_REF_SLUG
-    paths:
-      - ~/.m2/repository
+    - key: maven-$CI_COMMIT_REF_SLUG
+      paths:
+        - ~/.m2/repository
+    - key: npm-frontend
+      paths:
+        - src/main/frontend/node_modules/
+    - key: npm-e2e
+      paths:
+        - src/main/frontend/e2e/node_modules/
+    - key: playwright-browsers
+      paths:
+        - ~/.cache/ms-playwright/
