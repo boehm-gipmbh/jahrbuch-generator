@@ -78,6 +78,7 @@ e2e:
     PORT: "3000"
     CI: "true"
   before_script:
+    - apt-get update -qq && apt-get install -y -qq git openssh-client
     # Submodul von lokalem GitLab holen (URL-Override vor dem Init)
     - git config submodule.src/main/frontend.url git@dboehm-System-Product-Name:jamsintown/jahrbuch-generator/jahrbuch-generator-frontend.git
     - git submodule update --init src/main/frontend
