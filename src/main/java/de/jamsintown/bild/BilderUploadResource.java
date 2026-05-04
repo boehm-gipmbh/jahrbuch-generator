@@ -275,6 +275,28 @@ public class BilderUploadResource {
                         .map(count -> Response.ok("Thumbnails generiert: " + count).build()));
     }
 
+    @POST
+    @Path("/backfill-captured-at")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Response> backfillCapturedAt() {
+        return appConfigService.getValue("jahrbuch.captures.path")
+                .map(pathStr -> pathStr != null ? pathStr : "/data/captures/")
+                .chain(capturesPath -> bildService.listWithoutCapturedAt()
+                        .chain(bilder -> vertx.<java.util.List<Bild>>executeBlocking(() -> {
+                            for (Bild bild : bilder) {
+                                java.nio.file.Path imagePath = Paths.get(capturesPath).resolve(bild.getPfad().substring(1));
+                                if (imagePath.toFile().exists()) {
+                                    bild.setCapturedAt(readExifCapturedAt(imagePath));
+                                } else {
+                                    bild.setCapturedAt(bild.created);
+                                }
+                            }
+                            return bilder;
+                        }))
+                        .chain(bilder -> bildService.backfillCapturedAt(bilder))
+                        .map(count -> Response.ok("capturedAt befüllt: " + count).build()));
+    }
+
     public static String toThumbName(String fileName) {
         int dot = fileName.lastIndexOf('.');
         String base = dot > 0 ? fileName.substring(0, dot) : fileName;
