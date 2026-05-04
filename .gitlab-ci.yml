@@ -6,9 +6,9 @@ stages:
 sync-frontend-pointer:
   stage: sync
   image: alpine/git
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-    - if: '$CI_PIPELINE_SOURCE == "web"'
+  only:
+    - schedules
+    - web
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_STRATEGY: clone
@@ -76,6 +76,7 @@ e2e:
     DB_PASS: postgres
     DB_NAME: postgres
     PORT: "3000"
+    CI: "true"
   before_script:
     - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     - apt-get install -y nodejs postgresql-client
@@ -98,8 +99,6 @@ e2e:
     - npx --prefix src/main/frontend/e2e playwright test
   artifacts:
     when: always
-    reports:
-      junit: src/main/frontend/e2e/test-results/results.xml
     paths:
       - src/main/frontend/e2e/playwright-report/
     expire_in: 1 week
