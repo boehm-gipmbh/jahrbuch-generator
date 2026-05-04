@@ -277,6 +277,7 @@ public class BilderUploadResource {
 
     @POST
     @Path("/backfill-captured-at")
+    @RolesAllowed("admin")
     @Produces(MediaType.APPLICATION_JSON)
     public Uni<Response> backfillCapturedAt() {
         return appConfigService.getValue("jahrbuch.captures.path")
