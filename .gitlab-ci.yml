@@ -1,6 +1,39 @@
 stages:
+  - sync
   - test
   - e2e
+
+sync-frontend-pointer:
+  stage: sync
+  image: alpine/git
+  rules:
+    # Manuell auslösbar und via Schedule
+    - when: manual
+      allow_failure: true
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+    GIT_STRATEGY: clone
+  before_script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - echo "$GITHUB_SSH_KEY" > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-keyscan github.com >> ~/.ssh/known_hosts
+  script:
+    # Neuesten Frontend-Commit von GitHub holen
+    - git submodule update --remote src/main/frontend
+    - |
+      if git diff --quiet src/main/frontend; then
+        echo "Submodul-Pointer bereits aktuell."
+        exit 0
+      fi
+    - SHORT_SHA=$(git -C src/main/frontend rev-parse --short HEAD)
+    - git config user.name "gitlab-ci[bot]"
+    - git config user.email "gitlab-ci[bot]@noreply.local"
+    - git add src/main/frontend
+    - git commit -m "Chore: Submodul-Pointer automatisch auf Frontend ${SHORT_SHA}"
+    - git push "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:main
 
 .postgres_vars: &postgres_vars
   POSTGRES_USER: postgres
