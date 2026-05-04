@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -175,11 +176,14 @@ public class VideoUploadResource {
                 }
             })
         ).chain(finalPath -> {
+            ZonedDateTime capturedAt = ffmpegService.readCreationTime(finalPath);
+
             Video video = new Video();
             video.pfad = "/" + subDir + uniqueFileName;
             video.title = videoTitle;
             video.description = videoDesc;
             video.priority = 3;
+            video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
 
             Long storyId = null;
             if (sid != null && !sid.isBlank()) {
@@ -268,12 +272,14 @@ public class VideoUploadResource {
                 }
 
                 runFfmpeg(targetPath);
+                ZonedDateTime capturedAt = ffmpegService.readCreationTime(targetPath);
 
                 Video video = new Video();
                 video.pfad = "/" + subDir + uniqueFileName;
                 video.title = title != null && !title.isBlank() ? title : fileName;
                 video.description = description;
                 video.priority = 3;
+                video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
 
                 Long storyId = null;
                 if (storyIdStr != null && !storyIdStr.isBlank()) {
@@ -296,6 +302,30 @@ public class VideoUploadResource {
                                 Response.Status.INTERNAL_SERVER_ERROR));
             }
         });
+    }
+
+    @POST
+    @Path("/backfill-captured-at")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Response> backfillCapturedAt() {
+        return loadUploadConfig()
+                .chain(config -> videoService.listWithoutCapturedAt()
+                        .chain(videos -> Uni.createFrom().<List<Video>>emitter(emitter -> {
+                            io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool().execute(() -> {
+                                for (Video video : videos) {
+                                    java.nio.file.Path videoPath = Paths.get(config.capturesPath).resolve(video.pfad.substring(1));
+                                    if (videoPath.toFile().exists()) {
+                                        ZonedDateTime t = ffmpegService.readCreationTime(videoPath);
+                                        video.capturedAt = t != null ? t : video.created;
+                                    } else {
+                                        video.capturedAt = video.created;
+                                    }
+                                }
+                                emitter.complete(videos);
+                            });
+                        }))
+                        .chain(videos -> videoService.backfillCapturedAt(videos))
+                        .map(count -> Response.ok("capturedAt befüllt: " + count).build()));
     }
 
     private String getFormValue(Map<String, List<FormValue>> parts, String key) throws Exception {
