@@ -29,7 +29,7 @@ sync-frontend-pointer:
     - git config user.name "gitlab-ci[bot]"
     - git config user.email "gitlab-ci[bot]@noreply.local"
     - git add src/main/frontend
-    - git commit -m "Chore: Submodul-Pointer automatisch auf Frontend ${SHORT_SHA}"
+    - 'git commit -m "Chore: Submodul-Pointer automatisch auf Frontend ${SHORT_SHA}"'
     - git push "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:main
 
 test:
