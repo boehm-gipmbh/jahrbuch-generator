@@ -79,8 +79,14 @@ e2e:
     CI: "true"
   before_script:
     - apt-get update -qq && apt-get install -y -qq git openssh-client
-    # Submodul von lokalem GitLab holen (URL-Override vor dem Init)
-    - git config submodule.src/main/frontend.url git@dboehm-System-Product-Name:jamsintown/jahrbuch-generator/jahrbuch-generator-frontend.git
+    # Submodul-URL: auf gitlab.com -> gitlab.com-Frontend, sonst lokales GitLab
+    - |
+      if echo "$CI_SERVER_HOST" | grep -q "gitlab.com"; then
+        FRONTEND_URL="git@gitlab.com:jamsintown/jahrbuch-generator/jahrbuch-generator-frontend.git"
+      else
+        FRONTEND_URL="git@dboehm-System-Product-Name:jamsintown/jahrbuch-generator/jahrbuch-generator-frontend.git"
+      fi
+      git config submodule.src/main/frontend.url "$FRONTEND_URL"
     - git submodule update --init src/main/frontend
     - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     - apt-get install -y nodejs postgresql-client
