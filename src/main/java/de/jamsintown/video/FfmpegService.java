@@ -7,6 +7,9 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 
 @Slf4j
 @ApplicationScoped
@@ -109,6 +112,28 @@ public class FfmpegService {
         } catch (Exception e) {
             return "unknown";
         }
+    }
+
+    public ZonedDateTime readCreationTime(Path videoPath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffprobe", "-v", "quiet",
+                    "-print_format", "default=noprint_wrappers=1",
+                    "-show_entries", "format_tags=creation_time",
+                    videoPath.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            String output = new String(p.getInputStream().readAllBytes()).trim();
+            p.waitFor();
+            String prefix = "TAG:creation_time=";
+            if (output.startsWith(prefix)) {
+                String iso = output.substring(prefix.length()).trim();
+                return Instant.parse(iso).atZone(ZoneId.systemDefault());
+            }
+        } catch (Exception e) {
+            log.debug("creation_time nicht lesbar für {}: {}", videoPath.getFileName(), e.getMessage());
+        }
+        return null;
     }
 
     public static String toSnapshotPfad(String videoPfad) {

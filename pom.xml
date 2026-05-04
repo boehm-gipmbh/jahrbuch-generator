@@ -136,6 +136,11 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-awt</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.drewnoakes</groupId>
+            <artifactId>metadata-extractor</artifactId>
+            <version>2.19.0</version>
+        </dependency>
 
 <!--         Security Dependency wegen @PermitAll-->
         <dependency>

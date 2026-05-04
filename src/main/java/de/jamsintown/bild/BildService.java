@@ -100,6 +100,22 @@ public class BildService {
                 .chain(s -> s.merge(bild));
     }
 
+    @WithTransaction
+    public Uni<Integer> backfillCapturedAt(List<Bild> bilder) {
+        return Bild.getSession()
+                .chain(s -> {
+                    List<Uni<Bild>> merges = bilder.stream()
+                            .map(b -> (Uni<Bild>) s.merge(b))
+                            .collect(Collectors.toList());
+                    return Uni.join().all(merges).andFailFast();
+                })
+                .map(List::size);
+    }
+
+    public Uni<List<Bild>> listWithoutCapturedAt() {
+        return Bild.<Bild>find("capturedAt is null and deleted = false").list();
+    }
+
 
     @WithTransaction
     public Uni<Void> softDelete(long id) {

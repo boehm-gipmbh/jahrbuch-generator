@@ -41,6 +41,9 @@ public class Video extends PanacheEntity {
     @ManyToOne
     public Story story;
 
+    @Column(name = "captured_at")
+    public ZonedDateTime capturedAt;
+
     @CreationTimestamp
     @Column(updatable = false, nullable = false)
     public ZonedDateTime created;

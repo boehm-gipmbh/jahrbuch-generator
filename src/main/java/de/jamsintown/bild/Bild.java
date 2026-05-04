@@ -50,6 +50,9 @@ public class Bild extends PanacheEntity {
    // @JoinColumn(name = "story_id")
     public Story story;
 
+    @Column(name = "captured_at")
+    public ZonedDateTime capturedAt;
+
     @CreationTimestamp
     @Column(updatable = false, nullable = false)
     public ZonedDateTime created;

@@ -10,6 +10,7 @@ import jakarta.inject.Inject;
 import org.hibernate.ObjectNotFoundException;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class VideoService {
@@ -118,6 +119,22 @@ public class VideoService {
                     video.story = null;
                     return video.persistAndFlush().replaceWithVoid();
                 });
+    }
+
+    @WithTransaction
+    public Uni<Integer> backfillCapturedAt(List<Video> videos) {
+        return Video.getSession()
+                .chain(s -> {
+                    List<Uni<Video>> merges = videos.stream()
+                            .map(v -> (Uni<Video>) s.merge(v))
+                            .collect(Collectors.toList());
+                    return Uni.join().all(merges).andFailFast();
+                })
+                .map(List::size);
+    }
+
+    public Uni<List<Video>> listWithoutCapturedAt() {
+        return Video.<Video>find("capturedAt is null and deleted = false").list();
     }
 
     @WithTransaction
