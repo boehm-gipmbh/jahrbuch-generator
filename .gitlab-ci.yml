@@ -100,7 +100,7 @@ e2e:
         echo "Warte auf Backend ($i/30)..."
         sleep 2
       done
-    - npx --prefix src/main/frontend/e2e playwright test
+    - cd src/main/frontend/e2e && npx playwright test
   artifacts:
     when: always
     paths:
