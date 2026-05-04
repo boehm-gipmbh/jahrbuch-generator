@@ -306,6 +306,7 @@ public class VideoUploadResource {
 
     @POST
     @Path("/backfill-captured-at")
+    @RolesAllowed("admin")
     @Produces(MediaType.APPLICATION_JSON)
     public Uni<Response> backfillCapturedAt() {
         return loadUploadConfig()
