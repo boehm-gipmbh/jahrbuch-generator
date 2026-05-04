@@ -62,7 +62,6 @@ e2e:
   services:
     - postgres:latest
   variables:
-    GIT_SUBMODULE_STRATEGY: recursive
     POSTGRES_USER: postgres
     POSTGRES_PASSWORD: postgres
     POSTGRES_DB: postgres
@@ -79,6 +78,9 @@ e2e:
     PORT: "3000"
     CI: "true"
   before_script:
+    # Submodul von lokalem GitLab holen (URL-Override vor dem Init)
+    - git config submodule.src/main/frontend.url git@dboehm-System-Product-Name:jamsintown/jahrbuch-generator/jahrbuch-generator-frontend.git
+    - git submodule update --init src/main/frontend
     - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     - apt-get install -y nodejs postgresql-client
     - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
