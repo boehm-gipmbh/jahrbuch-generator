@@ -37,18 +37,21 @@ public class VideoUploadResource {
     private final UserService userService;
     private final AppConfigService appConfigService;
     private final FfmpegService ffmpegService;
+    private final io.vertx.mutiny.core.Vertx vertx;
     private final String defaultCapturesPath;
 
     @Inject
     public VideoUploadResource(VideoService videoService, StoryService storyService,
                                 UserService userService, AppConfigService appConfigService,
                                 FfmpegService ffmpegService,
+                                io.vertx.mutiny.core.Vertx vertx,
                                 @ConfigProperty(name = "jahrbuch.captures.path") String defaultCapturesPath) {
         this.videoService = videoService;
         this.storyService = storyService;
         this.userService = userService;
         this.appConfigService = appConfigService;
         this.ffmpegService = ffmpegService;
+        this.vertx = vertx;
         this.defaultCapturesPath = defaultCapturesPath;
     }
 
@@ -311,19 +314,17 @@ public class VideoUploadResource {
     public Uni<Response> backfillCapturedAt() {
         return loadUploadConfig()
                 .chain(config -> videoService.listWithoutCapturedAt()
-                        .chain(videos -> Uni.createFrom().<List<Video>>emitter(emitter -> {
-                            io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool().execute(() -> {
-                                for (Video video : videos) {
-                                    java.nio.file.Path videoPath = Paths.get(config.capturesPath).resolve(video.pfad.substring(1));
-                                    if (videoPath.toFile().exists()) {
-                                        ZonedDateTime t = ffmpegService.readCreationTime(videoPath);
-                                        video.capturedAt = t != null ? t : video.created;
-                                    } else {
-                                        video.capturedAt = video.created;
-                                    }
+                        .chain(videos -> vertx.<List<Video>>executeBlocking(() -> {
+                            for (Video video : videos) {
+                                java.nio.file.Path videoPath = Paths.get(config.capturesPath).resolve(video.pfad.substring(1));
+                                if (videoPath.toFile().exists()) {
+                                    ZonedDateTime t = ffmpegService.readCreationTime(videoPath);
+                                    video.capturedAt = t != null ? t : video.created;
+                                } else {
+                                    video.capturedAt = video.created;
                                 }
-                                emitter.complete(videos);
-                            });
+                            }
+                            return videos;
                         }))
                         .chain(videos -> videoService.backfillCapturedAt(videos))
                         .map(count -> Response.ok("capturedAt befüllt: " + count).build()));
