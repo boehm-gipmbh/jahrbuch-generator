@@ -102,6 +102,7 @@ public class BildService {
 
     @WithTransaction
     public Uni<Integer> backfillCapturedAt(List<Bild> bilder) {
+        if (bilder.isEmpty()) return Uni.createFrom().item(0);
         return Bild.getSession()
                 .chain(s -> {
                     List<Uni<Bild>> merges = bilder.stream()

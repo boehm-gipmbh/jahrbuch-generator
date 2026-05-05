@@ -123,6 +123,7 @@ public class VideoService {
 
     @WithTransaction
     public Uni<Integer> backfillCapturedAt(List<Video> videos) {
+        if (videos.isEmpty()) return Uni.createFrom().item(0);
         return Video.getSession()
                 .chain(s -> {
                     List<Uni<Video>> merges = videos.stream()
