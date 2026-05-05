@@ -150,9 +150,10 @@ public class BilderUploadResource {
                 Files.copy(fileInputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
             }
             generateThumbnail(targetPath);
-            return targetPath;
-        }).chain(targetPath -> {
             ZonedDateTime capturedAt = readExifCapturedAt(targetPath);
+            return new Object[]{targetPath, capturedAt};
+        }).chain(result -> {
+            ZonedDateTime capturedAt = (ZonedDateTime) result[1];
 
             Bild bild = new Bild();
             bild.setPfad("/" + subDir + uniqueFileName);
