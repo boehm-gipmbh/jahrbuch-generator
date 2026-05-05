@@ -17,8 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.jboss.resteasy.reactive.server.multipart.FormValue;
 import org.jboss.resteasy.reactive.server.multipart.MultipartFormDataInput;
 
-import com.drew.imaging.ImageMetadataReader;
-import com.drew.metadata.exif.ExifSubIFDDirectory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -161,7 +159,7 @@ public class BilderUploadResource {
             bild.setTitle(finalTitle);
             bild.setDescription(finalDescription);
             bild.setPriority(3);
-            bild.setCapturedAt(capturedAt);
+            bild.setCapturedAt(capturedAt != null ? capturedAt : ZonedDateTime.now());
 
             if (finalStoryId != null) {
                 return storyService.findById(finalStoryId)
@@ -287,7 +285,8 @@ public class BilderUploadResource {
                             for (Bild bild : bilder) {
                                 java.nio.file.Path imagePath = Paths.get(capturesPath).resolve(bild.getPfad().substring(1));
                                 if (imagePath.toFile().exists()) {
-                                    bild.setCapturedAt(readExifCapturedAt(imagePath));
+                                    ZonedDateTime exif = readExifCapturedAt(imagePath);
+                                    bild.setCapturedAt(exif != null ? exif : bild.created);
                                 } else {
                                     bild.setCapturedAt(bild.created);
                                 }
@@ -322,34 +321,34 @@ public class BilderUploadResource {
     }
 
     private ZonedDateTime readExifCapturedAt(java.nio.file.Path imagePath) {
-        try {
-            com.drew.metadata.Metadata metadata = ImageMetadataReader.readMetadata(imagePath.toFile());
-            ExifSubIFDDirectory dir = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
-            if (dir != null) {
-                java.util.Date date = dir.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL, java.util.TimeZone.getDefault());
-                if (date != null) {
-                    return date.toInstant().atZone(ZoneId.systemDefault());
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Kein EXIF-Datum lesbar für {}: {}", imagePath.getFileName(), e.getMessage());
-        }
-        return ZonedDateTime.now();
+        return ExifUtils.readCapturedAt(imagePath);
     }
 
     private void rotateImageFile(java.nio.file.Path imagePath, int degrees) throws Exception {
         degrees = ((degrees % 360) + 360) % 360;
         if (degrees == 0) return;
 
-        // ImageMagick statt javax.imageio — funktioniert zuverlässig im Native Image
-        Process process = new ProcessBuilder(
-                "convert", imagePath.toString(), "-rotate", String.valueOf(degrees), imagePath.toString())
-                .redirectErrorStream(true)
-                .start();
-        String output = new String(process.getInputStream().readAllBytes());
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new IOException("Bildrotation fehlgeschlagen (ImageMagick): " + output);
+        // jpegtran: verlustfreie JPEG-Rotation, erhält EXIF vollständig (-copy all)
+        String rotate = switch (degrees) {
+            case 90 -> "90";
+            case 180 -> "180";
+            case 270 -> "270";
+            default -> throw new IOException("Ungültiger Rotationswinkel: " + degrees);
+        };
+        java.nio.file.Path tmpPath = imagePath.resolveSibling(imagePath.getFileName() + ".rotating.jpg");
+        try {
+            Process process = new ProcessBuilder(
+                    "jpegtran", "-rotate", rotate, "-copy", "all", "-outfile", tmpPath.toString(), imagePath.toString())
+                    .redirectErrorStream(true)
+                    .start();
+            String output = new String(process.getInputStream().readAllBytes());
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new IOException("Bildrotation fehlgeschlagen (jpegtran): " + output);
+            }
+            Files.move(tmpPath, imagePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(tmpPath);
         }
     }
 

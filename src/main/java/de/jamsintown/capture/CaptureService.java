@@ -1,6 +1,7 @@
 package de.jamsintown.capture;
 
 import de.jamsintown.bild.Bild;
+import de.jamsintown.bild.ExifUtils;
 import de.jamsintown.config.main.ImageSettings;
 import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.User;
@@ -111,17 +112,20 @@ public class CaptureService {
                 String finalFileName = fileName;
                 Gruppe finalGruppe = effectiveGruppe;
                 return Uni.createFrom().item(user).chain(u -> {
+                    Path targetPath = null;
                     try {
                         Path targetDir = Paths.get(capturesPath, subDir);
                         Files.createDirectories(targetDir);
-                        Path targetPath = targetDir.resolve(finalFileName);
+                        targetPath = targetDir.resolve(finalFileName);
                         Files.move(Paths.get(capturedPath), targetPath,
                                 StandardCopyOption.REPLACE_EXISTING);
                     } catch (IOException e) {
                         log.warn("Konnte Bild nicht ins Gruppenverzeichnis verschieben: {}", e.getMessage());
                     }
+                    ZonedDateTime capturedAt = targetPath != null ? ExifUtils.readCapturedAt(targetPath) : null;
                     Bild bild = new Bild();
                     bild.created = ZonedDateTime.now();
+                    bild.capturedAt = capturedAt != null ? capturedAt : bild.created;
                     bild.pfad = "/" + subDir + finalFileName;
                     bild.description = "Bild von " + u.name + " aufgenommen";
                     bild.title = "Bild mit Titel " + finalFileName;

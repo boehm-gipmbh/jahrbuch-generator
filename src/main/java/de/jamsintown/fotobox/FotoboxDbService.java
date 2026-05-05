@@ -1,6 +1,7 @@
 package de.jamsintown.fotobox;
 
 import de.jamsintown.bild.Bild;
+import de.jamsintown.bild.ExifUtils;
 import de.jamsintown.dtos.FotoboxConfigDTO;
 import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.UserService;
@@ -35,13 +36,17 @@ public class FotoboxDbService {
         String subDir = "gruppen/" + groupId + "/";
         String pfad = "/" + subDir + filename;
 
+        java.nio.file.Path savedPath;
         try {
             java.nio.file.Path targetDir = java.nio.file.Paths.get(capturesPath, subDir);
             java.nio.file.Files.createDirectories(targetDir);
-            java.nio.file.Files.write(targetDir.resolve(filename), imageBytes);
+            savedPath = targetDir.resolve(filename);
+            java.nio.file.Files.write(savedPath, imageBytes);
         } catch (Exception e) {
             return Uni.createFrom().failure(new RuntimeException("Datei konnte nicht gespeichert werden: " + e.getMessage()));
         }
+
+        ZonedDateTime capturedAt = ExifUtils.readCapturedAt(savedPath);
 
         return userService.findByName(captureUserName)
                 .onItem().ifNull().switchTo(() -> userService.createFotoboxUser(captureUserName))
@@ -50,6 +55,7 @@ public class FotoboxDbService {
                         .chain(gruppe -> {
                             Bild bild = new Bild();
                             bild.created = ZonedDateTime.now();
+                            bild.capturedAt = capturedAt != null ? capturedAt : bild.created;
                             bild.pfad = pfad;
                             bild.description = "Fotobox-Aufnahme";
                             bild.title = filename;
