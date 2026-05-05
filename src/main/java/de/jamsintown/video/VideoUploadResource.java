@@ -159,7 +159,7 @@ public class VideoUploadResource {
         final String sid = storyIdStr;
 
         io.vertx.core.Context vertxContext = io.vertx.core.Vertx.currentContext();
-        return Uni.createFrom().<java.nio.file.Path>emitter(emitter ->
+        return Uni.createFrom().<Object[]>emitter(emitter ->
             io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool().execute(() -> {
                 try {
                     java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
@@ -173,13 +173,15 @@ public class VideoUploadResource {
                     }
                     cleanupTmp(config.capturesPath, uploadId);
                     runFfmpeg(finalPath);
-                    vertxContext.runOnContext(v -> emitter.complete(finalPath));
+                    ZonedDateTime capturedAt = ffmpegService.readCreationTime(finalPath);
+                    vertxContext.runOnContext(v -> emitter.complete(new Object[]{finalPath, capturedAt}));
                 } catch (Exception e) {
                     vertxContext.runOnContext(v -> emitter.fail(e));
                 }
             })
-        ).chain(finalPath -> {
-            ZonedDateTime capturedAt = ffmpegService.readCreationTime(finalPath);
+        ).chain(result -> {
+            java.nio.file.Path finalPath = (java.nio.file.Path) result[0];
+            ZonedDateTime capturedAt = (ZonedDateTime) result[1];
 
             Video video = new Video();
             video.pfad = "/" + subDir + uniqueFileName;
@@ -267,36 +269,43 @@ public class VideoUploadResource {
                         ? "videos/gruppen/" + user.activeGroup.id + "/"
                         : "videos/ungrouped/";
 
-                java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
-                Files.createDirectories(dirPath);
-                java.nio.file.Path targetPath = dirPath.resolve(uniqueFileName);
-                try (InputStream is = filePart.getFileItem().getInputStream()) {
-                    Files.copy(is, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                }
+                final String finalTitle = title != null && !title.isBlank() ? title : fileName;
+                final String finalDesc = description;
+                final String finalStoryIdStr = storyIdStr;
+                final InputStream fileStream = filePart.getFileItem().getInputStream();
 
-                runFfmpeg(targetPath);
-                ZonedDateTime capturedAt = ffmpegService.readCreationTime(targetPath);
+                return vertx.<Object[]>executeBlocking(() -> {
+                    java.nio.file.Path dirPath = Paths.get(config.capturesPath, subDir);
+                    Files.createDirectories(dirPath);
+                    java.nio.file.Path targetPath = dirPath.resolve(uniqueFileName);
+                    try (fileStream) {
+                        Files.copy(fileStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                    runFfmpeg(targetPath);
+                    ZonedDateTime capturedAt = ffmpegService.readCreationTime(targetPath);
+                    return new Object[]{targetPath, capturedAt};
+                }).chain(result -> {
+                    ZonedDateTime capturedAt = (ZonedDateTime) result[1];
+                    Video video = new Video();
+                    video.pfad = "/" + subDir + uniqueFileName;
+                    video.title = finalTitle;
+                    video.description = finalDesc;
+                    video.priority = 3;
+                    video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
 
-                Video video = new Video();
-                video.pfad = "/" + subDir + uniqueFileName;
-                video.title = title != null && !title.isBlank() ? title : fileName;
-                video.description = description;
-                video.priority = 3;
-                video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
-
-                Long storyId = null;
-                if (storyIdStr != null && !storyIdStr.isBlank()) {
-                    try { storyId = Long.parseLong(storyIdStr); } catch (NumberFormatException ignored) {}
-                }
-
-                if (storyId != null) {
-                    final Long sid = storyId;
-                    return storyService.findById(sid).chain(story -> {
-                        if (story != null) video.story = story;
-                        return videoService.create(video);
-                    });
-                }
-                return videoService.create(video);
+                    Long storyId = null;
+                    if (finalStoryIdStr != null && !finalStoryIdStr.isBlank()) {
+                        try { storyId = Long.parseLong(finalStoryIdStr); } catch (NumberFormatException ignored) {}
+                    }
+                    if (storyId != null) {
+                        final Long sid = storyId;
+                        return storyService.findById(sid).chain(story -> {
+                            if (story != null) video.story = story;
+                            return videoService.create(video);
+                        });
+                    }
+                    return videoService.create(video);
+                });
 
             } catch (Exception e) {
                 log.error("Fehler beim Video-Upload: {}", e.getMessage(), e);
