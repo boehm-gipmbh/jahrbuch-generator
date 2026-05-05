@@ -115,11 +115,12 @@ public class BilderUploadResource {
                             Response.Status.BAD_REQUEST));
         }
 
-        String title, description, storyIdStr;
+        String title, description, storyIdStr, capturedAtStr;
         try {
             title = getFormValue(formParts, "title");
             description = getFormValue(formParts, "description");
             storyIdStr = getFormValue(formParts, "storyId");
+            capturedAtStr = getFormValue(formParts, "capturedAt");
         } catch (Exception e) {
             return Uni.createFrom().failure(
                     new WebApplicationException("Fehler beim Lesen der Formulardaten: " + e.getMessage(),
@@ -129,6 +130,16 @@ public class BilderUploadResource {
         if (storyIdStr != null && !storyIdStr.isEmpty()) {
             try { storyId = Long.parseLong(storyIdStr); }
             catch (NumberFormatException e) { log.error("Ungültige Story-ID: {}", storyIdStr); }
+        }
+        // EXIF-Datum vom Frontend (vor Komprimierung gelesen, Format: "yyyy:MM:dd HH:mm:ss")
+        ZonedDateTime capturedAtFromFrontend = null;
+        if (capturedAtStr != null && !capturedAtStr.isEmpty()) {
+            try {
+                capturedAtFromFrontend = LocalDateTime.parse(capturedAtStr.trim(),
+                        DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss")).atZone(ZoneId.systemDefault());
+            } catch (Exception e) {
+                log.debug("capturedAt vom Frontend nicht parsebar: {}", capturedAtStr);
+            }
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
@@ -140,6 +151,7 @@ public class BilderUploadResource {
         final String finalTitle = title;
         final String finalDescription = description;
         final Long finalStoryId = storyId;
+        final ZonedDateTime finalCapturedAtFromFrontend = capturedAtFromFrontend;
 
         // Datei-I/O auf Worker-Thread auslagern — Event-Loop nicht blockieren
         return executeBlockingFileIO(() -> {
@@ -150,7 +162,10 @@ public class BilderUploadResource {
                 Files.copy(fileInputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
             }
             generateThumbnail(targetPath);
-            ZonedDateTime capturedAt = readExifCapturedAt(targetPath);
+            // Frontend-EXIF hat Vorrang (vor Komprimierung gelesen), Fallback auf gespeicherte Datei
+            ZonedDateTime capturedAt = finalCapturedAtFromFrontend != null
+                    ? finalCapturedAtFromFrontend
+                    : readExifCapturedAt(targetPath);
             return new Object[]{targetPath, capturedAt};
         }).chain(result -> {
             ZonedDateTime capturedAt = (ZonedDateTime) result[1];
