@@ -55,32 +55,46 @@ public class ExifUtils {
 
         Map<String, Object> result = new LinkedHashMap<>();
 
+        String[] EXPOSURE_PROGRAM = {"Unbekannt","Manuell","Programm-Auto","Blendenvorwahl","Zeitvorwahl","Kreativ","Action","Porträt","Landschaft"};
+        String[] METERING_MODE    = {"Unbekannt","Mittelwert","Mittenbetont","Spot","Multi-Spot","Mehrfeld","Selektiv"};
+        String[] EXPOSURE_MODE    = {"Auto","Manuell","Auto-Bracket"};
+        String[] WHITE_BALANCE    = {"Auto","Manuell"};
+        String[] SCENE_CAPTURE    = {"Standard","Landschaft","Porträt","Nacht"};
+
         // IFD0
-        String dt = (String) tagValue(data, tb, ifd0, (short) 0x9003, order);
-        if (dt != null) result.put("capturedAt", dt);
-        String make = (String) tagValue(data, tb, ifd0, (short) 0x010F, order);
-        if (make != null) result.put("make", make);
-        String model = (String) tagValue(data, tb, ifd0, (short) 0x0110, order);
-        if (model != null) result.put("model", model);
-        Number orientation = (Number) tagValue(data, tb, ifd0, (short) 0x0112, order);
-        if (orientation != null) result.put("orientation", orientation);
+        putStr(result, "capturedAt", (String) tagValue(data, tb, ifd0, (short) 0x9003, order));
+        putStr(result, "make",       (String) tagValue(data, tb, ifd0, (short) 0x010F, order));
+        putStr(result, "model",      (String) tagValue(data, tb, ifd0, (short) 0x0110, order));
+        putNum(result, "orientation",(Number) tagValue(data, tb, ifd0, (short) 0x0112, order));
+        putStr(result, "software",   (String) tagValue(data, tb, ifd0, (short) 0x0131, order));
+        putStr(result, "dateTime",   (String) tagValue(data, tb, ifd0, (short) 0x0132, order));
+        putStr(result, "artist",     (String) tagValue(data, tb, ifd0, (short) 0x013B, order));
+        putStr(result, "copyright",  (String) tagValue(data, tb, ifd0, (short) 0x8298, order));
 
         // ExifIFD (0x8769)
         Number exifIfdRaw = (Number) tagValue(data, tb, ifd0, (short) 0x8769, order);
         if (exifIfdRaw != null) {
             int exifIfd = tb + exifIfdRaw.intValue();
-            if (!result.containsKey("capturedAt")) {
-                String dtOrig = (String) tagValue(data, tb, exifIfd, (short) 0x9003, order);
-                if (dtOrig != null) result.put("capturedAt", dtOrig);
-            }
-            Number iso = (Number) tagValue(data, tb, exifIfd, (short) 0x8827, order);
-            if (iso != null) result.put("iso", iso);
-            double[] expTime = (double[]) tagValue(data, tb, exifIfd, (short) 0x829A, order);
-            if (expTime != null && expTime.length > 0) result.put("exposureTime", expTime[0]);
-            double[] fNumber = (double[]) tagValue(data, tb, exifIfd, (short) 0x829D, order);
-            if (fNumber != null && fNumber.length > 0) result.put("fNumber", fNumber[0]);
-            double[] focalLen = (double[]) tagValue(data, tb, exifIfd, (short) 0x920A, order);
-            if (focalLen != null && focalLen.length > 0) result.put("focalLength", focalLen[0]);
+            if (!result.containsKey("capturedAt"))
+                putStr(result, "capturedAt", (String) tagValue(data, tb, exifIfd, (short) 0x9003, order));
+            putNum(result,  "iso",             (Number)   tagValue(data, tb, exifIfd, (short) 0x8827, order));
+            putRat(result,  "exposureTime",    (double[]) tagValue(data, tb, exifIfd, (short) 0x829A, order));
+            putRat(result,  "fNumber",         (double[]) tagValue(data, tb, exifIfd, (short) 0x829D, order));
+            putRat(result,  "focalLength",     (double[]) tagValue(data, tb, exifIfd, (short) 0x920A, order));
+            putRat(result,  "exposureBias",    (double[]) tagValue(data, tb, exifIfd, (short) 0x9204, order));
+            putEnum(result, "exposureProgram", (Number)   tagValue(data, tb, exifIfd, (short) 0x8822, order), EXPOSURE_PROGRAM);
+            putEnum(result, "meteringMode",    (Number)   tagValue(data, tb, exifIfd, (short) 0x9207, order), METERING_MODE);
+            putEnum(result, "exposureMode",    (Number)   tagValue(data, tb, exifIfd, (short) 0xA402, order), EXPOSURE_MODE);
+            putEnum(result, "whiteBalance",    (Number)   tagValue(data, tb, exifIfd, (short) 0xA403, order), WHITE_BALANCE);
+            putEnum(result, "sceneCaptureType",(Number)   tagValue(data, tb, exifIfd, (short) 0xA406, order), SCENE_CAPTURE);
+            Number flash = (Number) tagValue(data, tb, exifIfd, (short) 0x9209, order);
+            if (flash != null) result.put("flash", (flash.intValue() & 1) == 1 ? "Ja" : "Nein");
+            putNum(result,  "focalLength35mm", (Number)   tagValue(data, tb, exifIfd, (short) 0xA405, order));
+            putStr(result,  "lensModel",       (String)   tagValue(data, tb, exifIfd, (short) 0xA434, order));
+            putNum(result,  "pixelWidth",      (Number)   tagValue(data, tb, exifIfd, (short) 0xA002, order));
+            putNum(result,  "pixelHeight",     (Number)   tagValue(data, tb, exifIfd, (short) 0xA003, order));
+            double[] zoom = (double[]) tagValue(data, tb, exifIfd, (short) 0xA404, order);
+            if (zoom != null && zoom.length > 0 && zoom[0] != 1.0) result.put("digitalZoom", zoom[0]);
         }
 
         // GPS IFD (0x8825)
@@ -93,6 +107,8 @@ public class ExifUtils {
             double[] lon   = (double[]) tagValue(data, tb, gpsIfd, (short) 0x0004, order);
             Number altRef  = (Number) tagValue(data, tb, gpsIfd, (short) 0x0005, order);
             double[] alt   = (double[]) tagValue(data, tb, gpsIfd, (short) 0x0006, order);
+            double[] speed = (double[]) tagValue(data, tb, gpsIfd, (short) 0x000D, order);
+            double[] dir   = (double[]) tagValue(data, tb, gpsIfd, (short) 0x0011, order);
 
             if (lat != null && lat.length == 3 && lon != null && lon.length == 3) {
                 double latDeg = lat[0] + lat[1] / 60.0 + lat[2] / 3600.0;
@@ -105,11 +121,34 @@ public class ExifUtils {
                     double altM = (altRef != null && altRef.intValue() == 1) ? -alt[0] : alt[0];
                     result.put("gpsAlt", Math.round(altM * 10.0) / 10.0);
                 }
+                if (speed != null && speed.length > 0 && speed[0] > 0)
+                    result.put("gpsSpeed", Math.round(speed[0] * 10.0) / 10.0);
+                if (dir != null && dir.length > 0)
+                    result.put("gpsDirection", Math.round(dir[0] * 10.0) / 10.0);
             }
         }
 
         if (result.isEmpty()) return null;
         return toJson(result);
+    }
+
+    private static void putStr(Map<String, Object> result, String key, String val) {
+        if (val != null && !val.isEmpty()) result.put(key, val);
+    }
+
+    private static void putNum(Map<String, Object> result, String key, Number val) {
+        if (val != null) result.put(key, val);
+    }
+
+    private static void putRat(Map<String, Object> result, String key, double[] val) {
+        if (val != null && val.length > 0) result.put(key, val[0]);
+    }
+
+    private static void putEnum(Map<String, Object> result, String key, Number val, String[] map) {
+        if (val != null) {
+            int idx = val.intValue();
+            if (idx >= 0 && idx < map.length) result.put(key, map[idx]);
+        }
     }
 
     private static Object tagValue(byte[] data, int tiffBase, int ifdOffset, short targetTag, ByteOrder order) {
