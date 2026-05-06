@@ -8,6 +8,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.ZonedDateTime;
 
@@ -68,4 +70,8 @@ public class Bild extends PanacheEntity {
 
     @Column(name = "deleted_from_story_name")
     public String deletedFromStoryName;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "exif_data", columnDefinition = "jsonb")
+    public String exifData;
 }

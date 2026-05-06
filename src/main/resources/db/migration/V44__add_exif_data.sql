@@ -1,0 +1,1 @@
+ALTER TABLE bilder ADD COLUMN IF NOT EXISTS exif_data JSONB;

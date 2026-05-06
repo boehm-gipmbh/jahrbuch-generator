@@ -174,7 +174,8 @@ public class VideoUploadResource {
                     cleanupTmp(config.capturesPath, uploadId);
                     runFfmpeg(finalPath);
                     ZonedDateTime capturedAt = ffmpegService.readCreationTime(finalPath);
-                    vertxContext.runOnContext(v -> emitter.complete(new Object[]{finalPath, capturedAt}));
+                    String metadata = ffmpegService.readMetadataJson(finalPath);
+                    vertxContext.runOnContext(v -> emitter.complete(new Object[]{finalPath, capturedAt, metadata}));
                 } catch (Exception e) {
                     vertxContext.runOnContext(v -> emitter.fail(e));
                 }
@@ -182,6 +183,7 @@ public class VideoUploadResource {
         ).chain(result -> {
             java.nio.file.Path finalPath = (java.nio.file.Path) result[0];
             ZonedDateTime capturedAt = (ZonedDateTime) result[1];
+            String metadata = (String) result[2];
 
             Video video = new Video();
             video.pfad = "/" + subDir + uniqueFileName;
@@ -189,6 +191,7 @@ public class VideoUploadResource {
             video.description = videoDesc;
             video.priority = 3;
             video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
+            if (metadata != null) video.metadata = metadata;
 
             Long storyId = null;
             if (sid != null && !sid.isBlank()) {
@@ -283,15 +286,18 @@ public class VideoUploadResource {
                     }
                     runFfmpeg(targetPath);
                     ZonedDateTime capturedAt = ffmpegService.readCreationTime(targetPath);
-                    return new Object[]{targetPath, capturedAt};
+                    String metadata = ffmpegService.readMetadataJson(targetPath);
+                    return new Object[]{targetPath, capturedAt, metadata};
                 }).chain(result -> {
                     ZonedDateTime capturedAt = (ZonedDateTime) result[1];
+                    String metadata = (String) result[2];
                     Video video = new Video();
                     video.pfad = "/" + subDir + uniqueFileName;
                     video.title = finalTitle;
                     video.description = finalDesc;
                     video.priority = 3;
                     video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
+                    if (metadata != null) video.metadata = metadata;
 
                     Long storyId = null;
                     if (finalStoryIdStr != null && !finalStoryIdStr.isBlank()) {

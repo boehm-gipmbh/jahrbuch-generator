@@ -115,12 +115,13 @@ public class BilderUploadResource {
                             Response.Status.BAD_REQUEST));
         }
 
-        String title, description, storyIdStr, capturedAtStr;
+        String title, description, storyIdStr, capturedAtStr, exifDataStr;
         try {
             title = getFormValue(formParts, "title");
             description = getFormValue(formParts, "description");
             storyIdStr = getFormValue(formParts, "storyId");
             capturedAtStr = getFormValue(formParts, "capturedAt");
+            exifDataStr = getFormValue(formParts, "exifData");
         } catch (Exception e) {
             return Uni.createFrom().failure(
                     new WebApplicationException("Fehler beim Lesen der Formulardaten: " + e.getMessage(),
@@ -152,6 +153,7 @@ public class BilderUploadResource {
         final String finalDescription = description;
         final Long finalStoryId = storyId;
         final ZonedDateTime finalCapturedAtFromFrontend = capturedAtFromFrontend;
+        final String finalExifData = (exifDataStr != null && !exifDataStr.isEmpty()) ? exifDataStr : null;
 
         // Datei-I/O auf Worker-Thread auslagern — Event-Loop nicht blockieren
         return executeBlockingFileIO(() -> {
@@ -176,6 +178,8 @@ public class BilderUploadResource {
             bild.setDescription(finalDescription);
             bild.setPriority(3);
             bild.setCapturedAt(capturedAt != null ? capturedAt : ZonedDateTime.now());
+            String exifJson = finalExifData != null ? finalExifData : ExifUtils.readExifJson((java.nio.file.Path) result[0]);
+            if (exifJson != null) bild.setExifData(exifJson);
 
             if (finalStoryId != null) {
                 return storyService.findById(finalStoryId)
