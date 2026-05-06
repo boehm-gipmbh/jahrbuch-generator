@@ -152,6 +152,7 @@ public class FfmpegService {
                     "ffprobe", "-v", "quiet",
                     "-print_format", "json",
                     "-show_format", "-show_streams",
+                    "-show_private_data",
                     videoPath.toString());
             pb.redirectErrorStream(true);
             Process p = pb.start();
@@ -180,13 +181,26 @@ public class FfmpegService {
             String model = firstNonNull(tags, "com.apple.quicktime.model", "model");
             if (model != null) result.put("model", model);
 
-            String location = firstNonNull(tags, "com.apple.quicktime.location.ISO6709", "location");
+            String location = firstNonNull(tags,
+                    "com.apple.quicktime.location.ISO6709",
+                    "location", "location-eng", "©xyz", "xyz");
             if (location != null) parseIso6709(location, result);
 
             String durationStr = root.path("format").path("duration").asText(null);
             if (durationStr != null) {
                 try { result.put("duration", Math.round(Double.parseDouble(durationStr))); }
                 catch (NumberFormatException ignored) {}
+            }
+
+            // GPS ggf. aus Stream-Tags (einige Kameras legen es dort ab)
+            if (!result.containsKey("gpsLat")) {
+                for (JsonNode stream : root.path("streams")) {
+                    JsonNode sTags = stream.path("tags");
+                    String sLoc = firstNonNull(sTags,
+                            "com.apple.quicktime.location.ISO6709",
+                            "location", "location-eng", "©xyz", "xyz");
+                    if (sLoc != null) { parseIso6709(sLoc, result); break; }
+                }
             }
 
             for (JsonNode stream : root.path("streams")) {
