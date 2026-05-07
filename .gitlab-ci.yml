@@ -75,16 +75,15 @@ e2e:
     - |
       mkdir -p target
       ./mvnw compile quarkus:dev \
+        -Dquarkus.profile=local \
         -Djahrbuch.captures.path="$CI_PROJECT_DIR/captures/" \
-        -Djahrbuch.captures.station=false \
         -Dquarkus.hibernate-orm.database.generation=none \
         -Dquarkus.devservices.enabled=false \
+        -Dquarkus.flyway.migrate-at-start=false \
         -Dquarkus.datasource.reactive.url=postgresql://postgres:5432/postgres?ssl=false \
         -Dquarkus.datasource.jdbc.url=jdbc:postgresql://postgres:5432/postgres \
         -Dquarkus.datasource.username=postgres \
         -Dquarkus.datasource.password=postgres \
-        -Dquarkus.http.cors=true \
-        "-Dquarkus.http.cors.origins=http://localhost:3000" \
         > target/e2e-backend.log 2>&1 &
     - |
       echo "Warte auf Backend..."
