@@ -109,7 +109,7 @@ e2e:
     - npx playwright install --with-deps chromium
     - cd $CI_PROJECT_DIR
   script:
-    - cd src/main/frontend/e2e && npx playwright test --retries=2
+    - cd src/main/frontend/e2e && TEST_USERNAME=$E2E_TEST_USERNAME TEST_PASSWORD=$E2E_TEST_PASSWORD npx playwright test --retries=2
   after_script:
     - cat target/e2e-backend.log || true
   artifacts:
