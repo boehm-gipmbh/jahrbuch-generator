@@ -90,7 +90,7 @@ e2e:
       echo "Warte auf Backend..."
       for i in $(seq 1 240); do
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8080/api/v1/auth/login \
-          -H "Content-Type: application/json" -d '{"name":"x","password":"x"}' 2>/dev/null)
+          -H "Content-Type: application/json" -d '{"name":"x","password":"x"}' 2>/dev/null) || STATUS=000
         if [ "$STATUS" = "401" ] || [ "$STATUS" = "200" ]; then
           echo "Backend bereit nach ${i}s (HTTP $STATUS)"
           break
