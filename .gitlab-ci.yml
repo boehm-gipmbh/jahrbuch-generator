@@ -1,5 +1,29 @@
 stages:
   - test
+  - e2e
+  - build
+  - deploy
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+
+# Wiederverwendbare Blöcke
+.pg_vars: &pg_vars
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_DB: postgres
+  QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/postgres
+  QUARKUS_DATASOURCE_REACTIVE_URL: postgresql://postgres:5432/postgres?ssl=false
+  QUARKUS_DATASOURCE_USERNAME: postgres
+  QUARKUS_DATASOURCE_PASSWORD: postgres
+
+.mvn_cache: &mvn_cache
+  cache:
+    key: maven-$CI_COMMIT_REF_SLUG
+    paths:
+      - .m2/repository
+
+# ─── TEST ────────────────────────────────────────────────────────────────────
 
 test:
   stage: test
@@ -7,20 +31,116 @@ test:
   services:
     - postgres:latest
   variables:
-    POSTGRES_USER: postgres
-    POSTGRES_PASSWORD: postgres
-    POSTGRES_DB: postgres
-    QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/postgres
-    QUARKUS_DATASOURCE_REACTIVE_URL: postgresql://postgres:5432/postgres?ssl=false
-    QUARKUS_DATASOURCE_USERNAME: postgres
-    QUARKUS_DATASOURCE_PASSWORD: postgres
+    <<: *pg_vars
   before_script:
     - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
-      -DgroupId=org.gphoto -DartifactId=gphoto2-java
-      -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
+        -DgroupId=org.gphoto -DartifactId=gphoto2-java
+        -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
   script:
     - ./mvnw test -B
-  cache:
-    key: maven-$CI_COMMIT_REF_SLUG
+  <<: *mvn_cache
+
+# ─── E2E ─────────────────────────────────────────────────────────────────────
+
+e2e:
+  stage: e2e
+  image: eclipse-temurin:21-jdk
+  services:
+    - postgres:latest
+  variables:
+    <<: *pg_vars
+    GIT_SUBMODULE_STRATEGY: recursive
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+  before_script:
+    - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
+        -DgroupId=org.gphoto -DartifactId=gphoto2-java
+        -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
+    - apt-get update -qq && apt-get install -y -qq curl postgresql-client
+    - curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs
+    - mkdir -p captures
+    - |
+      for f in e2e-test-bild-1.jpg e2e-test-bild-2.jpg e2e-test-bild-3.jpg e2e-test-bild-4.jpg e2e-test-bild-5.jpg; do
+        printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9' > "captures/$f"
+      done
+    - FREE_DATABASE_URL="postgresql://postgres:postgres@postgres:5432/postgres"
+      MIGRATIONS_DIR="src/main/resources/db/migration"
+      bash migrate.sh
+    - ./mvnw compile quarkus:dev
+        -Dquarkus.profile=local
+        -Djahrbuch.captures.path="$CI_PROJECT_DIR/captures/"
+        -Dquarkus.hibernate-orm.database.generation=none
+        -Dquarkus.devservices.enabled=false
+        > target/e2e-backend.log 2>&1 &
+    - |
+      echo "Warte auf Backend..."
+      for i in $(seq 1 120); do
+        curl -sf http://localhost:8080/ -o /dev/null 2>/dev/null && echo "Backend bereit nach ${i}s" && break
+        sleep 1
+      done
+    - cd src/main/frontend && npm ci
+    - npm start > /tmp/frontend.log 2>&1 &
+    - cd $CI_PROJECT_DIR
+    - |
+      echo "Warte auf Frontend..."
+      for i in $(seq 1 120); do
+        curl -sf http://localhost:3000 -o /dev/null 2>/dev/null && echo "Frontend bereit nach ${i}s" && break
+        sleep 1
+      done
+    - cd src/main/frontend/e2e && npm ci
+    - npx playwright install --with-deps chromium
+    - cd $CI_PROJECT_DIR
+  script:
+    - cd src/main/frontend/e2e && npx playwright test --retries=2
+  after_script:
+    - cat target/e2e-backend.log || true
+  artifacts:
+    when: always
     paths:
-      - ~/.m2/repository
+      - src/main/frontend/e2e/playwright-report/
+    expire_in: 7 days
+  <<: *mvn_cache
+
+# ─── BUILD ────────────────────────────────────────────────────────────────────
+
+build:
+  stage: build
+  image: eclipse-temurin:21-jdk
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq docker.io
+    - docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
+    - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
+        -DgroupId=org.gphoto -DartifactId=gphoto2-java
+        -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
+  script:
+    - export REACT_APP_VERSION="fly-$(echo $CI_COMMIT_SHA | cut -c1-7) ($(date -u +%Y-%m-%d))"
+    - ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B
+        -Dquarkus.native.container-build=true
+        -DskipTests
+    - SHA=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
+    - docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:fly-$SHA
+    - docker push drdboehm/jahrbuch-generator:fly-$SHA
+  <<: *mvn_cache
+
+# ─── DEPLOY ───────────────────────────────────────────────────────────────────
+
+deploy:
+  stage: deploy
+  image: alpine:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  needs: [build]
+  before_script:
+    - apk add --no-cache curl bash
+    - curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh
+    - export PATH="$PATH:/usr/local/bin"
+  script:
+    - flyctl deploy --image drdboehm/jahrbuch-generator:fly --strategy immediate
+  environment:
+    name: production
+    url: https://jahrbuch-generator.fly.dev
