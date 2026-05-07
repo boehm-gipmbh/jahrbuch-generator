@@ -123,14 +123,15 @@ e2e:
 
 build:
   stage: build
-  image: eclipse-temurin:21-jdk
+  image: quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-21
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   before_script:
-    - apt-get update -qq && apt-get install -y -qq docker.io curl
-    - curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs
+    - curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.3.1.tgz
+        | tar xz --strip=1 -C /usr/local/bin docker/docker
+    - curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - && microdnf install -y nodejs
     - docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
     - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
         -DgroupId=org.gphoto -DartifactId=gphoto2-java
@@ -138,7 +139,7 @@ build:
   script:
     - export REACT_APP_VERSION="fly-$(echo $CI_COMMIT_SHA | cut -c1-7) ($(date -u +%Y-%m-%d))"
     - ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B
-        -Dquarkus.native.container-build=true
+        -Dquarkus.native.container-build=false
         -DskipTests
     - SHA=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
     - docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:fly-$SHA
