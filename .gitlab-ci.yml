@@ -50,10 +50,14 @@ e2e:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
   before_script:
-    - fuser -k 8080/tcp || true
-    - fuser -k 3000/tcp || true
-    - pkill -f "quarkus:dev" || true
-    - pkill -f "react-scripts start" || true
+    - pkill -9 -f "quarkus" || true
+    - pkill -9 -f "react-scripts" || true
+    - pkill -9 -f "node.*frontend" || true
+    - |
+      for port in 8080 3000; do
+        pid=$(lsof -ti:$port 2>/dev/null) && kill -9 $pid 2>/dev/null || true
+      done
+      sleep 3
     - docker run -d --name postgres-$CI_JOB_ID
         -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres
         -p 5432:5432 postgres:latest
@@ -111,10 +115,12 @@ e2e:
     - cd src/main/frontend/e2e && TEST_USERNAME=$E2E_TEST_USERNAME TEST_PASSWORD=$E2E_TEST_PASSWORD npx playwright test --retries=2
   after_script:
     - cat target/e2e-backend.log || true
-    - pkill -f "quarkus:dev" || true
-    - pkill -f "react-scripts start" || true
-    - fuser -k 8080/tcp || true
-    - fuser -k 3000/tcp || true
+    - pkill -9 -f "quarkus" || true
+    - pkill -9 -f "react-scripts" || true
+    - |
+      for port in 8080 3000; do
+        pid=$(lsof -ti:$port 2>/dev/null) && kill -9 $pid 2>/dev/null || true
+      done
     - docker stop postgres-$CI_JOB_ID && docker rm postgres-$CI_JOB_ID || true
   artifacts:
     when: always
