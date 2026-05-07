@@ -50,6 +50,11 @@ e2e:
   variables:
     <<: *pg_vars
     GIT_SUBMODULE_STRATEGY: recursive
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    DB_USER: postgres
+    DB_NAME: postgres
+    DB_PASS: postgres
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
