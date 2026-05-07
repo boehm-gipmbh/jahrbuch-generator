@@ -72,15 +72,17 @@ e2e:
     - FREE_DATABASE_URL="postgresql://postgres:postgres@postgres:5432/postgres"
       MIGRATIONS_DIR="src/main/resources/db/migration"
       bash migrate.sh
-    - ./mvnw compile quarkus:dev
-        -Dquarkus.profile=local
-        -Djahrbuch.captures.path="$CI_PROJECT_DIR/captures/"
-        -Dquarkus.hibernate-orm.database.generation=none
-        -Dquarkus.devservices.enabled=false
-        -Dquarkus.datasource.reactive.url="postgresql://postgres:5432/postgres?ssl=false&sslmode=disable"
-        -Dquarkus.datasource.jdbc.url="jdbc:postgresql://postgres:5432/postgres"
-        -Dquarkus.datasource.username=postgres
-        -Dquarkus.datasource.password=postgres
+    - |
+      mkdir -p target
+      ./mvnw compile quarkus:dev \
+        -Dquarkus.profile=local \
+        -Djahrbuch.captures.path="$CI_PROJECT_DIR/captures/" \
+        -Dquarkus.hibernate-orm.database.generation=none \
+        -Dquarkus.devservices.enabled=false \
+        -Dquarkus.datasource.reactive.url="postgresql://postgres:5432/postgres?ssl=false&sslmode=disable" \
+        -Dquarkus.datasource.jdbc.url="jdbc:postgresql://postgres:5432/postgres" \
+        -Dquarkus.datasource.username=postgres \
+        -Dquarkus.datasource.password=postgres \
         > target/e2e-backend.log 2>&1 &
     - |
       echo "Warte auf Backend..."
