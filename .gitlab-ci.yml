@@ -75,19 +75,26 @@ e2e:
     - |
       mkdir -p target
       ./mvnw compile quarkus:dev \
-        -Dquarkus.profile=local \
         -Djahrbuch.captures.path="$CI_PROJECT_DIR/captures/" \
+        -Djahrbuch.captures.station=false \
         -Dquarkus.hibernate-orm.database.generation=none \
         -Dquarkus.devservices.enabled=false \
-        -Dquarkus.datasource.reactive.url="postgresql://postgres:5432/postgres?ssl=false&sslmode=disable" \
-        -Dquarkus.datasource.jdbc.url="jdbc:postgresql://postgres:5432/postgres" \
+        -Dquarkus.datasource.reactive.url=postgresql://postgres:5432/postgres?ssl=false \
+        -Dquarkus.datasource.jdbc.url=jdbc:postgresql://postgres:5432/postgres \
         -Dquarkus.datasource.username=postgres \
         -Dquarkus.datasource.password=postgres \
+        -Dquarkus.http.cors=true \
+        "-Dquarkus.http.cors.origins=http://localhost:3000" \
         > target/e2e-backend.log 2>&1 &
     - |
       echo "Warte auf Backend..."
-      for i in $(seq 1 120); do
-        curl -sf http://localhost:8080/ -o /dev/null 2>/dev/null && echo "Backend bereit nach ${i}s" && break
+      for i in $(seq 1 240); do
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8080/api/v1/auth/login \
+          -H "Content-Type: application/json" -d '{"name":"x","password":"x"}' 2>/dev/null)
+        if [ "$STATUS" = "401" ] || [ "$STATUS" = "200" ]; then
+          echo "Backend bereit nach ${i}s (HTTP $STATUS)"
+          break
+        fi
         sleep 1
       done
     - |
