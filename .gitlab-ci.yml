@@ -90,6 +90,13 @@ e2e:
         curl -sf http://localhost:8080/ -o /dev/null 2>/dev/null && echo "Backend bereit nach ${i}s" && break
         sleep 1
       done
+    - |
+      echo "=== Login-Test ==="
+      curl -s -X POST http://localhost:8080/api/v1/auth/login \
+        -H "Content-Type: application/json" \
+        -d "{\"name\":\"$TEST_USERNAME\",\"password\":\"$TEST_PASSWORD\"}" \
+        || true
+      echo ""
     - cd src/main/frontend && npm ci
     - npm start > /tmp/frontend.log 2>&1 &
     - cd $CI_PROJECT_DIR
