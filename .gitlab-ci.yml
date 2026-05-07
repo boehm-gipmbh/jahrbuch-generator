@@ -54,7 +54,7 @@ e2e:
     - pkill -9 -f "react-scripts" || true
     - pkill -9 -f "node.*frontend" || true
     - |
-      for port in 8080 3000; do
+      for port in 18080 3000; do
         pid=$(lsof -ti:$port 2>/dev/null) && kill -9 $pid 2>/dev/null || true
       done
       sleep 3
@@ -79,6 +79,7 @@ e2e:
       mkdir -p target
       ./mvnw compile quarkus:dev \
         -Dquarkus.profile=local \
+        -Dquarkus.http.port=18080 \
         -Djahrbuch.captures.path="$CI_PROJECT_DIR/captures/" \
         -Dquarkus.hibernate-orm.database.generation=none \
         -Dquarkus.devservices.enabled=false \
@@ -91,7 +92,7 @@ e2e:
     - |
       echo "Warte auf Backend..."
       for i in $(seq 1 240); do
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8080/api/v1/auth/login \
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:18080/api/v1/auth/login \
           -H "Content-Type: application/json" -d '{"name":"x","password":"x"}' 2>/dev/null) || STATUS=000
         if [ "$STATUS" = "401" ] || [ "$STATUS" = "200" ]; then
           echo "Backend bereit nach ${i}s (HTTP $STATUS)"
@@ -100,6 +101,7 @@ e2e:
         sleep 1
       done
     - cd src/main/frontend && npm ci
+    - sed -i 's|"http://localhost:8080"|"http://localhost:18080"|' package.json
     - npm start > /tmp/frontend.log 2>&1 &
     - cd $CI_PROJECT_DIR
     - |
@@ -118,7 +120,7 @@ e2e:
     - pkill -9 -f "quarkus" || true
     - pkill -9 -f "react-scripts" || true
     - |
-      for port in 8080 3000; do
+      for port in 18080 3000; do
         pid=$(lsof -ti:$port 2>/dev/null) && kill -9 $pid 2>/dev/null || true
       done
     - docker stop postgres-$CI_JOB_ID && docker rm postgres-$CI_JOB_ID || true
