@@ -1,10 +1,13 @@
 name: CD — Deploy to Fly.io
 
 on:
-  workflow_run:
-    workflows: [CI]
-    branches: [main]
-    types: [completed]
+  # Auto-Deploy temporär deaktiviert — Deploy läuft via lokale GitLab-Pipeline.
+  # Reaktivieren: workflow_dispatch entfernen, untenstehenden workflow_run-Block einkommentieren.
+  workflow_dispatch:
+  # workflow_run:
+  #   workflows: [CI]
+  #   branches: [main]
+  #   types: [completed]
 
 jobs:
   deploy:
