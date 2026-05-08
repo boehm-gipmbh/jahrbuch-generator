@@ -49,18 +49,7 @@ fi
 if [ -z "$TOKEN" ]; then
     echo ""
     echo "FEHLER: Kein Fotobox-Token gefunden."
-    echo ""
-    echo "Token generieren:"
-    echo "  1. Login: curl -X POST https://jahrbuch-generator.fly.dev/api/v1/auth/login \\"
-    echo "            -H 'Content-Type: application/json' \\"
-    echo "            -d '{\"name\":\"admin\",\"password\":\"PASSWORT\"}' | jq -r .token"
-    echo ""
-    echo "  2. Token holen: curl -X POST https://jahrbuch-generator.fly.dev/api/v1/gruppen/{groupId}/fotobox-token \\"
-    echo "                  -H 'Authorization: Bearer LOGIN_TOKEN' \\"
-    echo "                  -H 'Content-Type: application/json' \\"
-    echo "                  -d '{\"validFrom\":\"$(date +%Y-%m-%d)\",\"validTo\":\"2027-01-01\"}' | jq -r .token"
-    echo ""
-    echo "  3. Speichern: echo 'TOKEN' > .station-token"
+    echo "Bitte die Datei .station-token im Projektverzeichnis anlegen."
     echo ""
     exit 1
 fi
