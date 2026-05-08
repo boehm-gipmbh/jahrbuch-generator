@@ -56,5 +56,4 @@ pg_migrate.sh
 # Playwright
 playwright-report/
 test-results/
-start-capture-station.sh
 openapi.yaml
