@@ -140,7 +140,7 @@ build:
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "main" && $CI_COMMIT_MESSAGE =~ /^Chore: Submodul-Pointer/
   before_script:
     - docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
     - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
@@ -160,7 +160,7 @@ build:
 deploy:
   stage: deploy
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "main" && $CI_COMMIT_MESSAGE =~ /^Chore: Submodul-Pointer/
   needs: [build]
   before_script:
     - curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/tmp/flyctl sh
