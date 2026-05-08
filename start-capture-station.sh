@@ -49,7 +49,8 @@ fi
 if [ -z "$TOKEN" ]; then
     echo ""
     echo "FEHLER: Kein Fotobox-Token gefunden."
-    echo "Bitte die Datei .station-token im Projektverzeichnis anlegen."
+    echo "Bitte den per E-Mail erhaltenen Token in die Datei .station-token eintragen:"
+    echo "  echo 'TOKEN' > $SCRIPT_DIR/.station-token"
     echo ""
     exit 1
 fi
