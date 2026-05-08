@@ -102,6 +102,7 @@ e2e:
       done
     - cd src/main/frontend && npm ci
     - sed -i 's|"http://localhost:8080"|"http://localhost:18080"|' package.json
+    - sed -i "s|'http://localhost:8080|'http://localhost:18080|g" e2e/tests/*.spec.js
     - npm start > /tmp/frontend.log 2>&1 &
     - cd $CI_PROJECT_DIR
     - |
