@@ -1,4 +1,4 @@
 [submodule "src/main/frontend"]
 	path = src/main/frontend
-	url = https://github.com/boehm-gipmbh/jahrbuch-generator-frontend.git
+	url = ../jahrbuch-generator-frontend.git
 	branch = master
