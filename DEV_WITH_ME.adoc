@@ -310,3 +310,39 @@ Danach `pg_hba.conf` zurücksetzen und neu laden.
 ----
 sudo systemctl stop postgresql && sudo systemctl disable postgresql
 ----
+
+== Lokaler GitLab-Runner: Speicherplatz-Aufräumen
+
+Der lokale CI-Runner (Shell-Executor) füllt mit der Zeit die Festplatte. Symptome im Build:
+`No space left on device` während des Native-Builds, Quarkus-Tests oder beim Pullen von Docker-Images.
+
+=== Diagnose
+
+[source,bash]
+----
+df -h /
+docker system df
+sudo du -sh /home/gitlab-runner/builds/*/* 2>/dev/null | sort -h | tail -10
+du -sh ~/.m2 /home/gitlab-runner/.m2 2>/dev/null
+----
+
+=== Standard-Aufräumen
+
+[source,bash]
+----
+# Docker: alte Images, Container, Volumes entfernen (oft mehrere GB)
+docker system prune -af --volumes
+
+# Alte CI-Build-Workspaces (die letzten paar Builds reichen)
+sudo find /home/gitlab-runner/builds -maxdepth 4 -type d -name target -exec rm -rf {} + 2>/dev/null
+
+# node_modules in alten CI-Builds
+sudo find /home/gitlab-runner/builds -maxdepth 5 -type d -name node_modules -exec rm -rf {} + 2>/dev/null
+----
+
+=== Häufige Speicherfresser
+
+* `target/`-Verzeichnisse vom Native-Build: ~1–2 GB pro Lauf
+* Docker-Images für `postgres:latest` und `quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-21`: ~3 GB zusammen, werden beim ersten Lauf gepullt und können danach gecached bleiben
+* Maven-Cache `.m2/repository` im CI-Workspace: ~500 MB–1 GB pro Branch (über den `cache:`-Block in `.gitlab-ci.yml`)
+* Playwright-Browser unter `~/.cache/ms-playwright/`: ~500 MB
