@@ -57,6 +57,11 @@ fi
 
 EXTRA_ARGS="-Djahrbuch.fotobox.token=$TOKEN"
 
+# ── Port ────────────────────────────────────────────────────────────────────
+
+PORT="${FOTOBOX_PORT:-8090}"
+echo "=== Port: $PORT ==="
+
 # ── Captures-Verzeichnis anlegen ────────────────────────────────────────────
 
 CAPTURES_DIR="${CAPTURES_PATH:-$HOME/captures}"
@@ -66,10 +71,11 @@ echo "=== Captures-Pfad: $CAPTURES_DIR ==="
 # ── Starten ─────────────────────────────────────────────────────────────────
 
 echo ""
-echo "=== Capture Station startet auf http://localhost:8080 ==="
+echo "=== Capture Station startet auf http://localhost:$PORT ==="
 echo ""
 
 ./mvnw compile quarkus:dev \
     -Dquarkus.profile=station \
+    -Dquarkus.http.port="$PORT" \
     -Djahrbuch.captures.path="$CAPTURES_DIR/" \
     $EXTRA_ARGS
