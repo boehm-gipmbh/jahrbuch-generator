@@ -34,14 +34,38 @@ echo "=== gphoto2-java installieren ==="
     -B -q
 echo "OK"
 
-# ── Token: lokale Datei hat Vorrang vor application-station.properties ──────
+# ── Token laden (Pflicht) ───────────────────────────────────────────────────
+# Priorität: 1. .station-token Datei  2. Umgebungsvariable FOTOBOX_TOKEN
 
-EXTRA_ARGS=""
+TOKEN=""
 if [ -f "$SCRIPT_DIR/.station-token" ]; then
     TOKEN=$(cat "$SCRIPT_DIR/.station-token" | tr -d '[:space:]')
     echo "=== Token aus .station-token geladen ==="
-    EXTRA_ARGS="-Djahrbuch.fotobox.token=$TOKEN"
+elif [ -n "${FOTOBOX_TOKEN:-}" ]; then
+    TOKEN="$FOTOBOX_TOKEN"
+    echo "=== Token aus Umgebungsvariable geladen ==="
 fi
+
+if [ -z "$TOKEN" ]; then
+    echo ""
+    echo "FEHLER: Kein Fotobox-Token gefunden."
+    echo ""
+    echo "Token generieren:"
+    echo "  1. Login: curl -X POST https://jahrbuch-generator.fly.dev/api/v1/auth/login \\"
+    echo "            -H 'Content-Type: application/json' \\"
+    echo "            -d '{\"name\":\"admin\",\"password\":\"PASSWORT\"}' | jq -r .token"
+    echo ""
+    echo "  2. Token holen: curl -X POST https://jahrbuch-generator.fly.dev/api/v1/gruppen/{groupId}/fotobox-token \\"
+    echo "                  -H 'Authorization: Bearer LOGIN_TOKEN' \\"
+    echo "                  -H 'Content-Type: application/json' \\"
+    echo "                  -d '{\"validFrom\":\"$(date +%Y-%m-%d)\",\"validTo\":\"2027-01-01\"}' | jq -r .token"
+    echo ""
+    echo "  3. Speichern: echo 'TOKEN' > .station-token"
+    echo ""
+    exit 1
+fi
+
+EXTRA_ARGS="-Djahrbuch.fotobox.token=$TOKEN"
 
 # ── Captures-Verzeichnis anlegen ────────────────────────────────────────────
 
