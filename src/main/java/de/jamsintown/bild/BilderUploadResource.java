@@ -179,7 +179,7 @@ public class BilderUploadResource {
             bild.setPriority(3);
             bild.setCapturedAt(capturedAt != null ? capturedAt : ZonedDateTime.now());
             String exifJson = finalExifData != null ? finalExifData : ExifUtils.readExifJson((java.nio.file.Path) result[0]);
-            if (exifJson != null) bild.setExifData(exifJson);
+            if (exifJson != null) bild.setExifData(exifJson.replaceAll("[\u0000-\u0008\u000B\u000C\u000E-\u001F]", ""));
 
             if (finalStoryId != null) {
                 return storyService.findById(finalStoryId)
