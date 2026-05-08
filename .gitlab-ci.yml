@@ -111,12 +111,13 @@ e2e:
         sleep 1
       done
     - cd src/main/frontend/e2e && npm ci
-    - npx playwright install --with-deps chromium
+    - npx playwright install chromium
     - cd $CI_PROJECT_DIR
   script:
     - cd src/main/frontend/e2e && TEST_USERNAME=$E2E_TEST_USERNAME TEST_PASSWORD=$E2E_TEST_PASSWORD npx playwright test --retries=2
   after_script:
-    - cat target/e2e-backend.log || true
+    - echo "=== Backend-Log ===" && cat target/e2e-backend.log || true
+    - echo "=== Frontend-Log ===" && cat /tmp/frontend.log || true
     - pkill -9 -f "quarkus" || true
     - pkill -9 -f "react-scripts" || true
     - |
