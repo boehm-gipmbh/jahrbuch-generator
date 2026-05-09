@@ -36,7 +36,7 @@ public class PasswordResetService {
             return Uni.createFrom().voidItem();
           }
           PasswordResetToken resetToken = new PasswordResetToken(user);
-          return resetToken.<PasswordResetToken>persistAndFlush()
+          return persistToken(resetToken)
               .invoke(saved -> emailService.sendResetMail(user.email, user.name, saved.token.toString()))
               .replaceWithVoid();
         });
@@ -48,7 +48,7 @@ public class PasswordResetService {
    */
   @WithTransaction
   public Uni<Void> resetPassword(UUID token, String newPassword) {
-    return PasswordResetToken.<PasswordResetToken>findById(token)
+    return findToken(token)
         .chain(resetToken -> {
           if (resetToken == null) {
             return Uni.createFrom().failure(
@@ -60,9 +60,21 @@ public class PasswordResetService {
           }
           resetToken.used = true;
           resetToken.user.setPassword(BcryptUtil.bcryptHash(newPassword));
-          return resetToken.persistAndFlush()
-              .chain(() -> resetToken.user.persistAndFlush())
+          return persistToken(resetToken)
+              .chain(() -> persistUser(resetToken.user))
               .replaceWithVoid();
         });
+  }
+
+  protected Uni<PasswordResetToken> findToken(UUID token) {
+    return PasswordResetToken.findById(token);
+  }
+
+  protected Uni<PasswordResetToken> persistToken(PasswordResetToken token) {
+    return token.persistAndFlush();
+  }
+
+  protected Uni<de.jamsintown.user.User> persistUser(de.jamsintown.user.User user) {
+    return user.persistAndFlush();
   }
 }
