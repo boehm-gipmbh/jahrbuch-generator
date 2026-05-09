@@ -54,10 +54,6 @@ public class GruppeResource {
         return gruppe.persistAndFlush();
     }
 
-    /**
-     * Erstellt eine neue Gruppe + Einladungstoken + Fotobox-JWT in einem Schritt.
-     * Die Gruppe erscheint danach sofort in der Invitations-View.
-     */
     @POST
     @Path("/fotobox-setup")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -77,10 +73,8 @@ public class GruppeResource {
                             invToken.active = true;
                             invToken.createdBy = admin;
                             return invToken.<InvitationToken>persistAndFlush()
-                                    .map(saved -> new FotoboxSetupResponse(
-                                            gruppe.id,
-                                            gruppe.name,
-                                            fotoboxTokenService.generateToken(gruppe.id, request.validFrom(), request.validTo())))
+                                    .chain(saved -> fotoboxTokenService.generateToken(gruppe.id, request.validFrom(), request.validTo()))
+                                    .map(token -> new FotoboxSetupResponse(gruppe.id, gruppe.name, token))
                                     .invoke(response -> {
                                         if (request.recipientEmail() != null && !request.recipientEmail().isBlank()) {
                                             fotoboxTokenEmailService.sendTokenMail(
@@ -97,15 +91,14 @@ public class GruppeResource {
     @Path("{id}/fotobox-token")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @WithSession
+    @WithTransaction
     public Uni<FotoboxTokenDTO> generateFotoboxToken(
             @PathParam("id") long groupId,
             FotoboxTokenRequest request) {
         return Gruppe.<Gruppe>findById(groupId)
                 .onItem().ifNull().failWith(NotFoundException::new)
-                .map(gruppe -> new FotoboxTokenDTO(
-                        fotoboxTokenService.generateToken(groupId, request.validFrom(), request.validTo()),
-                        gruppe.name))
+                .chain(gruppe -> fotoboxTokenService.generateToken(groupId, request.validFrom(), request.validTo())
+                        .map(token -> new FotoboxTokenDTO(token, gruppe.name)))
                 .invoke(dto -> {
                     if (request.recipientEmail() != null && !request.recipientEmail().isBlank()) {
                         fotoboxTokenEmailService.sendTokenMail(
@@ -115,5 +108,14 @@ public class GruppeResource {
                                 request.validTo().toString());
                     }
                 });
+    }
+
+    @DELETE
+    @Path("{id}/fotobox-token")
+    @WithTransaction
+    public Uni<Void> revokeFotoboxToken(@PathParam("id") long groupId) {
+        return Gruppe.<Gruppe>findById(groupId)
+                .onItem().ifNull().failWith(NotFoundException::new)
+                .chain(gruppe -> fotoboxTokenService.revokeToken(groupId));
     }
 }
