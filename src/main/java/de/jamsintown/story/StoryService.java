@@ -4,6 +4,7 @@ import de.jamsintown.bild.Bild;
 import de.jamsintown.text.Text;
 import de.jamsintown.video.Video;
 import de.jamsintown.user.Gruppe;
+import de.jamsintown.user.User;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.panache.common.Sort;
@@ -30,9 +31,7 @@ public class StoryService {
 
     public Uni<Story> findById(long id) {
         return userService.getCurrentUser()
-                .chain(user -> Story.<Story>find(
-                        "FROM Story s JOIN FETCH s.user u LEFT JOIN FETCH u.groups WHERE s.id = ?1", id)
-                        .firstResult()
+                .chain(user -> findStoryById(id)
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Story"))
                         .onItem().invoke(story -> {
                             Gruppe g = user.activeGroup;
@@ -50,10 +49,28 @@ public class StoryService {
                     Gruppe g = user.activeGroup;
                     Sort sort = Sort.by("orderPosition").and("created");
                     if (g != null) {
-                        return Story.<Story>find("group = ?1", sort, g).list();
+                        return findByGroup(g, sort);
                     }
-                    return Story.<Story>find("user = ?1 and group is null", sort, user).list();
+                    return findByUser(user, sort);
                 });
+    }
+
+    protected Uni<Story> findStoryById(long id) {
+        return Story.<Story>find(
+                "FROM Story s JOIN FETCH s.user u LEFT JOIN FETCH u.groups WHERE s.id = ?1", id)
+                .firstResult();
+    }
+
+    protected Uni<List<Story>> findByGroup(Gruppe g, Sort sort) {
+        return Story.<Story>find("group = ?1", sort, g).list();
+    }
+
+    protected Uni<List<Story>> findByUser(User user, Sort sort) {
+        return Story.<Story>find("user = ?1 and group is null", sort, user).list();
+    }
+
+    protected Uni<Story> persistStory(Story story) {
+        return story.persistAndFlush();
     }
 
     @WithTransaction
@@ -82,7 +99,7 @@ public class StoryService {
                 .chain(user -> {
                     story.user = user;
                     story.group = user.activeGroup;
-                    return story.persistAndFlush();
+                    return persistStory(story);
                 });
     }
 

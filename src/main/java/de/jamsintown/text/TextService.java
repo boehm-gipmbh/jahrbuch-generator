@@ -1,6 +1,7 @@
 package de.jamsintown.text;
 
 import de.jamsintown.user.Gruppe;
+import de.jamsintown.user.User;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.quarkus.panache.common.Sort;
@@ -27,9 +28,7 @@ public class TextService {
 
     private Uni<Text> findById(long id) {
         return userService.getCurrentUser()
-                .chain(user -> Text.<Text>find(
-                        "FROM Text t JOIN FETCH t.user u LEFT JOIN FETCH u.groups WHERE t.id = ?1", id)
-                        .firstResult()
+                .chain(user -> findTextById(id)
                         .onItem().ifNull().failWith(() -> new ObjectNotFoundException(id, "Text"))
                         .onItem().invoke(text -> {
                             Gruppe g = user.activeGroup;
@@ -46,9 +45,9 @@ public class TextService {
                 .chain(user -> {
                     Gruppe g = user.activeGroup;
                     if (g != null) {
-                        return Text.<Text>find("group = ?1 and deleted = false", g).list();
+                        return findByGroup(g);
                     }
-                    return Text.<Text>find("user = ?1 and group is null and deleted = false", user).list();
+                    return findByUser(user);
                 });
     }
 
@@ -73,13 +72,13 @@ public class TextService {
                 .chain(user -> {
                     text.user = user;
                     text.group = user.activeGroup;
-                    return text.persistAndFlush();
+                    return persistText(text);
                 });
     }
 
     public Uni<Text> findByIdForUser(Long id) {
         return userService.getCurrentUser()
-                .chain(user -> Text.<Text>findById(id)
+                .chain(user -> findTextByIdDirect(id)
                         .onItem().ifNull().failWith(() -> new ForbiddenException("Access denied to text with id: " + id))
                         .onItem().invoke(text -> {
                             if (!user.equals(text.user)) {
@@ -131,6 +130,28 @@ public class TextService {
     public Uni<Void> hardDelete(long id) {
         return findByIdIncludeDeleted(id)
                 .chain(Text::delete);
+    }
+
+    protected Uni<Text> findTextById(long id) {
+        return Text.<Text>find(
+                "FROM Text t JOIN FETCH t.user u LEFT JOIN FETCH u.groups WHERE t.id = ?1", id)
+                .firstResult();
+    }
+
+    protected Uni<Text> findTextByIdDirect(Long id) {
+        return Text.findById(id);
+    }
+
+    protected Uni<List<Text>> findByGroup(Gruppe g) {
+        return Text.<Text>find("group = ?1 and deleted = false", g).list();
+    }
+
+    protected Uni<List<Text>> findByUser(User user) {
+        return Text.<Text>find("user = ?1 and group is null and deleted = false", user).list();
+    }
+
+    protected Uni<Text> persistText(Text text) {
+        return text.persistAndFlush();
     }
 
     private Uni<Text> findByIdIncludeDeleted(long id) {
