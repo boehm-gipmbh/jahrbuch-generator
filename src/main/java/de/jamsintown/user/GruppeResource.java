@@ -4,6 +4,7 @@ import de.jamsintown.dtos.FotoboxSetupRequest;
 import de.jamsintown.dtos.FotoboxSetupResponse;
 import de.jamsintown.dtos.FotoboxTokenDTO;
 import de.jamsintown.dtos.FotoboxTokenRequest;
+import de.jamsintown.fotobox.FotoboxTokenEmailService;
 import de.jamsintown.fotobox.FotoboxTokenService;
 import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
@@ -22,13 +23,17 @@ import java.util.UUID;
 public class GruppeResource {
 
     private final FotoboxTokenService fotoboxTokenService;
+    private final FotoboxTokenEmailService fotoboxTokenEmailService;
     private final GruppeService gruppeService;
     private final UserService userService;
 
     @Inject
-    public GruppeResource(FotoboxTokenService fotoboxTokenService, GruppeService gruppeService,
+    public GruppeResource(FotoboxTokenService fotoboxTokenService,
+                          FotoboxTokenEmailService fotoboxTokenEmailService,
+                          GruppeService gruppeService,
                           UserService userService) {
         this.fotoboxTokenService = fotoboxTokenService;
+        this.fotoboxTokenEmailService = fotoboxTokenEmailService;
         this.gruppeService = gruppeService;
         this.userService = userService;
     }
@@ -75,7 +80,16 @@ public class GruppeResource {
                                     .map(saved -> new FotoboxSetupResponse(
                                             gruppe.id,
                                             gruppe.name,
-                                            fotoboxTokenService.generateToken(gruppe.id, request.validFrom(), request.validTo())));
+                                            fotoboxTokenService.generateToken(gruppe.id, request.validFrom(), request.validTo())))
+                                    .invoke(response -> {
+                                        if (request.recipientEmail() != null && !request.recipientEmail().isBlank()) {
+                                            fotoboxTokenEmailService.sendTokenMail(
+                                                    request.recipientEmail(),
+                                                    gruppe.name,
+                                                    response.token(),
+                                                    request.validTo().toString());
+                                        }
+                                    });
                         }));
     }
 
@@ -90,6 +104,16 @@ public class GruppeResource {
         return Gruppe.<Gruppe>findById(groupId)
                 .onItem().ifNull().failWith(NotFoundException::new)
                 .map(gruppe -> new FotoboxTokenDTO(
-                        fotoboxTokenService.generateToken(groupId, request.validFrom(), request.validTo())));
+                        fotoboxTokenService.generateToken(groupId, request.validFrom(), request.validTo()),
+                        gruppe.name))
+                .invoke(dto -> {
+                    if (request.recipientEmail() != null && !request.recipientEmail().isBlank()) {
+                        fotoboxTokenEmailService.sendTokenMail(
+                                request.recipientEmail(),
+                                dto.groupName(),
+                                dto.token(),
+                                request.validTo().toString());
+                    }
+                });
     }
 }
