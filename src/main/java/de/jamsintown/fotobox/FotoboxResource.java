@@ -48,12 +48,15 @@ public class FotoboxResource {
 
     private final CaptureService captureService;
     private final FotoboxDbService fotoboxDbService;
+    private final FotoboxTokenService fotoboxTokenService;
     private final JsonWebToken jwt;
 
     @Inject
-    public FotoboxResource(CaptureService captureService, FotoboxDbService fotoboxDbService, JsonWebToken jwt) {
+    public FotoboxResource(CaptureService captureService, FotoboxDbService fotoboxDbService,
+                           FotoboxTokenService fotoboxTokenService, JsonWebToken jwt) {
         this.captureService = captureService;
         this.fotoboxDbService = fotoboxDbService;
+        this.fotoboxTokenService = fotoboxTokenService;
         this.jwt = jwt;
     }
 
@@ -130,6 +133,13 @@ public class FotoboxResource {
         try { return Long.parseLong(raw.toString()); } catch (NumberFormatException e) { return null; }
     }
 
+    private void validateJti(long groupId) {
+        String jti = jwt.getTokenID();
+        if (jti == null) throw new ForbiddenException("Kein jti im Token");
+        boolean valid = fotoboxTokenService.isValid(groupId, jti).await().indefinitely();
+        if (!valid) throw new ForbiddenException("Token wurde widerrufen oder ist ungültig");
+    }
+
     @GET
     @Path("/config")
     @Produces(MediaType.APPLICATION_JSON)
@@ -138,6 +148,7 @@ public class FotoboxResource {
     public Response getConfig() {
         Long groupId = extractGroupId();
         if (groupId == null) throw new ForbiddenException("Kein group_id im Token");
+        validateJti(groupId);
 
         if (capturesStation) {
             return proxyGetToFlyio("/api/v1/fotobox/config");
@@ -157,6 +168,7 @@ public class FotoboxResource {
         }
         Long groupId = extractGroupId();
         if (groupId == null) return Response.status(Response.Status.FORBIDDEN).build();
+        validateJti(groupId);
         String token = fotoboxToken.orElse(null);
         if (token == null) return Response.status(Response.Status.FORBIDDEN).build();
 
@@ -184,6 +196,7 @@ public class FotoboxResource {
         }
         Long groupId = extractGroupId();
         if (groupId == null) return Response.status(Response.Status.BAD_REQUEST).build();
+        validateJti(groupId);
 
         String fn = filename != null ? filename : "capture_" + System.currentTimeMillis() + ".jpg";
         return Response.ok(fotoboxDbService.saveBildForGroup(imageBytes, fn, groupId, capturesPath, captureUser)
