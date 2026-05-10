@@ -45,6 +45,7 @@ public class FfmpegService {
             ProcessBuilder pb = new ProcessBuilder(
                     "ffmpeg", "-y",
                     "-i", videoPath.toString(),
+                    "-map_metadata", "0",
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-crf", "23",
