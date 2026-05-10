@@ -131,6 +131,7 @@ public class VideoService {
     public Uni<Void> softDelete(long id) {
         return findById(id)
                 .chain(video -> {
+                    video.deletedFromStoryName = video.story != null ? video.story.name : null;
                     video.deleted = true;
                     video.story = null;
                     return video.persistAndFlush().replaceWithVoid();
@@ -156,11 +157,23 @@ public class VideoService {
 
     @WithTransaction
     public Uni<Video> restore(long id) {
-        return findByIdIncludeDeleted(id)
-                .chain(video -> {
-                    video.deleted = false;
-                    return video.persistAndFlush();
-                });
+        return userService.getCurrentUser()
+                .chain(user -> findByIdIncludeDeleted(id)
+                        .chain(video -> {
+                            video.deleted = false;
+                            String storyName = video.deletedFromStoryName;
+                            video.deletedFromStoryName = null;
+                            if (storyName == null) {
+                                return video.persistAndFlush();
+                            }
+                            return de.jamsintown.story.Story
+                                    .<de.jamsintown.story.Story>find("user = ?1 and name = ?2", user, storyName)
+                                    .firstResult()
+                                    .chain(story -> {
+                                        video.story = story;
+                                        return video.persistAndFlush();
+                                    });
+                        }));
     }
 
     protected Uni<Video> findByIdIncludeDeleted(Long id) {

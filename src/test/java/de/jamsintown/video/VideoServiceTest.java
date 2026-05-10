@@ -1,5 +1,8 @@
 package de.jamsintown.video;
 
+import de.jamsintown.story.Story;
+import de.jamsintown.user.User;
+import de.jamsintown.user.UserService;
 import io.smallrye.mutiny.Uni;
 import org.hibernate.ObjectNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,13 +40,57 @@ class VideoServiceTest {
             public Uni<Void> delete() {
                 return Uni.createFrom().voidItem();
             }
+            @Override
+            @SuppressWarnings("unchecked")
+            public <T extends io.quarkus.hibernate.reactive.panache.PanacheEntityBase> Uni<T> persistAndFlush() {
+                return Uni.createFrom().item((T) this);
+            }
         };
         video.pfad = pfad;
         return video;
     }
 
+    private Video videoStubWithStory(String pfad, String storyName) {
+        Video video = videoStub(pfad);
+        Story story = new Story();
+        story.name = storyName;
+        video.story = story;
+        return video;
+    }
+
+    private UserService userServiceStub() {
+        return new UserService(null, null) {
+            @Override
+            public Uni<User> getCurrentUser() {
+                return Uni.createFrom().item(new User());
+            }
+        };
+    }
+
     private VideoService serviceWithVideo(Video video) throws Exception {
         VideoService s = new VideoService(null) {
+            @Override
+            protected Uni<Video> findByIdIncludeDeleted(Long id) {
+                return Uni.createFrom().item(video);
+            }
+        };
+        setCapturesPath(s, tempDir.toString() + "/");
+        return s;
+    }
+
+    private VideoService serviceWithVideoForSoftDelete(Video video) throws Exception {
+        VideoService s = new VideoService(null) {
+            @Override
+            public Uni<Video> findById(Long id) {
+                return Uni.createFrom().item(video);
+            }
+        };
+        setCapturesPath(s, tempDir.toString() + "/");
+        return s;
+    }
+
+    private VideoService serviceWithVideoForRestore(Video video) throws Exception {
+        VideoService s = new VideoService(userServiceStub()) {
             @Override
             protected Uni<Video> findByIdIncludeDeleted(Long id) {
                 return Uni.createFrom().item(video);
@@ -115,5 +162,46 @@ class VideoServiceTest {
 
         assertThrows(ObjectNotFoundException.class,
                 () -> s.hardDelete(99L).await().indefinitely());
+    }
+
+    // ── softDelete ───────────────────────────────────────────────────────────
+
+    @Test
+    void softDelete_mitStory_speichertStoryNameUndLeertStory() throws Exception {
+        Video video = videoStubWithStory("/video.mp4", "Hochzeitsfeier");
+        VideoService s = serviceWithVideoForSoftDelete(video);
+
+        s.softDelete(1L).await().indefinitely();
+
+        assertEquals("Hochzeitsfeier", video.deletedFromStoryName,
+                "deletedFromStoryName muss den ursprünglichen Story-Namen speichern");
+        assertNull(video.story, "story muss nach softDelete null sein");
+        assertTrue(video.deleted, "deleted-Flag muss gesetzt sein");
+    }
+
+    @Test
+    void softDelete_ohneStory_deletedFromStoryNameBleibtNull() throws Exception {
+        Video video = videoStub("/video.mp4");
+        VideoService s = serviceWithVideoForSoftDelete(video);
+
+        s.softDelete(1L).await().indefinitely();
+
+        assertNull(video.deletedFromStoryName, "deletedFromStoryName darf bei fehlendem Story nicht gesetzt werden");
+        assertTrue(video.deleted);
+    }
+
+    // ── restore ──────────────────────────────────────────────────────────────
+
+    @Test
+    void restore_ohneVorigeStory_setzt_deletedFlagZurueck() throws Exception {
+        Video video = videoStub("/video.mp4");
+        video.deleted = true;
+        video.deletedFromStoryName = null;
+        VideoService s = serviceWithVideoForRestore(video);
+
+        s.restore(1L).await().indefinitely();
+
+        assertFalse(video.deleted, "deleted-Flag muss nach restore zurückgesetzt sein");
+        assertNull(video.deletedFromStoryName, "deletedFromStoryName muss geleert sein");
     }
 }

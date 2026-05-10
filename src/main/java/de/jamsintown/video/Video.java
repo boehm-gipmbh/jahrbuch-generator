@@ -56,6 +56,9 @@ public class Video extends PanacheEntity {
     @Column(nullable = false)
     public boolean deleted = false;
 
+    @Column(name = "deleted_from_story_name")
+    public String deletedFromStoryName;
+
     @Column(nullable = false)
     public boolean complete = false;
 
