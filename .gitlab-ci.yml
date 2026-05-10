@@ -17,6 +17,9 @@ variables:
 
 test:
   stage: test
+  rules:
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   before_script:
     - docker run -d --name postgres-$CI_JOB_ID
         -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres
