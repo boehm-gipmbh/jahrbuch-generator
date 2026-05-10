@@ -7,13 +7,20 @@ import io.quarkus.security.ForbiddenException;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.hibernate.ObjectNotFoundException;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class VideoService {
+
+    @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
+    private String capturesPath;
 
     private final UserService userService;
 
@@ -108,7 +115,16 @@ public class VideoService {
     @WithTransaction
     public Uni<Void> hardDelete(long id) {
         return findByIdIncludeDeleted(id)
-                .chain(video -> video.delete().replaceWithVoid());
+                .chain(video -> {
+                    String fullPath = capturesPath + video.pfad.replaceFirst("^/", "");
+                    try {
+                        Files.deleteIfExists(Paths.get(fullPath));
+                        Files.deleteIfExists(Paths.get(FfmpegService.toSnapshotPfad(fullPath)));
+                    } catch (IOException e) {
+                        return Uni.<Void>createFrom().failure(new RuntimeException("Fehler beim Löschen der Datei: " + e.getMessage(), e));
+                    }
+                    return video.delete().replaceWithVoid();
+                });
     }
 
     @WithTransaction
