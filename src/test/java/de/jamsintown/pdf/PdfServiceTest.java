@@ -100,7 +100,7 @@ class PdfServiceTest {
     @Test
     void renderPdf_mitDeckblatt_liefertGueltigesPdf() {
         var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of());
-        PdfOptions options = new PdfOptions(null, false, false, true, "Mein Jahrbuch 2025", false, null);
+        PdfOptions options = new PdfOptions(null, false, false, true, "Mein Jahrbuch 2025", false, null, null);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
     }
@@ -108,14 +108,14 @@ class PdfServiceTest {
     @Test
     void renderPdf_mitLeeresDeckblattTitle_verwendetFallback() {
         var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of());
-        PdfOptions options = new PdfOptions(null, false, false, true, "  ", false, null);
+        PdfOptions options = new PdfOptions(null, false, false, true, "  ", false, null, null);
         assertDoesNotThrow(() -> service.renderPdf(List.of(sd), options));
     }
 
     @Test
     void renderPdf_mitSeitenzahlen_liefertGueltigesPdf() {
         var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of());
-        PdfOptions options = new PdfOptions(null, false, false, false, null, true, null);
+        PdfOptions options = new PdfOptions(null, false, false, false, null, true, null, null);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
     }
@@ -173,7 +173,7 @@ class PdfServiceTest {
         var sd = new PdfService.StoryData(story("Story", "2col"),
             List.of(bild("/bild.jpg", "Titel")),
             List.of(text("Text", "Inhalt")));
-        PdfOptions options = new PdfOptions(List.of(1L), false, false, true, "Jahrbuch 2025", true, "gold");
+        PdfOptions options = new PdfOptions(List.of(1L), false, false, true, "Jahrbuch 2025", true, "gold", null);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
     }

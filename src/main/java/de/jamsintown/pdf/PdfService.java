@@ -41,6 +41,7 @@ import io.smallrye.mutiny.infrastructure.Infrastructure;
 
 import java.io.ByteArrayOutputStream;
 import java.util.*;
+import java.util.Random;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -171,7 +172,7 @@ public class PdfService {
             }
 
             for (int i = 0; i < stories.size(); i++) {
-                renderStory(doc, stories.get(i));
+                renderStory(doc, stories.get(i), i, options);
                 if (i < stories.size() - 1) {
                     doc.add(new AreaBreak());
                 }
@@ -193,35 +194,121 @@ public class PdfService {
             .setMarginTop(pageHeight / 2 - 80));
     }
 
+    // Pastel palette — 8 colors, one per story (cycling)
+    private static final DeviceRgb[] STORY_COLORS = {
+        new DeviceRgb(0.36f, 0.54f, 0.66f), // steel blue
+        new DeviceRgb(0.55f, 0.35f, 0.53f), // mauve
+        new DeviceRgb(0.22f, 0.55f, 0.47f), // teal
+        new DeviceRgb(0.76f, 0.40f, 0.20f), // terracotta
+        new DeviceRgb(0.35f, 0.47f, 0.62f), // slate
+        new DeviceRgb(0.60f, 0.38f, 0.30f), // brick
+        new DeviceRgb(0.28f, 0.52f, 0.40f), // forest
+        new DeviceRgb(0.50f, 0.42f, 0.60f), // lavender
+    };
+
     private void renderStory(Document doc, StoryData sd) {
+        renderStory(doc, sd, 0);
+    }
+
+    private void renderStory(Document doc, StoryData sd, int storyIndex) {
+        renderStory(doc, sd, storyIndex, null);
+    }
+
+    private void renderStory(Document doc, StoryData sd, int storyIndex, PdfOptions options) {
         Story story = sd.story();
-
-        if (story == null) {
-            doc.add(new Paragraph("Sonstige")
-                .setFontSize(18)
-                .setBold()
-                .setMarginBottom(4));
-        } else {
-            doc.add(new Paragraph(story.name)
-                .setFontSize(18)
-                .setBold()
-                .setMarginBottom(4));
-
-            if (story.description != null && !story.description.isBlank()) {
-                doc.add(new Paragraph(story.description)
-                    .setFontSize(10)
-                    .setItalic()
-                    .setMarginBottom(8));
-            }
-        }
-
         String layout = story != null ? story.layout : null;
+        boolean forceClassic = options != null && "classic".equals(options.layoutStyle());
+
         if ("grid".equals(layout)) {
+            if (story == null) {
+                doc.add(new Paragraph("Sonstige").setFontSize(18).setBold().setMarginBottom(4));
+            } else {
+                doc.add(new Paragraph(story.name).setFontSize(18).setBold().setMarginBottom(4));
+                if (story.description != null && !story.description.isBlank()) {
+                    doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
+                }
+            }
             renderThreeColumn(doc, sd);
         } else if ("1col".equals(layout)) {
+            if (story == null) {
+                doc.add(new Paragraph("Sonstige").setFontSize(18).setBold().setMarginBottom(4));
+            } else {
+                doc.add(new Paragraph(story.name).setFontSize(18).setBold().setMarginBottom(4));
+                if (story.description != null && !story.description.isBlank()) {
+                    doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
+                }
+            }
             renderOneColumn(doc, sd);
-        } else {
+        } else if (forceClassic) {
+            // Classic 2-column layout
+            String title = story != null ? story.name : "Sonstige";
+            doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
+            if (story != null && story.description != null && !story.description.isBlank()) {
+                doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
+            }
             renderTwoColumn(doc, sd);
+        } else {
+            // Default: Scrapbook style
+            DeviceRgb color = STORY_COLORS[storyIndex % STORY_COLORS.length];
+            String title = story != null ? story.name : "Sonstige";
+            String subtitle = story != null ? story.description : null;
+            renderStoryHeader(doc, title, subtitle, color);
+            renderScrapbook(doc, sd, color);
+        }
+    }
+
+    private void renderStoryHeader(Document doc, String title, String subtitle, DeviceRgb color) {
+        // Colored title band
+        Table header = new Table(UnitValue.createPercentArray(new float[]{1})).useAllAvailableWidth();
+        Cell titleCell = new Cell().setBorder(null)
+            .setBackgroundColor(color)
+            .setPadding(12);
+        titleCell.add(new Paragraph(title)
+            .setFontSize(22).setBold()
+            .setFontColor(com.itextpdf.kernel.colors.ColorConstants.WHITE)
+            .setMargin(0));
+        if (subtitle != null && !subtitle.isBlank()) {
+            titleCell.add(new Paragraph(subtitle)
+                .setFontSize(10)
+                .setFontColor(new DeviceRgb(0.9f, 0.9f, 0.9f))
+                .setMarginTop(3).setMarginBottom(0));
+        }
+        header.addCell(titleCell);
+        doc.add(header);
+        doc.add(new Paragraph("").setMarginBottom(10));
+    }
+
+    private void renderScrapbook(Document doc, StoryData sd, DeviceRgb accentColor) {
+        List<Bild> bilder = sd.bilder();
+        List<Text> texte = sd.texte();
+
+        if (bilder.isEmpty() && texte.isEmpty()) return;
+
+        // First image: full width hero
+        if (!bilder.isEmpty()) {
+            doc.add(buildPolaroidDiv(bilder.get(0), UnitValue.createPercentValue(100), 0));
+        }
+
+        // Remaining images + texts in 2-column polaroid grid
+        List<Bild> rest = bilder.isEmpty() ? List.of() : bilder.subList(1, bilder.size());
+        if (!rest.isEmpty() || !texte.isEmpty()) {
+            Table table = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
+                .useAllAvailableWidth().setMarginTop(8);
+            Cell left = new Cell().setBorder(null).setPaddingRight(4).setVerticalAlignment(VerticalAlignment.TOP);
+            Cell right = new Cell().setBorder(null).setPaddingLeft(4).setVerticalAlignment(VerticalAlignment.TOP);
+
+            // Alternate images between columns
+            for (int i = 0; i < rest.size(); i++) {
+                Div polaroid = buildPolaroidDiv(rest.get(i), UnitValue.createPercentValue(100), i + 1);
+                if (i % 2 == 0) left.add(polaroid); else right.add(polaroid);
+            }
+            // Texts at the bottom of left column
+            for (Text t : texte) {
+                left.add(buildTextDiv(t));
+            }
+            table.addCell(left);
+            table.addCell(right);
+            doc.add(table);
         }
     }
 
@@ -339,6 +426,38 @@ public class PdfService {
             div.add(new Paragraph("[Bild nicht gefunden: " + bild.getPfad() + "]").setFontSize(8));
         }
         return div;
+    }
+
+    private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed) {
+        // White polaroid frame with deterministic rotation
+        double angle = ((new Random((bild.id != null ? bild.id : 0L) + seed).nextDouble() * 2 - 1) * 6.0) * Math.PI / 180.0;
+
+        Div frame = new Div()
+            .setMarginBottom(10)
+            .setBackgroundColor(com.itextpdf.kernel.colors.ColorConstants.WHITE)
+            .setPaddingTop(6).setPaddingLeft(6).setPaddingRight(6).setPaddingBottom(12)
+            .setRotationAngle(angle);
+
+        String path = capturesPath + bild.getPfad().replaceFirst("^/", "");
+        try {
+            byte[] imageBytes = loadScaledImageBytes(path);
+            Image img = imageBytes != null
+                ? new Image(ImageDataFactory.create(imageBytes)).setWidth(width)
+                : new Image(ImageDataFactory.create(path)).setWidth(width);
+            frame.add(img);
+        } catch (Exception e) {
+            log.warn("Bild nicht gefunden: {}", path);
+            frame.add(new Paragraph("[Bild nicht gefunden]").setFontSize(8));
+        }
+
+        String title = bild.getTitle();
+        if (title != null && !title.isBlank()) {
+            frame.add(new Paragraph(title)
+                .setFontSize(8).setItalic()
+                .setTextAlignment(TextAlignment.CENTER)
+                .setMarginTop(4).setMarginBottom(0));
+        }
+        return frame;
     }
 
     private Div buildTextDiv(Text text) {
