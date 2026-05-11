@@ -173,7 +173,7 @@ class PdfServiceTest {
         var sd = new PdfService.StoryData(story("Story", "2col"),
             List.of(bild("/bild.jpg", "Titel")),
             List.of(text("Text", "Inhalt")));
-        PdfOptions options = new PdfOptions(List.of(1L), false, false, true, "Jahrbuch 2025", true, "gold");
+        PdfOptions options = new PdfOptions(List.of(1L), false, false, true, "Jahrbuch 2025", true, "gold", null);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
     }
