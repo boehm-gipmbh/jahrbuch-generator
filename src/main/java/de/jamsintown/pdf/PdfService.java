@@ -172,7 +172,7 @@ public class PdfService {
             }
 
             for (int i = 0; i < stories.size(); i++) {
-                renderStory(doc, stories.get(i), i);
+                renderStory(doc, stories.get(i), i, options);
                 if (i < stories.size() - 1) {
                     doc.add(new AreaBreak());
                 }
@@ -211,8 +211,13 @@ public class PdfService {
     }
 
     private void renderStory(Document doc, StoryData sd, int storyIndex) {
+        renderStory(doc, sd, storyIndex, null);
+    }
+
+    private void renderStory(Document doc, StoryData sd, int storyIndex, PdfOptions options) {
         Story story = sd.story();
         String layout = story != null ? story.layout : null;
+        boolean forceClassic = options != null && "classic".equals(options.layoutStyle());
 
         if ("grid".equals(layout)) {
             if (story == null) {
@@ -234,6 +239,14 @@ public class PdfService {
                 }
             }
             renderOneColumn(doc, sd);
+        } else if (forceClassic) {
+            // Classic 2-column layout
+            String title = story != null ? story.name : "Sonstige";
+            doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
+            if (story != null && story.description != null && !story.description.isBlank()) {
+                doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
+            }
+            renderTwoColumn(doc, sd);
         } else {
             // Default: Scrapbook style
             DeviceRgb color = STORY_COLORS[storyIndex % STORY_COLORS.length];
