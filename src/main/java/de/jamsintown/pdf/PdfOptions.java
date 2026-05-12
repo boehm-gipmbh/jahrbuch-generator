@@ -9,6 +9,5 @@ public record PdfOptions(
     boolean coverPage,
     String coverTitle,
     boolean pageNumbers,
-    String passepartoutStyle,
-    String layoutStyle  // "scrapbook" (default) or "classic"
+    String passepartoutStyle
 ) {}
