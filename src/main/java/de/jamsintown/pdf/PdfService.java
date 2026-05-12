@@ -438,6 +438,7 @@ public class PdfService {
             .setMarginRight(hero ? 8 : 4);
 
         Div frame = new Div()
+            .setWidth(UnitValue.createPercentValue(100))
             .setBackgroundColor(com.itextpdf.kernel.colors.ColorConstants.WHITE)
             .setPaddingTop(6).setPaddingLeft(6).setPaddingRight(6).setPaddingBottom(14)
             .setRotationAngle(angle);
