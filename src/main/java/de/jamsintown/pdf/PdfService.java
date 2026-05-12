@@ -278,36 +278,69 @@ public class PdfService {
 
         // Hauptbilder as full-width heroes; fall back to first image if none marked
         List<Bild> heroes = bilder.stream().filter(b -> b.hauptbild).toList();
-        List<Bild> rest;
+        List<Bild> restBilder;
         if (heroes.isEmpty() && !bilder.isEmpty()) {
             heroes = List.of(bilder.get(0));
-            rest = bilder.subList(1, bilder.size());
+            restBilder = bilder.subList(1, bilder.size());
         } else {
-            rest = bilder.stream().filter(b -> !b.hauptbild).toList();
+            restBilder = bilder.stream().filter(b -> !b.hauptbild).toList();
         }
 
         for (int i = 0; i < heroes.size(); i++) {
             doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true));
         }
 
-        // Remaining images + texts in 2-column polaroid grid
-        if (!rest.isEmpty() || !texte.isEmpty()) {
-            Table table = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
-                .useAllAvailableWidth().setMarginTop(8);
-            Cell left = new Cell().setBorder(null).setPaddingRight(6).setVerticalAlignment(VerticalAlignment.TOP);
-            Cell right = new Cell().setBorder(null).setPaddingLeft(6).setVerticalAlignment(VerticalAlignment.TOP);
+        // Merge remaining images and texts, sorted by storyPosition, then interleave:
+        // - consecutive image pairs → 2-column polaroid table row
+        // - text items → full-width block (flushes any pending image pair first)
+        record Item(int pos, boolean isBild, Bild bild, Text text) {}
+        List<Item> flow = Stream.concat(
+            restBilder.stream().map(b -> new Item(b.storyPosition != null ? b.storyPosition : 0, true, b, null)),
+            texte.stream().map(t -> new Item(t.storyPosition != null ? t.storyPosition : 0, false, null, t))
+        ).sorted(Comparator.comparingInt(Item::pos)).toList();
 
-            for (int i = 0; i < rest.size(); i++) {
-                Div polaroid = buildPolaroidDiv(rest.get(i), UnitValue.createPercentValue(88), i + 1, false);
-                if (i % 2 == 0) left.add(polaroid); else right.add(polaroid);
+        // Buffer for up to 2 images that form one polaroid row
+        List<Bild> rowBuffer = new ArrayList<>();
+        int polaroidSeed = heroes.size();
+
+        for (Item item : flow) {
+            if (item.isBild()) {
+                rowBuffer.add(item.bild());
+                if (rowBuffer.size() == 2) {
+                    doc.add(buildPolaroidRow(rowBuffer, polaroidSeed));
+                    polaroidSeed += 2;
+                    rowBuffer = new ArrayList<>();
+                }
+            } else {
+                // Flush any pending single image as its own row before the text
+                if (!rowBuffer.isEmpty()) {
+                    doc.add(buildPolaroidRow(rowBuffer, polaroidSeed));
+                    polaroidSeed += rowBuffer.size();
+                    rowBuffer = new ArrayList<>();
+                }
+                doc.add(buildTextDiv(item.text()).setMarginTop(4).setMarginBottom(8));
             }
-            for (Text t : texte) {
-                left.add(buildTextDiv(t));
-            }
-            table.addCell(left);
-            table.addCell(right);
-            doc.add(table);
         }
+        // Flush remaining images
+        if (!rowBuffer.isEmpty()) {
+            doc.add(buildPolaroidRow(rowBuffer, polaroidSeed));
+        }
+    }
+
+    /** Renders 1 or 2 polaroid images side-by-side in a full-width table row. */
+    private Table buildPolaroidRow(List<Bild> bilder, int seedOffset) {
+        Table table = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
+            .useAllAvailableWidth().setMarginTop(4).setMarginBottom(0);
+        for (int i = 0; i < 2; i++) {
+            Cell cell = new Cell().setBorder(null)
+                .setPaddingLeft(i == 0 ? 0 : 4).setPaddingRight(i == 0 ? 4 : 0)
+                .setVerticalAlignment(VerticalAlignment.TOP);
+            if (i < bilder.size()) {
+                cell.add(buildPolaroidDiv(bilder.get(i), UnitValue.createPercentValue(88), seedOffset + i, false));
+            }
+            table.addCell(cell);
+        }
+        return table;
     }
 
     private void renderOneColumn(Document doc, StoryData sd) {
