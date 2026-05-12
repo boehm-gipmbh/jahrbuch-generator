@@ -210,4 +210,14 @@ public class BildService {
                 .chain(bild -> Uni.createFrom().item(complete));
     }
 
+    @WithTransaction
+    public Uni<Boolean> setHauptbild(long id, boolean hauptbild) {
+        return findById(id)
+                .chain(bild -> {
+                    bild.hauptbild = hauptbild;
+                    return bild.persistAndFlush();
+                })
+                .chain(bild -> Uni.createFrom().item(hauptbild));
+    }
+
 }

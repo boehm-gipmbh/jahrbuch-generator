@@ -284,25 +284,31 @@ public class PdfService {
 
         if (bilder.isEmpty() && texte.isEmpty()) return;
 
-        // First image: full width hero
-        if (!bilder.isEmpty()) {
-            doc.add(buildPolaroidDiv(bilder.get(0), UnitValue.createPercentValue(100), 0));
+        // Hauptbilder as full-width heroes; fall back to first image if none marked
+        List<Bild> heroes = bilder.stream().filter(b -> b.hauptbild).toList();
+        List<Bild> rest;
+        if (heroes.isEmpty() && !bilder.isEmpty()) {
+            heroes = List.of(bilder.get(0));
+            rest = bilder.subList(1, bilder.size());
+        } else {
+            rest = bilder.stream().filter(b -> !b.hauptbild).toList();
+        }
+
+        for (int i = 0; i < heroes.size(); i++) {
+            doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true));
         }
 
         // Remaining images + texts in 2-column polaroid grid
-        List<Bild> rest = bilder.isEmpty() ? List.of() : bilder.subList(1, bilder.size());
         if (!rest.isEmpty() || !texte.isEmpty()) {
             Table table = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
                 .useAllAvailableWidth().setMarginTop(8);
-            Cell left = new Cell().setBorder(null).setPaddingRight(4).setVerticalAlignment(VerticalAlignment.TOP);
-            Cell right = new Cell().setBorder(null).setPaddingLeft(4).setVerticalAlignment(VerticalAlignment.TOP);
+            Cell left = new Cell().setBorder(null).setPaddingRight(6).setVerticalAlignment(VerticalAlignment.TOP);
+            Cell right = new Cell().setBorder(null).setPaddingLeft(6).setVerticalAlignment(VerticalAlignment.TOP);
 
-            // Alternate images between columns
             for (int i = 0; i < rest.size(); i++) {
-                Div polaroid = buildPolaroidDiv(rest.get(i), UnitValue.createPercentValue(100), i + 1);
+                Div polaroid = buildPolaroidDiv(rest.get(i), UnitValue.createPercentValue(88), i + 1, false);
                 if (i % 2 == 0) left.add(polaroid); else right.add(polaroid);
             }
-            // Texts at the bottom of left column
             for (Text t : texte) {
                 left.add(buildTextDiv(t));
             }
@@ -428,22 +434,29 @@ public class PdfService {
         return div;
     }
 
-    private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed) {
-        // White polaroid frame with deterministic rotation
-        double angle = ((new Random((bild.id != null ? bild.id : 0L) + seed).nextDouble() * 2 - 1) * 6.0) * Math.PI / 180.0;
+    private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero) {
+        double maxDeg = hero ? 2.5 : 4.0;
+        double angle = ((new Random((bild.id != null ? bild.id : 0L) + seed).nextDouble() * 2 - 1) * maxDeg) * Math.PI / 180.0;
+
+        // Outer wrapper absorbs the rotation's extra visual spread
+        Div wrapper = new Div()
+            .setWidth(width)
+            .setMarginBottom(hero ? 14 : 10)
+            .setMarginLeft(hero ? 8 : 4)
+            .setMarginRight(hero ? 8 : 4);
 
         Div frame = new Div()
-            .setMarginBottom(10)
             .setBackgroundColor(com.itextpdf.kernel.colors.ColorConstants.WHITE)
-            .setPaddingTop(6).setPaddingLeft(6).setPaddingRight(6).setPaddingBottom(12)
+            .setPaddingTop(6).setPaddingLeft(6).setPaddingRight(6).setPaddingBottom(14)
             .setRotationAngle(angle);
 
         String path = capturesPath + bild.getPfad().replaceFirst("^/", "");
         try {
             byte[] imageBytes = loadScaledImageBytes(path);
             Image img = imageBytes != null
-                ? new Image(ImageDataFactory.create(imageBytes)).setWidth(width)
-                : new Image(ImageDataFactory.create(path)).setWidth(width);
+                ? new Image(ImageDataFactory.create(imageBytes)).setWidth(UnitValue.createPercentValue(100))
+                : new Image(ImageDataFactory.create(path)).setWidth(UnitValue.createPercentValue(100));
+            if (!hero) img.setMaxHeight(180);
             frame.add(img);
         } catch (Exception e) {
             log.warn("Bild nicht gefunden: {}", path);
@@ -453,11 +466,12 @@ public class PdfService {
         String title = bild.getTitle();
         if (title != null && !title.isBlank()) {
             frame.add(new Paragraph(title)
-                .setFontSize(8).setItalic()
+                .setFontSize(hero ? 9 : 7).setItalic()
                 .setTextAlignment(TextAlignment.CENTER)
                 .setMarginTop(4).setMarginBottom(0));
         }
-        return frame;
+        wrapper.add(frame);
+        return wrapper;
     }
 
     private Div buildTextDiv(Text text) {
