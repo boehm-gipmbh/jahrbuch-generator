@@ -82,6 +82,12 @@ public class BildResource {
     }
 
     @PUT
+    @Path("/{id}/hauptbild")
+    public Uni<Boolean> setHauptbild(@PathParam("id") long id, boolean hauptbild) {
+        return bildService.setHauptbild(id, hauptbild);
+    }
+
+    @PUT
     @Path("/reorder/{storyId}")
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<List<Bild>> reorder(@PathParam("storyId") Long storyId, List<Long> bildIds) {
