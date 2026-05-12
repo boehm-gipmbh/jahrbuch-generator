@@ -217,43 +217,35 @@ public class PdfService {
     private void renderStory(Document doc, StoryData sd, int storyIndex, PdfOptions options) {
         Story story = sd.story();
         String layout = story != null ? story.layout : null;
-        boolean forceClassic = options != null && "classic".equals(options.layoutStyle());
 
-        if ("grid".equals(layout)) {
-            if (story == null) {
-                doc.add(new Paragraph("Sonstige").setFontSize(18).setBold().setMarginBottom(4));
-            } else {
-                doc.add(new Paragraph(story.name).setFontSize(18).setBold().setMarginBottom(4));
-                if (story.description != null && !story.description.isBlank()) {
-                    doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
-                }
+        if ("scrapbook".equals(layout)) {
+            DeviceRgb color = STORY_COLORS[storyIndex % STORY_COLORS.length];
+            String title = story != null ? story.name : "Sonstige";
+            String subtitle = story != null ? story.description : null;
+            renderStoryHeader(doc, title, subtitle, color);
+            renderScrapbook(doc, sd, color);
+        } else if ("grid".equals(layout)) {
+            String title = story != null ? story.name : "Sonstige";
+            doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
+            if (story != null && story.description != null && !story.description.isBlank()) {
+                doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
             }
             renderThreeColumn(doc, sd);
         } else if ("1col".equals(layout)) {
-            if (story == null) {
-                doc.add(new Paragraph("Sonstige").setFontSize(18).setBold().setMarginBottom(4));
-            } else {
-                doc.add(new Paragraph(story.name).setFontSize(18).setBold().setMarginBottom(4));
-                if (story.description != null && !story.description.isBlank()) {
-                    doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
-                }
+            String title = story != null ? story.name : "Sonstige";
+            doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
+            if (story != null && story.description != null && !story.description.isBlank()) {
+                doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
             }
             renderOneColumn(doc, sd);
-        } else if (forceClassic) {
-            // Classic 2-column layout
+        } else {
+            // Default: 2-column classic (layout == "2col" or null)
             String title = story != null ? story.name : "Sonstige";
             doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
                 doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
             }
             renderTwoColumn(doc, sd);
-        } else {
-            // Default: Scrapbook style
-            DeviceRgb color = STORY_COLORS[storyIndex % STORY_COLORS.length];
-            String title = story != null ? story.name : "Sonstige";
-            String subtitle = story != null ? story.description : null;
-            renderStoryHeader(doc, title, subtitle, color);
-            renderScrapbook(doc, sd, color);
         }
     }
 

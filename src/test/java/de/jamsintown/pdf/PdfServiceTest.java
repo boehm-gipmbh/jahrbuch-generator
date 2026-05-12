@@ -100,7 +100,7 @@ class PdfServiceTest {
     @Test
     void renderPdf_mitDeckblatt_liefertGueltigesPdf() {
         var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of());
-        PdfOptions options = new PdfOptions(null, false, false, true, "Mein Jahrbuch 2025", false, null, null);
+        PdfOptions options = new PdfOptions(null, false, false, true, "Mein Jahrbuch 2025", false, null);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
     }
@@ -108,14 +108,14 @@ class PdfServiceTest {
     @Test
     void renderPdf_mitLeeresDeckblattTitle_verwendetFallback() {
         var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of());
-        PdfOptions options = new PdfOptions(null, false, false, true, "  ", false, null, null);
+        PdfOptions options = new PdfOptions(null, false, false, true, "  ", false, null);
         assertDoesNotThrow(() -> service.renderPdf(List.of(sd), options));
     }
 
     @Test
     void renderPdf_mitSeitenzahlen_liefertGueltigesPdf() {
         var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of());
-        PdfOptions options = new PdfOptions(null, false, false, false, null, true, null, null);
+        PdfOptions options = new PdfOptions(null, false, false, false, null, true, null);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
     }
@@ -159,6 +159,16 @@ class PdfServiceTest {
     }
 
     @Test
+    void renderPdf_scrapbookLayout_keinFehler() {
+        Bild hero = bild("/hero.jpg", "Hero");
+        hero.hauptbild = true;
+        var sd = new PdfService.StoryData(story("Scrapbook Story", "scrapbook"),
+            List.of(hero, bild("/a.jpg", "A"), bild("/b.jpg", "B")), List.of());
+        byte[] result = service.renderPdf(List.of(sd), null);
+        assertTrue(isPdf(result));
+    }
+
+    @Test
     void renderPdf_gridLayout_dreiSpalten_keinFehler() {
         Bild b0 = bild("/a.jpg", "A"); b0.storyColumn = 0;
         Bild b1 = bild("/b.jpg", "B"); b1.storyColumn = 1;
@@ -173,7 +183,7 @@ class PdfServiceTest {
         var sd = new PdfService.StoryData(story("Story", "2col"),
             List.of(bild("/bild.jpg", "Titel")),
             List.of(text("Text", "Inhalt")));
-        PdfOptions options = new PdfOptions(List.of(1L), false, false, true, "Jahrbuch 2025", true, "gold", null);
+        PdfOptions options = new PdfOptions(List.of(1L), false, false, true, "Jahrbuch 2025", true, "gold");
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
     }
