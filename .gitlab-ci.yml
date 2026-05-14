@@ -171,6 +171,7 @@ deploy:
     - export PATH="$PATH:/tmp/flyctl/bin"
   script:
     - flyctl deploy --image drdboehm/jahrbuch-generator:fly --strategy immediate
+    - curl -s "$COOLIFY_DEPLOY_WEBHOOK"
   environment:
     name: production
     url: https://jahrbuch-generator.fly.dev
