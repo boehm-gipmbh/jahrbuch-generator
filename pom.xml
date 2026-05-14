@@ -289,7 +289,7 @@
                                 </configuration>
                             </execution>
                             <execution>
-                                <id>copy-migrate-sh</id>
+                                <id>copy-deploy-scripts</id>
                                 <phase>package</phase>
                                 <goals>
                                     <goal>copy-resources</goal>
