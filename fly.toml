@@ -9,9 +9,6 @@ primary_region = 'fra'
 [build]
   image = 'drdboehm/jahrbuch-generator:fly'
 
-[deploy]
-  release_command = "/deployments/migrate.sh"
-
 [[mounts]]
   source = 'capture_data'
   destination = '/data'
