@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends imagemagick ffm
 COPY fly/target/*-runner /deployments/application
 COPY fly/target/migrate.sh /deployments/migrate.sh
 COPY fly/target/migrations /deployments/migrations
-COPY docker-entrypoint.sh /deployments/entrypoint.sh
+COPY fly/target/docker-entrypoint.sh /deployments/entrypoint.sh
 
 RUN chmod a+x /deployments/application /deployments/migrate.sh /deployments/entrypoint.sh
 
