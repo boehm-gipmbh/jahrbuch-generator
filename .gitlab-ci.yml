@@ -2,7 +2,8 @@ stages:
   - test
   - e2e
   - build
-  - deploy
+  - deploy-staging
+  - deploy-prod
 
 variables:
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
@@ -145,6 +146,7 @@ build:
     GIT_SUBMODULE_STRATEGY: recursive
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
   before_script:
     - docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
     - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
@@ -159,10 +161,23 @@ build:
     - docker push drdboehm/jahrbuch-generator:fly-$SHA
   <<: *mvn_cache
 
-# ─── DEPLOY ───────────────────────────────────────────────────────────────────
+# ─── DEPLOY STAGING ──────────────────────────────────────────────────────────
 
-deploy:
-  stage: deploy
+deploy-staging:
+  stage: deploy-staging
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+  needs: [build]
+  script:
+    - curl -s "$COOLIFY_STAGING_WEBHOOK"
+  environment:
+    name: staging
+    url: https://staging.jahrbuch.jamsintown.de
+
+# ─── DEPLOY PROD ─────────────────────────────────────────────────────────────
+
+deploy-prod:
+  stage: deploy-prod
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   needs: [build]
@@ -174,4 +189,4 @@ deploy:
     - curl -s "$COOLIFY_DEPLOY_WEBHOOK"
   environment:
     name: production
-    url: https://jahrbuch-generator.fly.dev
+    url: https://jahrbuch.jamsintown.de
