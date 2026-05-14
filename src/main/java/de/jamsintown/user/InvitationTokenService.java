@@ -246,10 +246,11 @@ public class InvitationTokenService {
       InvitationSend send = new InvitationSend();
       send.token = token;
       send.sentTo = token.recipientEmail;
-      return send.<InvitationSend>persistAndFlush()
-          .invoke(savedSend -> sendMailAndPersistId(
-              invitationEmailService.sendInvitationMail(token), savedSend.id, token.recipientEmail))
-          .replaceWithVoid();
+      return invitationEmailService.sendInvitationMail(token)
+          .chain(resendId -> {
+            send.resendMessageId = resendId;
+            return send.<InvitationSend>persistAndFlush().replaceWithVoid();
+          });
     }
     return Uni.createFrom().voidItem();
   }
@@ -311,10 +312,11 @@ public class InvitationTokenService {
         send.sentTo = email;
         final String finalEmail = email;
         return t.<InvitationToken>persistAndFlush()
-            .chain(saved -> send.<InvitationSend>persistAndFlush()
-                .invoke(savedSend -> sendMailAndPersistId(
-                    invitationEmailService.sendInvitationMail(saved), savedSend.id, finalEmail))
-                .replaceWith(saved));
+            .chain(saved -> invitationEmailService.sendInvitationMail(saved)
+                .chain(resendId -> {
+                  send.resendMessageId = resendId;
+                  return send.<InvitationSend>persistAndFlush().replaceWith(saved);
+                }));
       })
       .replaceWithVoid();
   }
