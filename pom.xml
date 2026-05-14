@@ -301,6 +301,7 @@
                                             <directory>${project.basedir}</directory>
                                             <includes>
                                                 <include>migrate.sh</include>
+                                                <include>docker-entrypoint.sh</include>
                                             </includes>
                                         </resource>
                                     </resources>
@@ -325,6 +326,7 @@
                                                         <directory>${project.basedir}</directory>
                                                         <includes>
                                                             <include>migrate.sh</include>
+                                                            <include>docker-entrypoint.sh</include>
                                                         </includes>
                                                         <outputDirectory>target</outputDirectory>
                                                         <fileMode>0755</fileMode>
