@@ -169,8 +169,7 @@ deploy-staging:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
   needs: [build]
   script:
-    - echo "WEBHOOK=[$COOLIFY_STAGING_WEBHOOK]"
-    - echo "TOKEN=[$COOLIFY_TOKEN]"
+    - 'curl -sf -X GET "$(echo -n "$COOLIFY_STAGING_WEBHOOK")" -H "Authorization: Bearer $COOLIFY_TOKEN"'
   environment:
     name: staging
     url: https://staging.jahrbuch.jamsintown.de
