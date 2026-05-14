@@ -43,8 +43,8 @@ public class FotoboxResource {
     @ConfigProperty(name = "jahrbuch.fotobox.token")
     Optional<String> fotoboxToken;
 
-    @ConfigProperty(name = "jahrbuch.flyio.url", defaultValue = "https://jahrbuch-generator.fly.dev")
-    String flyioUrl;
+    @ConfigProperty(name = "jahrbuch.app.url", defaultValue = "https://jahrbuch-generator.fly.dev")
+    String appUrl;
 
     private final CaptureService captureService;
     private final FotoboxDbService fotoboxDbService;
@@ -208,7 +208,7 @@ public class FotoboxResource {
         try {
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest.Builder req = HttpRequest.newBuilder()
-                    .uri(URI.create(flyioUrl + path))
+                    .uri(URI.create(appUrl + path))
                     .GET();
             if (token != null) req.header("Authorization", "Bearer " + token);
             HttpResponse<String> resp = client.send(req.build(), HttpResponse.BodyHandlers.ofString());
@@ -225,7 +225,7 @@ public class FotoboxResource {
 
         HttpClient client = HttpClient.newBuilder().build();
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(flyioUrl + "/api/v1/fotobox/upload"))
+                .uri(URI.create(appUrl + "/api/v1/fotobox/upload"))
                 .header("Authorization", "Bearer " + token)
                 .header("Content-Type", "image/jpeg")
                 .header("X-Filename", file.getFileName().toString())
