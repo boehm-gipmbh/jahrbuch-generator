@@ -186,7 +186,7 @@ deploy-prod:
     - export PATH="$PATH:/tmp/flyctl/bin"
   script:
     - flyctl deploy --image drdboehm/jahrbuch-generator:fly --strategy immediate
-    - 'curl -s -X GET "$COOLIFY_DEPLOY_WEBHOOK" -H "Authorization: Bearer $COOLIFY_TOKEN"'
+    - 'curl -sf -X GET "$(echo -n "$COOLIFY_DEPLOY_WEBHOOK")" -H "Authorization: Bearer $COOLIFY_TOKEN"'
   environment:
     name: production
     url: https://jahrbuch.jamsintown.de
