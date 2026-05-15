@@ -9,10 +9,13 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Path("/api/v1/announcements")
 @RolesAllowed("admin")
 public class AnnouncementResource {
+
+    private static final Pattern EMAIL_RE = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     private final AnnouncementMailService mailService;
 
@@ -27,9 +30,7 @@ public class AnnouncementResource {
     @Produces(MediaType.APPLICATION_JSON)
     public Uni<Response> previewRecipients(AnnouncementRequest request) {
         return resolveRecipients(request)
-                .map(users -> Response.ok(users.stream()
-                        .map(u -> new RecipientDTO(u.id, u.name, u.email))
-                        .toList()).build());
+                .map(recipients -> Response.ok(recipients).build());
     }
 
     @POST
@@ -47,23 +48,39 @@ public class AnnouncementResource {
         }
 
         return resolveRecipients(request)
-                .chain(users -> mailService.sendToAll(request.subject, request.body, users))
+                .chain(recipients -> mailService.sendToAll(request.subject, request.body, recipients))
                 .map(result -> Response.ok(result).build());
     }
 
-    private Uni<List<User>> resolveRecipients(AnnouncementRequest request) {
+    private Uni<List<Recipient>> resolveRecipients(AnnouncementRequest request) {
         return switch (request.recipientFilter) {
             case GROUP -> {
-                if (request.groupId == null) yield User.<User>listAll();
-                yield User.<User>find("SELECT u FROM User u JOIN u.groups g WHERE g.id = ?1 AND u.active = true", request.groupId).list();
+                if (request.groupId == null) yield usersToRecipients(User.<User>listAll());
+                yield usersToRecipients(User.<User>find(
+                        "SELECT u FROM User u JOIN u.groups g WHERE g.id = ?1 AND u.active = true",
+                        request.groupId).list());
             }
             case SPECIFIC -> {
-                if (request.userIds == null || request.userIds.isEmpty()) yield Uni.createFrom().item(List.of());
-                yield User.<User>find("id IN ?1 AND active = true", request.userIds).list();
+                if (request.userIds == null || request.userIds.isEmpty())
+                    yield Uni.createFrom().item(List.of());
+                yield usersToRecipients(User.<User>find("id IN ?1 AND active = true", request.userIds).list());
             }
-            default -> User.<User>find("active = true").list();
+            case EXTERNAL -> {
+                List<String> emails = request.externalEmails == null ? List.of() : request.externalEmails;
+                List<Recipient> recipients = emails.stream()
+                        .map(String::trim)
+                        .filter(e -> EMAIL_RE.matcher(e).matches())
+                        .map(Recipient::fromEmail)
+                        .toList();
+                yield Uni.createFrom().item(recipients);
+            }
+            default -> usersToRecipients(User.<User>find("active = true").list());
         };
     }
 
-    public record RecipientDTO(Long id, String name, String email) {}
+    private Uni<List<Recipient>> usersToRecipients(Uni<List<User>> usersUni) {
+        return usersUni.map(users -> users.stream()
+                .map(u -> new Recipient(u.id, u.name, u.email))
+                .toList());
+    }
 }

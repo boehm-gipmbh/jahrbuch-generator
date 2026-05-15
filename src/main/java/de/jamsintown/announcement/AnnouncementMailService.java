@@ -1,6 +1,5 @@
 package de.jamsintown.announcement;
 
-import de.jamsintown.user.User;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -31,14 +30,14 @@ public class AnnouncementMailService {
         this.mock = mock;
     }
 
-    public Uni<AnnouncementResult> sendToAll(String subject, String body, List<User> recipients) {
+    public Uni<AnnouncementResult> sendToAll(String subject, String body, List<Recipient> recipients) {
         if (recipients.isEmpty()) {
             return Uni.createFrom().item(new AnnouncementResult(0, 0, List.of()));
         }
 
         List<Uni<Boolean>> sends = recipients.stream()
-                .filter(u -> u.email != null && !u.email.isBlank())
-                .map(u -> sendOne(u.email, u.name, subject, body))
+                .filter(r -> r.email() != null && !r.email().isBlank())
+                .map(r -> sendOne(r.email(), r.name(), subject, body))
                 .toList();
 
         return Uni.join().all(sends).andFailFast()
