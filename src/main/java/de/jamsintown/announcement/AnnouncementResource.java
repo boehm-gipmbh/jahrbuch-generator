@@ -3,7 +3,8 @@ package de.jamsintown.announcement;
 import de.jamsintown.pdf.PdfService;
 import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.User;
-import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
+import io.quarkus.hibernate.reactive.panache.Panache;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -34,6 +35,7 @@ public class AnnouncementResource {
     @GET
     @Path("/history")
     @Produces(MediaType.APPLICATION_JSON)
+    @WithSession
     public Uni<Response> history() {
         return AnnouncementLog.<AnnouncementLog>findAll(Sort.descending("sentAt"))
                 .page(0, 20).list()
@@ -44,6 +46,7 @@ public class AnnouncementResource {
     @Path("/preview-recipients")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
+    @WithSession
     public Uni<Response> previewRecipients(AnnouncementRequest request) {
         return resolveRecipients(request)
                 .map(recipients -> Response.ok(recipients).build());
@@ -53,6 +56,7 @@ public class AnnouncementResource {
     @Path("/send")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
+    @WithSession
     public Uni<Response> send(AnnouncementRequest request) {
         if (request.subject == null || request.subject.isBlank()) {
             return Uni.createFrom().item(Response.status(Response.Status.BAD_REQUEST)
@@ -72,15 +76,14 @@ public class AnnouncementResource {
                 .map(result -> Response.ok(result).build());
     }
 
-    @WithTransaction
-    Uni<Void> persistLog(AnnouncementRequest request, String recipientDescription, AnnouncementResult result) {
+    private Uni<Void> persistLog(AnnouncementRequest request, String recipientDescription, AnnouncementResult result) {
         AnnouncementLog log = new AnnouncementLog();
         log.subject = request.subject;
         log.recipientDescription = recipientDescription;
         log.sentCount = result.sent;
         log.failedCount = result.failed;
         log.attachmentFilename = request.attachmentFilename;
-        return log.persist();
+        return Panache.withTransaction(() -> log.<AnnouncementLog>persist().replaceWithVoid());
     }
 
     private Uni<String> resolveRecipientDescription(AnnouncementRequest request) {
