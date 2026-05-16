@@ -12,4 +12,8 @@ public class AnnouncementRequest {
     public Long groupId;
     public List<Long> userIds;
     public List<String> externalEmails;
+
+    public String attachmentFilename;
+    public String attachmentContent; // base64-encoded
+    public Long attachmentGroupId;   // generate PDF from group
 }

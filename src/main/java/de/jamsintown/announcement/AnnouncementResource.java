@@ -1,5 +1,6 @@
 package de.jamsintown.announcement;
 
+import de.jamsintown.pdf.PdfService;
 import de.jamsintown.user.User;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
@@ -8,6 +9,7 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -18,10 +20,12 @@ public class AnnouncementResource {
     private static final Pattern EMAIL_RE = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     private final AnnouncementMailService mailService;
+    private final PdfService pdfService;
 
     @Inject
-    public AnnouncementResource(AnnouncementMailService mailService) {
+    public AnnouncementResource(AnnouncementMailService mailService, PdfService pdfService) {
         this.mailService = mailService;
+        this.pdfService = pdfService;
     }
 
     @POST
@@ -47,9 +51,23 @@ public class AnnouncementResource {
                     .entity("{\"error\":\"Text fehlt\"}").build());
         }
 
-        return resolveRecipients(request)
-                .chain(recipients -> mailService.sendToAll(request.subject, request.body, recipients))
+        return resolveAttachment(request)
+                .chain(() -> resolveRecipients(request))
+                .chain(recipients -> mailService.sendToAll(request.subject, request.body, recipients,
+                        request.attachmentFilename, request.attachmentContent))
                 .map(result -> Response.ok(result).build());
+    }
+
+    private Uni<Void> resolveAttachment(AnnouncementRequest request) {
+        if (request.attachmentGroupId != null) {
+            return pdfService.generateForGroup(request.attachmentGroupId)
+                    .invoke(bytes -> {
+                        request.attachmentFilename = "jahrbuch-" + request.attachmentGroupId + ".pdf";
+                        request.attachmentContent = Base64.getEncoder().encodeToString(bytes);
+                    })
+                    .replaceWithVoid();
+        }
+        return Uni.createFrom().voidItem();
     }
 
     private Uni<List<Recipient>> resolveRecipients(AnnouncementRequest request) {

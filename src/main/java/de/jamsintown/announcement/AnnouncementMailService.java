@@ -1,5 +1,7 @@
 package de.jamsintown.announcement;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -10,7 +12,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.ArrayList;
 import java.util.List;
 
 @ApplicationScoped
@@ -21,23 +22,27 @@ public class AnnouncementMailService {
 
     private final String resendApiKey;
     private final boolean mock;
+    private final ObjectMapper mapper;
 
     @Inject
     public AnnouncementMailService(
             @ConfigProperty(name = "resend.api.key") String resendApiKey,
-            @ConfigProperty(name = "resend.mock") boolean mock) {
+            @ConfigProperty(name = "resend.mock") boolean mock,
+            ObjectMapper mapper) {
         this.resendApiKey = resendApiKey;
         this.mock = mock;
+        this.mapper = mapper;
     }
 
-    public Uni<AnnouncementResult> sendToAll(String subject, String body, List<Recipient> recipients) {
+    public Uni<AnnouncementResult> sendToAll(String subject, String body, List<Recipient> recipients,
+                                              String attachmentFilename, String attachmentContent) {
         if (recipients.isEmpty()) {
             return Uni.createFrom().item(new AnnouncementResult(0, 0, List.of()));
         }
 
         List<Uni<Boolean>> sends = recipients.stream()
                 .filter(r -> r.email() != null && !r.email().isBlank())
-                .map(r -> sendOne(r.email(), r.name(), subject, body))
+                .map(r -> sendOne(r.email(), r.name(), subject, body, attachmentFilename, attachmentContent))
                 .toList();
 
         return Uni.join().all(sends).andFailFast()
@@ -49,17 +54,34 @@ public class AnnouncementMailService {
                 .onFailure().recoverWithItem(e -> new AnnouncementResult(0, recipients.size(), List.of(e.getMessage())));
     }
 
-    private Uni<Boolean> sendOne(String email, String name, String subject, String bodyHtml) {
+    private Uni<Boolean> sendOne(String email, String name, String subject, String bodyHtml,
+                                  String attachmentFilename, String attachmentContent) {
         String html = "<p>Hallo %s,</p>%s".formatted(name != null ? name : "", bodyHtml);
-        String json = """
-                {"from":"noreply@jamsintown.de","to":["%s"],"subject":"%s","html":"%s"}
-                """.formatted(
-                email,
-                subject.replace("\"", "\\\""),
-                html.replace("\"", "\\\"").replace("\n", "<br>").strip());
+
+        ObjectNode payload = mapper.createObjectNode();
+        payload.put("from", "noreply@jamsintown.de");
+        payload.putArray("to").add(email);
+        payload.put("subject", subject);
+        payload.put("html", html);
+
+        if (attachmentFilename != null && attachmentContent != null) {
+            ObjectNode att = mapper.createObjectNode();
+            att.put("filename", attachmentFilename);
+            att.put("content", attachmentContent);
+            payload.putArray("attachments").add(att);
+        }
+
+        String json;
+        try {
+            json = mapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            LOG.errorf("JSON-Serialisierung fehlgeschlagen: %s", e.getMessage());
+            return Uni.createFrom().item(false);
+        }
 
         if (mock) {
-            LOG.infof("Mock-Ankündigung an %s: %s", email, subject);
+            LOG.infof("Mock-Ankündigung an %s: %s (Anhang: %s)", email, subject,
+                    attachmentFilename != null ? attachmentFilename : "keiner");
             return Uni.createFrom().item(true);
         }
 
