@@ -1,13 +1,16 @@
 package de.jamsintown.announcement;
 
 import de.jamsintown.pdf.PdfService;
+import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.User;
+import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import io.quarkus.panache.common.Sort;
 
 import java.util.Base64;
 import java.util.List;
@@ -26,6 +29,15 @@ public class AnnouncementResource {
     public AnnouncementResource(AnnouncementMailService mailService, PdfService pdfService) {
         this.mailService = mailService;
         this.pdfService = pdfService;
+    }
+
+    @GET
+    @Path("/history")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Response> history() {
+        return AnnouncementLog.<AnnouncementLog>findAll(Sort.descending("sentAt"))
+                .page(0, 20).list()
+                .map(logs -> Response.ok(logs).build());
     }
 
     @POST
@@ -52,10 +64,38 @@ public class AnnouncementResource {
         }
 
         return resolveAttachment(request)
-                .chain(() -> resolveRecipients(request))
-                .chain(recipients -> mailService.sendToAll(request.subject, request.body, recipients,
-                        request.attachmentFilename, request.attachmentContent))
+                .chain(() -> resolveRecipientDescription(request))
+                .chain(description -> resolveRecipients(request)
+                        .chain(recipients -> mailService.sendToAll(request.subject, request.body, recipients,
+                                request.attachmentFilename, request.attachmentContent))
+                        .chain(result -> persistLog(request, description, result).replaceWith(result)))
                 .map(result -> Response.ok(result).build());
+    }
+
+    @WithTransaction
+    Uni<Void> persistLog(AnnouncementRequest request, String recipientDescription, AnnouncementResult result) {
+        AnnouncementLog log = new AnnouncementLog();
+        log.subject = request.subject;
+        log.recipientDescription = recipientDescription;
+        log.sentCount = result.sent;
+        log.failedCount = result.failed;
+        log.attachmentFilename = request.attachmentFilename;
+        return log.persist();
+    }
+
+    private Uni<String> resolveRecipientDescription(AnnouncementRequest request) {
+        return switch (request.recipientFilter) {
+            case GROUP -> {
+                if (request.groupId == null) yield Uni.createFrom().item("Alle Nutzer");
+                yield Gruppe.<Gruppe>findById(request.groupId)
+                        .map(g -> g != null ? "Gruppe: " + g.name : "Gruppe #" + request.groupId);
+            }
+            case SPECIFIC -> Uni.createFrom().item(
+                    request.userIds == null ? "0 Nutzer" : request.userIds.size() + " Nutzer");
+            case EXTERNAL -> Uni.createFrom().item(
+                    request.externalEmails == null ? "0 extern" : request.externalEmails.size() + " externe Adressen");
+            default -> Uni.createFrom().item("Alle aktiven Nutzer");
+        };
     }
 
     private Uni<Void> resolveAttachment(AnnouncementRequest request) {
