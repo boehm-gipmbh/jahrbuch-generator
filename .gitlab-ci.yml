@@ -181,11 +181,7 @@ deploy-prod:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   needs: [build]
-  before_script:
-    - curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/tmp/flyctl sh
-    - export PATH="$PATH:/tmp/flyctl/bin"
   script:
-    - flyctl deploy --image drdboehm/jahrbuch-generator:fly --strategy immediate
     - 'curl -sf -X GET "$(echo -n "$COOLIFY_DEPLOY_WEBHOOK")" -H "Authorization: Bearer $COOLIFY_TOKEN"'
   environment:
     name: production
