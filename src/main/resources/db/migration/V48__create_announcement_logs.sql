@@ -1,4 +1,4 @@
-CREATE TABLE announcement_logs (
+CREATE TABLE IF NOT EXISTS announcement_logs (
     id                   BIGSERIAL PRIMARY KEY,
     subject              VARCHAR(255) NOT NULL,
     sent_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
