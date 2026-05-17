@@ -75,7 +75,8 @@ public class PdfService {
         return loadAllStoryDataNoCheck(groupId)
             .chain(storyDataList -> Uni.createFrom()
                 .item(() -> renderPdf(storyDataList, null))
-                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
+                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()))
+            .emitOn(Infrastructure.getDefaultExecutor());
     }
 
     @WithSession
