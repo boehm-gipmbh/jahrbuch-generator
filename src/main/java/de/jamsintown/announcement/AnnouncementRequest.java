@@ -1,8 +1,10 @@
 package de.jamsintown.announcement;
 
 import de.jamsintown.pdf.PdfOptions;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import java.util.List;
 
+@RegisterForReflection
 public class AnnouncementRequest {
 
     public enum RecipientFilter { ALL, GROUP, SPECIFIC, EXTERNAL }
