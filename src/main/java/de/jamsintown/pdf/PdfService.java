@@ -32,6 +32,7 @@ import io.quarkus.panache.common.Sort;
 import io.quarkus.security.UnauthorizedException;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.Vertx;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.NotFoundException;
@@ -53,10 +54,12 @@ public class PdfService {
     String capturesPath;
 
     private final UserService userService;
+    private final Vertx vertx;
 
     @Inject
-    public PdfService(UserService userService) {
+    public PdfService(UserService userService, Vertx vertx) {
         this.userService = userService;
+        this.vertx = vertx;
     }
 
     public Uni<byte[]> generateForGroup(Long groupId) {
@@ -73,10 +76,13 @@ public class PdfService {
     /** Generates a PDF without membership check — for admin use only. */
     public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options) {
         return loadAllStoryDataNoCheck(groupId, options)
-            .chain(storyDataList -> Uni.createFrom()
-                .item(() -> renderPdf(storyDataList, options))
-                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()))
-            .emitOn(Infrastructure.getDefaultExecutor());
+            .chain(storyDataList -> {
+                io.vertx.core.Context eventLoopCtx = vertx.getOrCreateContext();
+                return Uni.createFrom()
+                    .item(() -> renderPdf(storyDataList, options))
+                    .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
+                    .emitOn(cmd -> eventLoopCtx.runOnContext(ignored -> cmd.run()));
+            });
     }
 
     @WithSession
