@@ -22,6 +22,7 @@ test:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   before_script:
+    - docker ps -aq --filter "name=postgres-" | xargs -r docker rm -f
     - docker run -d --name postgres-$CI_JOB_ID
         -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres
         -p 5432:5432 postgres:latest
@@ -62,6 +63,7 @@ e2e:
         pid=$(lsof -ti:$port 2>/dev/null) && kill -9 $pid 2>/dev/null || true
       done
       sleep 3
+    - docker ps -aq --filter "name=postgres-" | xargs -r docker rm -f
     - docker run -d --name postgres-$CI_JOB_ID
         -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres
         -p 5432:5432 postgres:latest
