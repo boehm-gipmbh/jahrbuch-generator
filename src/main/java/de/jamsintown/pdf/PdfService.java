@@ -71,10 +71,10 @@ public class PdfService {
     }
 
     /** Generates a PDF without membership check — for admin use only. */
-    public Uni<byte[]> generateForGroupAsAdmin(Long groupId) {
-        return loadAllStoryDataNoCheck(groupId)
+    public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options) {
+        return loadAllStoryDataNoCheck(groupId, options)
             .chain(storyDataList -> Uni.createFrom()
-                .item(() -> renderPdf(storyDataList, null))
+                .item(() -> renderPdf(storyDataList, options))
                 .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()))
             .emitOn(Infrastructure.getDefaultExecutor());
     }
@@ -100,14 +100,14 @@ public class PdfService {
     }
 
     @WithSession
-    Uni<List<StoryData>> loadAllStoryDataNoCheck(Long groupId) {
+    Uni<List<StoryData>> loadAllStoryDataNoCheck(Long groupId, PdfOptions options) {
         return Gruppe.<Gruppe>findById(groupId)
             .onItem().ifNull().failWith(() -> new NotFoundException("Gruppe nicht gefunden: " + groupId))
-            .chain(gruppe -> loadStoriesOrdered(gruppe, null)
+            .chain(gruppe -> loadStoriesOrdered(gruppe, options)
                 .chain(stories -> Multi.createFrom().iterable(stories)
                     .onItem().transformToUniAndConcatenate(this::loadStoryData)
                     .collect().asList())
-                .chain(storyDataList -> appendPendingData(storyDataList, gruppe, null)));
+                .chain(storyDataList -> appendPendingData(storyDataList, gruppe, options)));
     }
 
     private Uni<List<Story>> loadStoriesOrdered(Gruppe gruppe, PdfOptions options) {

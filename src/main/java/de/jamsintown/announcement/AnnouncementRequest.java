@@ -1,5 +1,6 @@
 package de.jamsintown.announcement;
 
+import de.jamsintown.pdf.PdfOptions;
 import java.util.List;
 
 public class AnnouncementRequest {
@@ -16,4 +17,5 @@ public class AnnouncementRequest {
     public String attachmentFilename;
     public String attachmentContent; // base64-encoded
     public Long attachmentGroupId;   // generate PDF from group
+    public PdfOptions pdfOptions;    // optional PDF generation options for GROUP_PDF mode
 }

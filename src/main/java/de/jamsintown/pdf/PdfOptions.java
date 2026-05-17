@@ -1,7 +1,9 @@
 package de.jamsintown.pdf;
 
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import java.util.List;
 
+@RegisterForReflection
 public record PdfOptions(
     List<Long> storyIds,
     boolean includePendingBilder,
