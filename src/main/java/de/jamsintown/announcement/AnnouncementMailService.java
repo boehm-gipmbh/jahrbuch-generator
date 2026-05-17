@@ -22,15 +22,18 @@ public class AnnouncementMailService {
 
     private final String resendApiKey;
     private final boolean mock;
+    private final String from;
     private final ObjectMapper mapper;
 
     @Inject
     public AnnouncementMailService(
             @ConfigProperty(name = "resend.api.key") String resendApiKey,
             @ConfigProperty(name = "resend.mock") boolean mock,
+            @ConfigProperty(name = "resend.from", defaultValue = "noreply@jamsintown.de") String from,
             ObjectMapper mapper) {
         this.resendApiKey = resendApiKey;
         this.mock = mock;
+        this.from = from;
         this.mapper = mapper;
     }
 
@@ -59,7 +62,7 @@ public class AnnouncementMailService {
         String html = "<p>Hallo %s,</p>%s".formatted(name != null ? name : "", bodyHtml);
 
         ObjectNode payload = mapper.createObjectNode();
-        payload.put("from", "noreply@jamsintown.de");
+        payload.put("from", from);
         payload.putArray("to").add(email);
         payload.put("subject", subject);
         payload.put("html", html);
