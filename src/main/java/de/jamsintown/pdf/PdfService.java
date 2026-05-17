@@ -32,6 +32,7 @@ import io.quarkus.panache.common.Sort;
 import io.quarkus.security.UnauthorizedException;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.Vertx;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.NotFoundException;
@@ -53,10 +54,12 @@ public class PdfService {
     String capturesPath;
 
     private final UserService userService;
+    private final Vertx vertx;
 
     @Inject
-    public PdfService(UserService userService) {
+    public PdfService(UserService userService, Vertx vertx) {
         this.userService = userService;
+        this.vertx = vertx;
     }
 
     public Uni<byte[]> generateForGroup(Long groupId) {
@@ -68,6 +71,18 @@ public class PdfService {
             .chain(storyDataList -> Uni.createFrom()
                 .item(() -> renderPdf(storyDataList, options))
                 .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
+    }
+
+    /** Generates a PDF without membership check — for admin use only. */
+    public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options) {
+        return loadAllStoryDataNoCheck(groupId, options)
+            .chain(storyDataList -> {
+                io.vertx.core.Context eventLoopCtx = vertx.getOrCreateContext();
+                return Uni.createFrom()
+                    .item(() -> renderPdf(storyDataList, options))
+                    .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
+                    .emitOn(cmd -> eventLoopCtx.runOnContext(ignored -> cmd.run()));
+            });
     }
 
     @WithSession
@@ -83,6 +98,17 @@ public class PdfService {
                         throw new UnauthorizedException("Kein Zugriff auf Gruppe: " + groupId);
                     }
                 }))
+            .chain(gruppe -> loadStoriesOrdered(gruppe, options)
+                .chain(stories -> Multi.createFrom().iterable(stories)
+                    .onItem().transformToUniAndConcatenate(this::loadStoryData)
+                    .collect().asList())
+                .chain(storyDataList -> appendPendingData(storyDataList, gruppe, options)));
+    }
+
+    @WithSession
+    Uni<List<StoryData>> loadAllStoryDataNoCheck(Long groupId, PdfOptions options) {
+        return Gruppe.<Gruppe>findById(groupId)
+            .onItem().ifNull().failWith(() -> new NotFoundException("Gruppe nicht gefunden: " + groupId))
             .chain(gruppe -> loadStoriesOrdered(gruppe, options)
                 .chain(stories -> Multi.createFrom().iterable(stories)
                     .onItem().transformToUniAndConcatenate(this::loadStoryData)

@@ -57,3 +57,20 @@ pg_migrate.sh
 playwright-report/
 test-results/
 openapi.yaml
+
+# E-Mail-Listen
+batch-emails.txt
+test-emails.txt
+
+# Lokale Captures
+captures*/
+
+# DB-Dumps
+*_dump*.sql
+prod_dump*.sql
+
+# Generierte API-Spec
+openapi.json
+
+# Infra-Configs (lokal)
+infra/

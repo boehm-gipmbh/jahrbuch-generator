@@ -22,17 +22,19 @@ test:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   before_script:
+    - export DB_PORT=$((5432 + CI_JOB_ID % 500))
+    - docker ps -q --filter "publish=${DB_PORT}" | xargs -r docker rm -f
     - docker run -d --name postgres-$CI_JOB_ID
         -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres
-        -p 5432:5432 postgres:latest
+        -p ${DB_PORT}:5432 postgres:latest
     - until docker exec postgres-$CI_JOB_ID pg_isready -U postgres; do sleep 1; done
     - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
         -DgroupId=org.gphoto -DartifactId=gphoto2-java
         -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
   script:
     - ./mvnw test -B
-        -Dquarkus.datasource.jdbc.url=jdbc:postgresql://localhost:5432/postgres
-        -Dquarkus.datasource.reactive.url=postgresql://localhost:5432/postgres?ssl=false
+        -Dquarkus.datasource.jdbc.url=jdbc:postgresql://localhost:${DB_PORT}/postgres
+        -Dquarkus.datasource.reactive.url=postgresql://localhost:${DB_PORT}/postgres?ssl=false
         -Dquarkus.datasource.username=postgres
         -Dquarkus.datasource.password=postgres
   after_script:
@@ -45,8 +47,6 @@ e2e:
   stage: e2e
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
-    DB_HOST: localhost
-    DB_PORT: "5432"
     DB_USER: postgres
     DB_NAME: postgres
     DB_PASS: postgres
@@ -54,6 +54,7 @@ e2e:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
   before_script:
+    - export DB_PORT=$((5432 + CI_JOB_ID % 500))
     - pkill -9 -f "quarkus" || true
     - pkill -9 -f "react-scripts" || true
     - pkill -9 -f "node.*frontend" || true
@@ -62,9 +63,10 @@ e2e:
         pid=$(lsof -ti:$port 2>/dev/null) && kill -9 $pid 2>/dev/null || true
       done
       sleep 3
+    - docker ps -q --filter "publish=${DB_PORT}" | xargs -r docker rm -f
     - docker run -d --name postgres-$CI_JOB_ID
         -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres
-        -p 5432:5432 postgres:latest
+        -p ${DB_PORT}:5432 postgres:latest
     - until docker exec postgres-$CI_JOB_ID pg_isready -U postgres; do sleep 1; done
     - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
         -DgroupId=org.gphoto -DartifactId=gphoto2-java
@@ -76,7 +78,7 @@ e2e:
       for f in e2e-test-bild-1.jpg e2e-test-bild-2.jpg e2e-test-bild-3.jpg e2e-test-bild-4.jpg e2e-test-bild-5.jpg; do
         printf '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9' > "captures/$f"
       done
-    - FREE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
+    - FREE_DATABASE_URL="postgresql://postgres:postgres@localhost:${DB_PORT}/postgres"
       MIGRATIONS_DIR="src/main/resources/db/migration"
       bash migrate.sh
     - |
@@ -88,8 +90,8 @@ e2e:
         -Dquarkus.hibernate-orm.database.generation=none \
         -Dquarkus.devservices.enabled=false \
         -Dquarkus.flyway.migrate-at-start=false \
-        -Dquarkus.datasource.reactive.url=postgresql://localhost:5432/postgres?ssl=false \
-        -Dquarkus.datasource.jdbc.url=jdbc:postgresql://localhost:5432/postgres \
+        -Dquarkus.datasource.reactive.url=postgresql://localhost:${DB_PORT}/postgres?ssl=false \
+        -Dquarkus.datasource.jdbc.url=jdbc:postgresql://localhost:${DB_PORT}/postgres \
         -Dquarkus.datasource.username=postgres \
         -Dquarkus.datasource.password=postgres \
         > target/e2e-backend.log 2>&1 &
@@ -181,11 +183,7 @@ deploy-prod:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   needs: [build]
-  before_script:
-    - curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/tmp/flyctl sh
-    - export PATH="$PATH:/tmp/flyctl/bin"
   script:
-    - flyctl deploy --image drdboehm/jahrbuch-generator:fly --strategy immediate
     - 'curl -sf -X GET "$(echo -n "$COOLIFY_DEPLOY_WEBHOOK")" -H "Authorization: Bearer $COOLIFY_TOKEN"'
   environment:
     name: production
