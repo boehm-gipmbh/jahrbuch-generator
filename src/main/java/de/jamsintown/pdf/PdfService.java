@@ -70,6 +70,14 @@ public class PdfService {
                 .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
     }
 
+    /** Generates a PDF without membership check — for admin use only. */
+    public Uni<byte[]> generateForGroupAsAdmin(Long groupId) {
+        return loadAllStoryDataNoCheck(groupId)
+            .chain(storyDataList -> Uni.createFrom()
+                .item(() -> renderPdf(storyDataList, null))
+                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
+    }
+
     @WithSession
     Uni<List<StoryData>> loadAllStoryData(Long groupId, PdfOptions options) {
         return userService.getCurrentUser()
@@ -88,6 +96,17 @@ public class PdfService {
                     .onItem().transformToUniAndConcatenate(this::loadStoryData)
                     .collect().asList())
                 .chain(storyDataList -> appendPendingData(storyDataList, gruppe, options)));
+    }
+
+    @WithSession
+    Uni<List<StoryData>> loadAllStoryDataNoCheck(Long groupId) {
+        return Gruppe.<Gruppe>findById(groupId)
+            .onItem().ifNull().failWith(() -> new NotFoundException("Gruppe nicht gefunden: " + groupId))
+            .chain(gruppe -> loadStoriesOrdered(gruppe, null)
+                .chain(stories -> Multi.createFrom().iterable(stories)
+                    .onItem().transformToUniAndConcatenate(this::loadStoryData)
+                    .collect().asList())
+                .chain(storyDataList -> appendPendingData(storyDataList, gruppe, null)));
     }
 
     private Uni<List<Story>> loadStoriesOrdered(Gruppe gruppe, PdfOptions options) {

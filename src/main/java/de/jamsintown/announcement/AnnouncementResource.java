@@ -103,7 +103,7 @@ public class AnnouncementResource {
 
     private Uni<Void> resolveAttachment(AnnouncementRequest request) {
         if (request.attachmentGroupId != null) {
-            return pdfService.generateForGroup(request.attachmentGroupId)
+            return pdfService.generateForGroupAsAdmin(request.attachmentGroupId)
                     .invoke(bytes -> {
                         request.attachmentFilename = "jahrbuch-" + request.attachmentGroupId + ".pdf";
                         request.attachmentContent = Base64.getEncoder().encodeToString(bytes);
