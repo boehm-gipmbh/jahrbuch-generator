@@ -73,13 +73,13 @@ public class PdfService {
                 .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
     }
 
-    /** Generates a PDF without membership check — for admin use only. */
+    /** Generates a PDF without membership check — for admin use only. Uses compact image quality to stay within email attachment limits. */
     public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options) {
         return loadAllStoryDataNoCheck(groupId, options)
             .chain(storyDataList -> {
                 io.vertx.core.Context eventLoopCtx = vertx.getOrCreateContext();
                 return Uni.createFrom()
-                    .item(() -> renderPdf(storyDataList, options))
+                    .item(() -> renderPdf(storyDataList, options, true))
                     .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
                     .emitOn(cmd -> eventLoopCtx.runOnContext(ignored -> cmd.run()));
             });
@@ -171,6 +171,10 @@ public class PdfService {
     }
 
     byte[] renderPdf(List<StoryData> stories, PdfOptions options) {
+        return renderPdf(stories, options, false);
+    }
+
+    byte[] renderPdf(List<StoryData> stories, PdfOptions options, boolean compact) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
             PdfDocument pdfDoc = new PdfDocument(new PdfWriter(out));
@@ -198,7 +202,7 @@ public class PdfService {
             }
 
             for (int i = 0; i < stories.size(); i++) {
-                renderStory(doc, stories.get(i), i, options);
+                renderStory(doc, stories.get(i), i, options, compact);
                 if (i < stories.size() - 1) {
                     doc.add(new AreaBreak());
                 }
@@ -233,14 +237,18 @@ public class PdfService {
     };
 
     private void renderStory(Document doc, StoryData sd) {
-        renderStory(doc, sd, 0);
+        renderStory(doc, sd, 0, null, false);
     }
 
     private void renderStory(Document doc, StoryData sd, int storyIndex) {
-        renderStory(doc, sd, storyIndex, null);
+        renderStory(doc, sd, storyIndex, null, false);
     }
 
     private void renderStory(Document doc, StoryData sd, int storyIndex, PdfOptions options) {
+        renderStory(doc, sd, storyIndex, options, false);
+    }
+
+    private void renderStory(Document doc, StoryData sd, int storyIndex, PdfOptions options, boolean compact) {
         Story story = sd.story();
         String layout = story != null ? story.layout : null;
 
@@ -249,21 +257,21 @@ public class PdfService {
             String title = story != null ? story.name : "Sonstige";
             String subtitle = story != null ? story.description : null;
             renderStoryHeader(doc, title, subtitle, color);
-            renderScrapbook(doc, sd, color);
+            renderScrapbook(doc, sd, color, compact);
         } else if ("grid".equals(layout)) {
             String title = story != null ? story.name : "Sonstige";
             doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
                 doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
             }
-            renderThreeColumn(doc, sd);
+            renderThreeColumn(doc, sd, compact);
         } else if ("1col".equals(layout)) {
             String title = story != null ? story.name : "Sonstige";
             doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
                 doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
             }
-            renderOneColumn(doc, sd);
+            renderOneColumn(doc, sd, compact);
         } else {
             // Default: 2-column classic (layout == "2col" or null)
             String title = story != null ? story.name : "Sonstige";
@@ -271,7 +279,7 @@ public class PdfService {
             if (story != null && story.description != null && !story.description.isBlank()) {
                 doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
             }
-            renderTwoColumn(doc, sd);
+            renderTwoColumn(doc, sd, compact);
         }
     }
 
@@ -297,6 +305,10 @@ public class PdfService {
     }
 
     private void renderScrapbook(Document doc, StoryData sd, DeviceRgb accentColor) {
+        renderScrapbook(doc, sd, accentColor, false);
+    }
+
+    private void renderScrapbook(Document doc, StoryData sd, DeviceRgb accentColor, boolean compact) {
         List<Bild> bilder = sd.bilder();
         List<Text> texte = sd.texte();
 
@@ -313,7 +325,7 @@ public class PdfService {
         }
 
         for (int i = 0; i < heroes.size(); i++) {
-            doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true));
+            doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact));
         }
 
         // All remaining items (images + texts) sorted by storyPosition into a single
@@ -336,7 +348,7 @@ public class PdfService {
             Item item = flow.get(i);
             Cell target = (i % 2 == 0) ? left : right;
             if (item.isBild()) {
-                target.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(88), heroes.size() + i, false));
+                target.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(88), heroes.size() + i, false, compact));
             } else {
                 target.add(buildTextDiv(item.text()).setMarginTop(4).setMarginBottom(8));
             }
@@ -347,6 +359,10 @@ public class PdfService {
     }
 
     private void renderOneColumn(Document doc, StoryData sd) {
+        renderOneColumn(doc, sd, false);
+    }
+
+    private void renderOneColumn(Document doc, StoryData sd, boolean compact) {
         record Item(int pos, boolean isBild, Bild bild, Text text) {}
         List<Item> items = Stream.concat(
             sd.bilder().stream().map(b -> new Item(b.storyPosition != null ? b.storyPosition : 0, true, b, null)),
@@ -355,7 +371,7 @@ public class PdfService {
 
         for (Item item : items) {
             if (item.isBild()) {
-                doc.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+                doc.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact));
             } else {
                 doc.add(buildTextDiv(item.text()));
             }
@@ -363,6 +379,10 @@ public class PdfService {
     }
 
     private void renderTwoColumn(Document doc, StoryData sd) {
+        renderTwoColumn(doc, sd, false);
+    }
+
+    private void renderTwoColumn(Document doc, StoryData sd, boolean compact) {
         record Item(int pos, boolean isBild, Bild bild, Text text) {}
 
         List<Item> col0 = Stream.concat(
@@ -383,13 +403,13 @@ public class PdfService {
 
         Cell leftCell = new Cell().setBorder(null).setPaddingRight(3).setVerticalAlignment(VerticalAlignment.TOP);
         for (Item item : col0) {
-            if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+            if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact));
             else leftCell.add(buildTextDiv(item.text()));
         }
 
         Cell rightCell = new Cell().setBorder(null).setPaddingLeft(3).setVerticalAlignment(VerticalAlignment.TOP);
         for (Item item : col1) {
-            if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+            if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact));
             else rightCell.add(buildTextDiv(item.text()));
         }
 
@@ -399,6 +419,10 @@ public class PdfService {
     }
 
     private void renderThreeColumn(Document doc, StoryData sd) {
+        renderThreeColumn(doc, sd, false);
+    }
+
+    private void renderThreeColumn(Document doc, StoryData sd, boolean compact) {
         record Item(int pos, boolean isBild, Bild bild, Text text) {}
 
         java.util.function.IntFunction<List<Item>> colItems = c -> Stream.concat(
@@ -416,7 +440,7 @@ public class PdfService {
             Cell cell = new Cell().setBorder(null).setPaddingLeft(padLeft).setPaddingRight(padRight)
                 .setVerticalAlignment(VerticalAlignment.TOP);
             for (Item item : colItems.apply(c)) {
-                if (item.isBild()) cell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100)));
+                if (item.isBild()) cell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact));
                 else cell.add(buildTextDiv(item.text()));
             }
             table.addCell(cell);
@@ -425,9 +449,13 @@ public class PdfService {
     }
 
     private byte[] loadScaledImageBytes(String path) {
+        return loadScaledImageBytes(path, "1200x1200>", 80);
+    }
+
+    private byte[] loadScaledImageBytes(String path, String resize, int quality) {
         try {
             Process p = new ProcessBuilder(
-                "convert", path, "-resize", "1200x1200>", "-quality", "80", "jpeg:-"
+                "convert", path, "-resize", resize, "-quality", String.valueOf(quality), "jpeg:-"
             ).start();
             byte[] bytes = p.getInputStream().readAllBytes();
             int exit = p.waitFor();
@@ -443,10 +471,16 @@ public class PdfService {
     }
 
     private Div buildBildDiv(Bild bild, UnitValue width) {
+        return buildBildDiv(bild, width, false);
+    }
+
+    private Div buildBildDiv(Bild bild, UnitValue width, boolean compact) {
         Div div = new Div().setMarginBottom(6);
         String path = capturesPath + bild.getPfad().replaceFirst("^/", "");
         try {
-            byte[] imageBytes = loadScaledImageBytes(path);
+            byte[] imageBytes = compact
+                ? loadScaledImageBytes(path, "600x600>", 55)
+                : loadScaledImageBytes(path);
             Image img = imageBytes != null
                 ? new Image(ImageDataFactory.create(imageBytes)).setWidth(width)
                 : new Image(ImageDataFactory.create(path)).setWidth(width);
@@ -463,6 +497,10 @@ public class PdfService {
     }
 
     private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero) {
+        return buildPolaroidDiv(bild, width, seed, hero, false);
+    }
+
+    private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero, boolean compact) {
         double maxDeg = hero ? 2.5 : 4.0;
         double angle = ((new Random((bild.id != null ? bild.id : 0L) + seed).nextDouble() * 2 - 1) * maxDeg) * Math.PI / 180.0;
 
@@ -481,7 +519,9 @@ public class PdfService {
 
         String path = capturesPath + bild.getPfad().replaceFirst("^/", "");
         try {
-            byte[] imageBytes = loadScaledImageBytes(path);
+            byte[] imageBytes = compact
+                ? loadScaledImageBytes(path, "600x600>", 55)
+                : loadScaledImageBytes(path);
             Image img = imageBytes != null
                 ? new Image(ImageDataFactory.create(imageBytes)).setWidth(UnitValue.createPercentValue(100))
                 : new Image(ImageDataFactory.create(path)).setWidth(UnitValue.createPercentValue(100));
