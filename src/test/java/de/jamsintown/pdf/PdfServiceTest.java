@@ -24,7 +24,7 @@ class PdfServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new PdfService(null);
+        service = new PdfService(null, null);
         setCapturesPath(service, tempDir.toString() + "/");
     }
 
