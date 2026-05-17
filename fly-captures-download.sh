@@ -13,8 +13,11 @@ fi
 # Absoluten Pfad zum Token-File ermitteln
 TOKEN_FILE_ABS="$(readlink -f "$TOKEN_FILE")"
 
-# Zielverzeichnis für heruntergeladene Dateien (optionales Argument, Standard: ./captures)
-DOWNLOAD_DIR="${1:-./captures}"
+# Zielverzeichnis für heruntergeladene Dateien (optionales Argument, Standard: letztes captures_* oder neues mit Timestamp)
+_LAST_DIR=$(ls -dt ./captures_* 2>/dev/null | head -1)
+DOWNLOAD_DIR="${1:-${_LAST_DIR:-./captures_$(date +%Y%m%d_%H%M%S)}}"
+# Optionales Remote-Ziel für rsync, z.B. root@178.105.56.161:/data/captures
+REMOTE_TARGET="${2:-}"
 FLYCTL="/home/dboehm/.fly/bin/flyctl"
 
 # Verzeichnis erstellen, ignoriere Fehler wenn es bereits existiert
@@ -25,13 +28,8 @@ echo "Dateiliste von /data/captures ermitteln..."
 # Temporäre Datei für die Dateiliste
 FILE_LIST=$(mktemp)
 
-# Den exakt funktionierenden Befehl verwenden (ohne -type f Filter)
-FLY_API_TOKEN=$(cat "$TOKEN_FILE_ABS") $FLYCTL ssh sftp find /data/captures > "$FILE_LIST"
+FLY_API_TOKEN=$(cat "$TOKEN_FILE_ABS") $FLYCTL ssh console -a "$APP_NAME" -C "find /data/captures -type f" > "$FILE_LIST"
 
-# Dateien aus der Liste filtern (Verzeichnisse ausschließen)
-grep -v "/$" "$FILE_LIST" > "${FILE_LIST}.tmp" && mv "${FILE_LIST}.tmp" "$FILE_LIST"
-
-# Fehlerbehandlung
 if [ $? -ne 0 ] || [ ! -s "$FILE_LIST" ]; then
   echo "Fehler: Konnte keine Verbindung zu Fly.io herstellen oder keine Dateien gefunden."
   rm -f "$FILE_LIST"
@@ -62,10 +60,29 @@ while read -r FILE_PATH; do
   # Zielverzeichnis anlegen
   mkdir -p "$TARGET_DIR"
 
+  # Bereits vorhandene und valide Dateien überspringen
+  LOCAL_FILE="$TARGET_DIR/$(basename "$RELATIVE_PATH")"
+  if [ -f "$LOCAL_FILE" ] && [ -s "$LOCAL_FILE" ]; then
+    CORRUPT=false
+    case "$LOCAL_FILE" in
+      *.jpg|*.jpeg|*.JPG|*.JPEG)
+        if command -v jpeginfo &>/dev/null; then
+          jpeginfo -c "$LOCAL_FILE" &>/dev/null || CORRUPT=true
+        fi
+        ;;
+    esac
+    if [ "$CORRUPT" = true ]; then
+      echo "  neu herunterladen (truncated/korrupt)"
+      rm -f "$LOCAL_FILE"
+    else
+      echo "  übersprungen (valide)"
+      continue
+    fi
+  fi
+
   # Datei herunterladen
   (cd "$TARGET_DIR" && FLY_API_TOKEN=$(cat "$TOKEN_FILE_ABS") $FLYCTL -a "$APP_NAME" ssh sftp get "$FILE_PATH")
 
-  # Prüfen ob Download erfolgreich war
   if [ $? -eq 0 ]; then
     echo "✓ $RELATIVE_PATH erfolgreich heruntergeladen"
   else
