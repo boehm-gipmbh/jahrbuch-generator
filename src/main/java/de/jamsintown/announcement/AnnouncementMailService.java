@@ -13,6 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @ApplicationScoped
 public class AnnouncementMailService {
@@ -43,18 +44,24 @@ public class AnnouncementMailService {
             return Uni.createFrom().item(new AnnouncementResult(0, 0, List.of()));
         }
 
-        List<Uni<Boolean>> sends = recipients.stream()
+        List<Recipient> filtered = recipients.stream()
                 .filter(r -> r.email() != null && !r.email().isBlank())
-                .map(r -> sendOne(r.email(), r.name(), subject, body, attachmentFilename, attachmentContent))
                 .toList();
 
-        return Uni.join().all(sends).andFailFast()
-                .map(results -> {
-                    int sent = (int) results.stream().filter(Boolean::booleanValue).count();
-                    int failed = results.size() - sent;
-                    return new AnnouncementResult(sent, failed, List.of());
-                })
-                .onFailure().recoverWithItem(e -> new AnnouncementResult(0, recipients.size(), List.of(e.getMessage())));
+        // Sequenziell senden um Resend-Rate-Limit (2 req/s) nicht zu überschreiten
+        AtomicInteger sent = new AtomicInteger(0);
+        AtomicInteger failed = new AtomicInteger(0);
+
+        Uni<Void> chain = Uni.createFrom().voidItem();
+        for (Recipient r : filtered) {
+            chain = chain.chain(() ->
+                sendOne(r.email(), r.name(), subject, body, attachmentFilename, attachmentContent)
+                    .invoke(ok -> { if (ok) sent.incrementAndGet(); else failed.incrementAndGet(); })
+                    .replaceWithVoid()
+            );
+        }
+        return chain.map(ignored -> new AnnouncementResult(sent.get(), failed.get(), List.of()))
+                .onFailure().recoverWithItem(e -> new AnnouncementResult(sent.get(), filtered.size() - sent.get(), List.of(e.getMessage())));
     }
 
     private Uni<Boolean> sendOne(String email, String name, String subject, String bodyHtml,
