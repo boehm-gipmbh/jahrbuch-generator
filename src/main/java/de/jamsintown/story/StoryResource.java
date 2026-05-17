@@ -1,5 +1,8 @@
 package de.jamsintown.story;
 
+import de.jamsintown.user.Gruppe;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
+import io.quarkus.panache.common.Sort;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -28,6 +31,15 @@ public class StoryResource {
   @GET
   public Uni<List<Story>> get() {
     return storyService.listForUser();
+  }
+
+  @GET
+  @Path("/by-group/{groupId}")
+  @RolesAllowed("admin")
+  @WithSession
+  public Uni<List<Story>> getByGroup(@PathParam("groupId") long groupId) {
+    return Gruppe.<Gruppe>findById(groupId)
+        .chain(g -> Story.<Story>find("group = ?1", Sort.by("orderPosition"), g).list());
   }
 
   @POST
