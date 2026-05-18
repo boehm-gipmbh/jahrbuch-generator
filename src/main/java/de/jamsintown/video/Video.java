@@ -9,6 +9,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import static de.jamsintown.video.VideoProcessingStatus.READY;
+
 import java.time.ZonedDateTime;
 
 @Entity
@@ -65,4 +67,8 @@ public class Video extends PanacheEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     public String metadata;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "processing_status", nullable = false)
+    public VideoProcessingStatus processingStatus = READY;
 }

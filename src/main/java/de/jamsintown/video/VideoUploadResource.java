@@ -11,6 +11,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.reactive.messaging.Channel;
+import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.jboss.resteasy.reactive.server.multipart.FormValue;
 import org.jboss.resteasy.reactive.server.multipart.MultipartFormDataInput;
 
@@ -39,6 +41,10 @@ public class VideoUploadResource {
     private final FfmpegService ffmpegService;
     private final io.vertx.mutiny.core.Vertx vertx;
     private final String defaultCapturesPath;
+
+    @Inject
+    @Channel("video-processing")
+    Emitter<VideoProcessingMessage> videoProcessingEmitter;
 
     @Inject
     public VideoUploadResource(VideoService videoService, StoryService storyService,
@@ -172,7 +178,6 @@ public class VideoUploadResource {
                         }
                     }
                     cleanupTmp(config.capturesPath, uploadId);
-                    runFfmpeg(finalPath);
                     ZonedDateTime capturedAt = ffmpegService.readCreationTime(finalPath);
                     String metadata = ffmpegService.readMetadataJson(finalPath);
                     vertxContext.runOnContext(v -> emitter.complete(new Object[]{finalPath, capturedAt, metadata}));
@@ -191,6 +196,7 @@ public class VideoUploadResource {
             video.description = videoDesc;
             video.priority = 3;
             video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
+            video.processingStatus = VideoProcessingStatus.PENDING;
             if (metadata != null) video.metadata = metadata;
 
             Long storyId = null;
@@ -202,9 +208,11 @@ public class VideoUploadResource {
                 return storyService.findById(storyIdLong).chain(story -> {
                     if (story != null) video.story = story;
                     return videoService.create(video);
-                }).map(v -> Response.ok(v).build());
+                }).invoke(v -> emitProcessingMessage(v, finalPath)).map(v -> Response.ok(v).build());
             }
-            return videoService.create(video).map(v -> Response.ok(v).build());
+            return videoService.create(video)
+                    .invoke(v -> emitProcessingMessage(v, finalPath))
+                    .map(v -> Response.ok(v).build());
         }).onFailure().recoverWithItem(e -> {
             log.error("Assembly-Fehler: {}", e.getMessage(), e);
             cleanupTmp(config.capturesPath, uploadId);
@@ -284,11 +292,11 @@ public class VideoUploadResource {
                     try (fileStream) {
                         Files.copy(fileStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
                     }
-                    runFfmpeg(targetPath);
                     ZonedDateTime capturedAt = ffmpegService.readCreationTime(targetPath);
                     String metadata = ffmpegService.readMetadataJson(targetPath);
                     return new Object[]{targetPath, capturedAt, metadata};
                 }).chain(result -> {
+                    java.nio.file.Path targetPath = (java.nio.file.Path) result[0];
                     ZonedDateTime capturedAt = (ZonedDateTime) result[1];
                     String metadata = (String) result[2];
                     Video video = new Video();
@@ -297,6 +305,7 @@ public class VideoUploadResource {
                     video.description = finalDesc;
                     video.priority = 3;
                     video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
+                    video.processingStatus = VideoProcessingStatus.PENDING;
                     if (metadata != null) video.metadata = metadata;
 
                     Long storyId = null;
@@ -308,9 +317,9 @@ public class VideoUploadResource {
                         return storyService.findById(sid).chain(story -> {
                             if (story != null) video.story = story;
                             return videoService.create(video);
-                        });
+                        }).invoke(v -> emitProcessingMessage(v, targetPath));
                     }
-                    return videoService.create(video);
+                    return videoService.create(video).invoke(v -> emitProcessingMessage(v, targetPath));
                 });
 
             } catch (Exception e) {
@@ -360,17 +369,9 @@ public class VideoUploadResource {
         return Arrays.stream(allowedTypes.split(",")).anyMatch(t -> t.trim().equalsIgnoreCase(ext));
     }
 
-    private void runFfmpeg(java.nio.file.Path videoPath) {
-        if (!ffmpegService.isAvailable()) {
-            log.warn("FFmpeg nicht verfügbar — kein Transcode für {}", videoPath.getFileName());
-            return;
-        }
-        io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool().execute(() -> {
-            ffmpegService.generateSnapshot(videoPath);
-            if (!"h264".equals(ffmpegService.detectCodec(videoPath))) {
-                ffmpegService.processVideo(videoPath);
-            }
-        });
+    private void emitProcessingMessage(Video video, java.nio.file.Path videoPath) {
+        videoProcessingEmitter.send(new VideoProcessingMessage(video.id, videoPath.toString()));
+        log.info("Video-Processing-Message gesendet für Video {}: {}", video.id, videoPath.getFileName());
     }
 
     private static class UploadConfig {
