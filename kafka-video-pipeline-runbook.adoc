@@ -153,13 +153,13 @@ participant "Backend\n(Hetzner)" as backend
 participant "PostgreSQL\n(Hetzner)" as pg
 queue "Redpanda\n(Netcup :9093)" as kafka
 participant "Worker\n(Netcup)" as worker
-storage "/data/captures\n(Netcup)" as fs
+database "/data/captures\n(Netcup)" as fs
 
-user -> backend : POST /api/videos/upload\n(multipart/form-data)
-backend -> fs : Datei speichern\n/data/captures/videos/{groupId}/{uuid}.mp4
+user -> backend : POST /api/videos/upload
+backend -> fs : Datei speichern
 backend -> pg : INSERT INTO videos\n(pfad, title, user_id, ...)
 pg --> backend : video.id = 1251
-backend -> kafka : Produce Message\ntopic: video-processing\n{\n  videoId: 1251,\n  filename: "20260518_...mp4"\n}
+backend -> kafka : Produce Message\n{ videoId: 1251, videoPath: "..." }
 backend --> user : 201 Created
 
 note over kafka
