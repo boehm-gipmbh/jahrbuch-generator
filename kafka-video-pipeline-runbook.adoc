@@ -1,0 +1,901 @@
+= Kafka Video-Processing Pipeline — Runbook
+:toc: left
+:toc-title: Inhalt
+:toclevels: 3
+:sectnums:
+:icons: font
+:source-highlighter: highlight.js
+:imagesdir: docs/diagrams
+
+== Übersicht
+
+Dieses Runbook beschreibt den vollständigen Aufbau der asynchronen Video-Processing-Pipeline für den Jahrbuch-Generator. Videos werden nach dem Upload vom Backend per Kafka-Nachricht an einen dedizierten Worker delegiert, der FFmpeg-Verarbeitung auf einem separaten Root-Server (Netcup) durchführt.
+
+=== Ziele
+
+* FFmpeg-Verarbeitung vom Backend entkoppeln (kein Blockieren des Quarkus-Event-Loops)
+* Worker läuft auf eigenem Server (Netcup) mit ausreichend CPU/RAM
+* Kommunikation über WireGuard VPN (kein öffentliches Netz)
+* Staging- und Prod-Umgebung getrennt
+
+=== Infrastruktur-Übersicht
+
+[cols="2,2,2,2", options="header"]
+|===
+|Server |Provider |Öffentliche IP |WireGuard IP
+|Hetzner (App-Server) |Hetzner Cloud |178.105.56.161 |10.0.0.1/24
+|Netcup (Worker-Server) |Netcup |185.163.117.234 |10.0.0.2/24
+|===
+
+[cols="2,3,2", options="header"]
+|===
+|Komponente |Beschreibung |Läuft auf
+|Backend (Quarkus) |REST-API, Video-Upload, Kafka-Producer |Hetzner (Coolify)
+|Redpanda |Kafka-kompatibler Message Broker |Netcup (Docker)
+|Processing Worker |Kafka-Consumer, FFmpeg-Ausführung |Netcup (Docker)
+|PostgreSQL |Primäre Datenbank |Hetzner (Coolify)
+|===
+
+== Architektur-Diagramme
+
+=== Komponentendiagramm
+
+[plantuml, component-overview, svg]
+----
+@startuml
+!theme plain
+skinparam componentStyle rectangle
+skinparam backgroundColor white
+
+package "Hetzner (10.0.0.1)" {
+  package "Coolify (Docker)" {
+    [Backend\n(Quarkus REST-API)] as backend
+    database "PostgreSQL\n(Staging: :5433\nProd: :5432)" as db
+    [Traefik / Proxy] as proxy
+  }
+  component "WireGuard\nwg0: 10.0.0.1" as wg_hetzner
+  component "br-0df7bb5ff836\n10.0.1.0/24" as coolify_bridge
+}
+
+package "Netcup (10.0.0.2)" {
+  component "WireGuard\nwg0: 10.0.0.2" as wg_netcup
+
+  package "Staging (/opt/worker-staging)" {
+    [Redpanda\n(Port 9093)] as redpanda_stg
+    [Worker\n(Staging)] as worker_stg
+  }
+
+  package "Prod (/opt/worker)" {
+    [Redpanda\n(Port 9092)] as redpanda_prd
+    [Worker\n(Prod)] as worker_prd
+  }
+
+  storage "/data/captures" as captures
+}
+
+proxy --> backend
+backend --> coolify_bridge : "TCP"
+coolify_bridge --> wg_hetzner : "FORWARD\n(nftables)"
+wg_hetzner <--> wg_netcup : "WireGuard UDP\n:51820"
+
+backend --> redpanda_stg : "Kafka Produce\n10.0.0.2:9093"
+backend --> redpanda_prd : "Kafka Produce\n10.0.0.2:9092"
+
+redpanda_stg --> worker_stg : "topic:\nvideo-processing"
+redpanda_prd --> worker_prd : "topic:\nvideo-processing"
+
+worker_stg --> db : "JDBC/Reactive\n10.0.0.1:5433"
+worker_prd --> db : "JDBC/Reactive\n10.0.0.1:5432"
+
+worker_stg --> captures : "FFmpeg\n/data/captures"
+worker_prd --> captures : "FFmpeg\n/data/captures"
+@enduml
+----
+
+=== Deployment-Diagramm (Netzwerk)
+
+[plantuml, network-deployment, svg]
+----
+@startuml
+!theme plain
+skinparam backgroundColor white
+
+node "Hetzner\n178.105.56.161" as hetzner {
+  node "Docker Engine" as docker_h {
+    node "Coolify Bridge\nbr-0df7bb5ff836\n10.0.1.0/24" as bridge {
+      component "Backend Container\n10.0.1.9" as backend_c
+      component "PostgreSQL\nx7vnrj1prry8aljcbbqvjme0\n→ :5433 (WG)" as db_stg
+    }
+    component "docker0\n10.0.0.1/24\n⚠ Konflikt mit WireGuard!" as docker0
+  }
+  component "wg0\n10.0.0.1/24\nUDP :51820" as wg0_h
+
+  note right of docker0
+    **Problem:** docker0 und wg0
+    haben identisches Subnetz
+    10.0.0.0/24 — Docker setzt
+    DROP-Regel in ip raw PREROUTING
+    für alle Pakete dst=10.0.0.2
+    von iifname != docker0
+  end note
+}
+
+node "Netcup\n185.163.117.234" as netcup {
+  component "wg0\n10.0.0.2/24\nUDP :51820" as wg0_n
+
+  node "Staging\n/opt/worker-staging" as staging {
+    component "Redpanda\n--kafka-addr 0.0.0.0:9093\n--advertise-kafka-addr\n  10.0.0.2:9093" as rp_s
+    component "Worker\nimage: drdboehm/\njahrbuch-processing-worker" as wkr_s
+  }
+  node "Prod\n/opt/worker" as prod_p {
+    component "Redpanda\n--kafka-addr 0.0.0.0:9092\n--advertise-kafka-addr\n  10.0.0.2:9092" as rp_p
+    component "Worker" as wkr_p
+  }
+}
+
+wg0_h <--> wg0_n : "WireGuard Tunnel\nHKEY: GTVBn2Bn...\nAllowedIPs(H→N): 10.0.0.2/32\nAllowedIPs(N→H): 10.0.0.1/32,\n                  10.0.1.0/24"
+
+backend_c -down-> wg0_h : "geroutet via\nbridge → wg0\n(nach nftables-Fix)"
+@enduml
+----
+
+=== Nachrichtenfluss (Sequenzdiagramm)
+
+[plantuml, sequence-video-upload, svg]
+----
+@startuml
+!theme plain
+skinparam backgroundColor white
+autonumber
+
+actor "Nutzer" as user
+participant "Backend\n(Hetzner)" as backend
+participant "PostgreSQL\n(Hetzner)" as pg
+queue "Redpanda\n(Netcup :9093)" as kafka
+participant "Worker\n(Netcup)" as worker
+storage "/data/captures\n(Netcup)" as fs
+
+user -> backend : POST /api/videos/upload\n(multipart/form-data)
+backend -> fs : Datei speichern\n/data/captures/videos/{groupId}/{uuid}.mp4
+backend -> pg : INSERT INTO videos\n(pfad, title, user_id, ...)
+pg --> backend : video.id = 1251
+backend -> kafka : Produce Message\ntopic: video-processing\n{\n  videoId: 1251,\n  filename: "20260518_...mp4"\n}
+backend --> user : 201 Created
+
+note over kafka
+  Message liegt im Topic
+  bis Worker sie konsumiert
+end note
+
+kafka -> worker : Consumer Poll\nConsumerGroup:\njahrbuch-processing-worker
+worker -> pg : SELECT * FROM videos\nWHERE id = 1251
+pg --> worker : video record
+worker -> fs : Öffne\n/data/captures/videos/{groupId}/{uuid}.mp4
+worker -> worker : FFmpeg-Verarbeitung\n(Thumbnail, Transcode, ...)
+worker -> pg : UPDATE videos\nSET processing_status = 'DONE'\nWHERE id = 1251
+
+note over worker, pg
+  Im Fehlerfall:
+  processing_status = 'ERROR'
+end note
+@enduml
+----
+
+=== Paket-Routing durch den Netzwerk-Stack
+
+[plantuml, packet-routing, svg]
+----
+@startuml
+!theme plain
+skinparam backgroundColor white
+skinparam activity {
+  BackgroundColor #f0f8ff
+  BorderColor #336699
+}
+
+title Paket-Routing: Backend-Container → Redpanda (10.0.0.2:9093)
+
+start
+:Backend-Container (10.0.1.9) sendet TCP SYN\nan 10.0.0.2:9093;
+
+:Paket verlässt Container via\nbr-0df7bb5ff836 (Gateway 10.0.1.1);
+
+:nftables: ip raw PREROUTING;
+
+if (ip daddr 10.0.0.2\niifname != "docker0"?) then (ja → DROP!)
+  :🔴 PAKET GEDROPPED!\nDocker-INTERNAL Isolation-Regel\nschützt Container 10.0.0.2 auf docker0;
+  note right
+    **FIX:** Exception-Regel VOR dem DROP:
+    nft insert rule ip raw PREROUTING position 7
+      ip saddr 10.0.1.0/24
+      ip daddr 10.0.0.2
+      counter return
+  end note
+else (nein, Exception greift)
+  :nftables: ip filter FORWARD;
+
+  if (iifname br-0df7bb5ff836\noifname wg0 ACCEPT?) then (ACCEPT)
+    :Routing: ip route get 10.0.0.2\n→ dev wg0 src 10.0.0.1;
+
+    :nftables: ip nat POSTROUTING\n(MASQUERADE aktiv);
+
+    :WireGuard-Routing:\ndst 10.0.0.2 → Netcup-Peer\nverschlüsselt via UDP :51820;
+
+    :Netcup empfängt WG-Paket\nAllowedIPs-Check:\nsrc 10.0.1.9 ∈ 10.0.1.0/24 ✓;
+
+    :Redpanda empfängt TCP SYN\nauf Port 9093;
+    :TCP SYN-ACK zurück via WireGuard;
+    :TCP Verbindung aufgebaut ✓;
+    stop
+  else (DROP)
+    :🔴 DROP durch FORWARD-Policy;
+    stop
+  endif
+endif
+@enduml
+----
+
+== Voraussetzungen
+
+=== WireGuard-Tunnel aufbauen
+
+Der WireGuard-Tunnel zwischen Hetzner und Netcup muss vor allem anderen eingerichtet sein.
+
+==== Hetzner (`/etc/wireguard/wg0.conf`)
+
+[source,ini]
+----
+[Interface]
+PrivateKey = <HETZNER_PRIVATE_KEY>
+Address = 10.0.0.1/24
+ListenPort = 51820
+
+[Peer]
+PublicKey = <NETCUP_PUBLIC_KEY>
+Endpoint = 185.163.117.234:51820
+# WICHTIG: 10.0.1.0/24 hinzufügen damit Antworten an Docker-Container zurückgeroutet werden
+AllowedIPs = 10.0.0.2/32
+PersistentKeepalive = 25
+----
+
+IMPORTANT: `AllowedIPs` auf Netcup-Seite muss `10.0.1.0/24` enthalten (Docker-Subnet von Hetzner). Ohne das verwirft WireGuard auf Netcup alle Pakete mit Source-IP aus dem Container-Subnet.
+
+==== Netcup (`/etc/wireguard/wg0.conf`)
+
+[source,ini]
+----
+[Interface]
+PrivateKey = <NETCUP_PRIVATE_KEY>
+Address = 10.0.0.2/24
+ListenPort = 51820
+
+[Peer]
+PublicKey = <HETZNER_PUBLIC_KEY>
+Endpoint = 178.105.56.161:51820
+# WICHTIG: 10.0.1.0/24 damit Antworten an Backend-Container geroutet werden
+AllowedIPs = 10.0.0.1/32, 10.0.1.0/24
+PersistentKeepalive = 25
+----
+
+WireGuard aktivieren:
+
+[source,bash]
+----
+# Auf beiden Servern:
+systemctl enable --now wg-quick@wg0
+
+# Verbindung testen:
+ping -c 3 10.0.0.2   # von Hetzner aus
+ping -c 3 10.0.0.1   # von Netcup aus
+----
+
+==== WireGuard-Konfiguration live updaten (ohne Neustart)
+
+Falls die `AllowedIPs` nachträglich ergänzt werden müssen:
+
+[source,bash]
+----
+# Auf Netcup: Docker-Subnet zu AllowedIPs hinzufügen
+wg set wg0 peer <HETZNER_PUBLIC_KEY> allowed-ips 10.0.0.1/32,10.0.1.0/24
+
+# Route für Docker-Subnet auf Netcup hinzufügen
+ip route add 10.0.1.0/24 dev wg0
+
+# Persistieren in wg0.conf und systemd-Einheit neu laden
+wg-quick strip wg0 > /etc/wireguard/wg0.conf  # VORSICHT: zerstört Kommentare
+# Besser: manuell in wg0.conf AllowedIPs ergänzen
+----
+
+== Hetzner-Server: nftables-Regeln
+
+=== Problem: Docker-INTERNAL Isolation
+
+Docker setzt automatisch DROP-Regeln in `ip raw PREROUTING` um Container-IPs zu schützen. Da `docker0` das Subnetz `10.0.0.0/24` hat — identisch mit dem WireGuard-Subnetz — wird die WireGuard-IP `10.0.0.2` ebenfalls durch diese Regel geschützt:
+
+[source]
+----
+ip daddr 10.0.0.2 iifname != "docker0" counter drop   # handle 7
+----
+
+Diese Regel droppt ALLE Pakete an `10.0.0.2` die nicht von `docker0` kommen — also auch den Backend-Container-Traffic über die Coolify-Bridge.
+
+=== Fix: Exception-Regel einfügen
+
+[source,bash]
+----
+# Prüfen welche Handle-Nummer die DROP-Regel hat:
+nft -a list chain ip raw PREROUTING | grep '10.0.0.2'
+# Ausgabe: ip daddr 10.0.0.2 iifname != "docker0" ... drop # handle 7
+
+# Exception VOR dem DROP einfügen (position = Handle-Nummer des DROP):
+nft insert rule ip raw PREROUTING position 7 \
+  ip saddr 10.0.1.0/24 ip daddr 10.0.0.2 counter return
+
+# Prüfen:
+nft -a list chain ip raw PREROUTING | grep -A1 -B1 '10.0.0.2'
+----
+
+IMPORTANT: Docker erneuert diese PREROUTING-Regeln beim Neustart des Docker-Daemons (aber nicht beim Container-Neustart). Nach einem `systemctl restart docker` muss die Exception-Regel erneut eingefügt werden.
+
+=== FORWARD-Regeln für WireGuard ↔ Coolify-Bridge
+
+[source,bash]
+----
+# Coolify-Bridge-Interface ermitteln:
+ip link show | grep 'br-'
+# Beispiel: br-0df7bb5ff836
+
+# FORWARD-Regeln setzen:
+iptables -I FORWARD -i br-0df7bb5ff836 -o wg0 -j ACCEPT
+iptables -I FORWARD -i wg0 -o br-0df7bb5ff836 -j ACCEPT
+
+# MASQUERADE damit Container-IPs (10.0.1.x) über WireGuard NAT'd werden:
+iptables -t nat -I POSTROUTING -s 10.0.1.0/24 -o wg0 -j MASQUERADE
+
+# Regeln persistent speichern:
+apt-get install -y iptables-persistent netfilter-persistent
+netfilter-persistent save
+----
+
+NOTE: Die MASQUERADE-Regel für wg0 ist technisch redundant wenn WireGuard's AllowedIPs auf Netcup `10.0.1.0/24` enthält (dann wird keine Source-NAT benötigt). Sie schadet aber nicht.
+
+=== Vollständige nftables-Prüfung nach Setup
+
+[source,bash]
+----
+# FORWARD-Chain prüfen (unsere Regeln müssen VOR DOCKER-USER stehen):
+nft list chain ip filter FORWARD
+
+# PREROUTING-Exception prüfen:
+nft list chain ip raw PREROUTING | grep '10.0.0.2'
+
+# Konnektivitätstest vom Backend-Container:
+CONTAINER=$(docker ps --filter 'name=rf8fzkv9' --format '{{.Names}}' | head -1)
+docker exec $CONTAINER bash -c 'timeout 3 bash -c "echo > /dev/tcp/10.0.0.2/9093" && echo OPEN || echo CLOSED'
+----
+
+== Netcup-Server: Redpanda und Worker
+
+=== Verzeichnisstruktur
+
+[source,bash]
+----
+/opt/
+├── worker/              # Produktion
+│   ├── docker-compose.yml
+│   └── .env
+└── worker-staging/      # Staging
+    ├── docker-compose.yml
+    └── .env
+----
+
+=== Deploy-User anlegen
+
+[source,bash]
+----
+useradd -m -s /bin/bash deploy
+usermod -aG docker deploy
+
+# SSH-Key für GitLab CI/CD hinterlegen:
+mkdir -p /home/deploy/.ssh
+# Public Key des SSH_PRIVATE_KEY-GitLab-Variable eintragen:
+echo "ssh-ed25519 AAAA... gitlab-ci" >> /home/deploy/.ssh/authorized_keys
+chmod 700 /home/deploy/.ssh
+chmod 600 /home/deploy/.ssh/authorized_keys
+chown -R deploy:deploy /home/deploy/.ssh
+----
+
+=== Staging: `/opt/worker-staging/docker-compose.yml`
+
+[source,yaml]
+----
+services:
+  redpanda:
+    image: redpandadata/redpanda:latest
+    restart: unless-stopped
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 512M
+      - --overprovisioned
+      # Staging nutzt Port 9093 (Prod: 9092) um Konflikte zu vermeiden
+      - --kafka-addr PLAINTEXT://0.0.0.0:9093
+      # WICHTIG: WireGuard-IP advertisen, nicht localhost!
+      # Sonst versucht der Kafka-Client 127.0.0.1 zu erreichen (nicht erreichbar)
+      - --advertise-kafka-addr PLAINTEXT://10.0.0.2:9093
+      # RPC-Port umstellen (Default 33145 kollidiert mit Prod)
+      - --rpc-addr 0.0.0.0:33146
+      - --advertise-rpc-addr 127.0.0.1:33146
+      # PandaProxy-Port umstellen (Default 8082 kollidiert mit Prod)
+      - --pandaproxy-addr 0.0.0.0:8083
+      - --advertise-pandaproxy-addr 127.0.0.1:8083
+      # Schema Registry Port umstellen
+      - --schema-registry-addr 0.0.0.0:8084
+      # Admin-Port umstellen (Default 9644 kollidiert mit Prod)
+      - --set
+      - redpanda.admin[0].port=9645
+    volumes:
+      - redpanda-staging-data:/var/lib/redpanda/data
+    network_mode: host
+
+  worker:
+    image: drdboehm/jahrbuch-processing-worker:latest
+    restart: unless-stopped
+    depends_on:
+      - redpanda
+    env_file: .env
+    volumes:
+      - /data/captures:/data/captures
+    network_mode: host
+
+volumes:
+  redpanda-staging-data:
+----
+
+=== Staging: `/opt/worker-staging/.env`
+
+[source,bash]
+----
+# Staging-DB: derselbe Container den auch das Staging-Backend nutzt
+# Port 5433 (Coolify-Port-Mapping, Stand 2026-05)
+QUARKUS_DATASOURCE_REACTIVE_URL=postgresql://postgres:<STAGING_DB_PASSWORD>@10.0.0.1:5433/postgres
+QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://10.0.0.1:5433/postgres
+QUARKUS_DATASOURCE_USERNAME=postgres
+QUARKUS_DATASOURCE_PASSWORD=<STAGING_DB_PASSWORD>
+KAFKA_BOOTSTRAP_SERVERS=10.0.0.2:9093
+----
+
+IMPORTANT: Das `STAGING_DB_PASSWORD` muss mit dem Wert aus dem `FREE_DATABASE_URL` des Staging-Backends (Coolify) übereinstimmen. Den aktuellen Wert via Coolify-UI oder `docker inspect <staging-app-container> | grep FREE_DATABASE_URL` ermitteln.
+
+=== Produktion: `/opt/worker/docker-compose.yml`
+
+[source,yaml]
+----
+services:
+  redpanda:
+    image: redpandadata/redpanda:latest
+    restart: unless-stopped
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 512M
+      - --overprovisioned
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092
+      # WICHTIG: Nach Staging-Test auf 10.0.0.2:9092 umstellen!
+      # Aktuell noch: PLAINTEXT://127.0.0.1:9092 (falsch!)
+      - --advertise-kafka-addr PLAINTEXT://10.0.0.2:9092
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    network_mode: host
+
+  worker:
+    image: drdboehm/jahrbuch-processing-worker:latest
+    restart: unless-stopped
+    depends_on:
+      - redpanda
+    env_file: .env
+    volumes:
+      - /data/captures:/data/captures
+    network_mode: host
+
+volumes:
+  redpanda-data:
+----
+
+=== Produktion: `/opt/worker/.env`
+
+[source,bash]
+----
+# Prod-DB: Port 5432 (Coolify-Port-Mapping, Stand 2026-05)
+QUARKUS_DATASOURCE_REACTIVE_URL=postgresql://postgres:<PROD_DB_PASSWORD>@10.0.0.1:5432/postgres
+QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://10.0.0.1:5432/postgres
+QUARKUS_DATASOURCE_USERNAME=postgres
+QUARKUS_DATASOURCE_PASSWORD=<PROD_DB_PASSWORD>
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+# Nach Staging-Erfolg auf 10.0.0.2:9092 umstellen!
+----
+
+== PostgreSQL: pg_hba.conf für Netcup-Zugriff
+
+Der Worker verbindet sich über WireGuard von Netcup (10.0.0.2) zu PostgreSQL auf Hetzner. Durch Docker-NAT auf Hetzner kommt die Verbindung mit einer unbekannten Source-IP an.
+
+=== Problem: SCRAM-SHA-256 schlägt fehl
+
+Docker-proxy NAT-ed die Source-IP des Workers. `pg_hba.conf`-Regel matcht zu früh mit `scram-sha-256` → Authentifizierung schlägt fehl weil die Source-IP nicht mit dem Passwort-Hash übereinstimmt.
+
+=== Fix: Trust-Regel für alle Host-Verbindungen
+
+Im PostgreSQL-Container (Coolify):
+
+[source,bash]
+----
+# pg_hba.conf des Staging-DB-Containers bearbeiten:
+CONTAINER_ID=<staging-db-container-id>  # z.B. ym4jgfx36yb1ddihok0ttqm6
+docker exec $CONTAINER_ID bash -c "
+echo 'host all all all trust' >> /var/lib/postgresql/data/pg_hba.conf
+"
+# Reload (kein Neustart nötig):
+docker exec $CONTAINER_ID psql -U postgres -c 'SELECT pg_reload_conf()'
+# Neustart für pg_hba-Änderungen ist oft dennoch nötig:
+docker restart $CONTAINER_ID
+----
+
+WARNING: `trust` ohne IP-Einschränkung ist unsicher für öffentlich erreichbare Datenbanken. Da die DB nur über WireGuard (10.0.0.0/24) erreichbar ist, ist dies akzeptabel. Ideal wäre eine Einschränkung auf `10.0.0.0/24`.
+
+== Datenbank-Port-Mapping (Coolify-Spezifik)
+
+=== Aktueller Stand (2026-05, "invertiert")
+
+Coolify hat die Port-Mappings entgegen der Konfiguration in der UI vergeben:
+
+[plantuml, db-port-mapping, svg]
+----
+@startuml
+!theme plain
+skinparam backgroundColor white
+
+node "Hetzner Docker" as hetzner {
+  database "x7vnrj1prry8aljcbbqvjme0\n(Staging-App-DB)\nHat: videos-Tabelle\nFlyway: V1-V50" as db_stg {
+  }
+  database "ym4jgfx36yb1ddihok0ttqm6\n(andere DB)\nHat: keine videos-Tabelle\nFlyway: nur V1-V2" as db_other {
+  }
+}
+
+node "WireGuard-Endpunkte\n(10.0.0.1)" as wg {
+  portin ":5433 (WG)" as p5433
+  portin ":5432 (WG)" as p5432
+}
+
+db_stg --> p5433 : "docker port-mapping\n5432 → 10.0.0.1:5433"
+db_other --> p5432 : "docker port-mapping\n5432 → 10.0.0.1:5432"
+
+note bottom of db_stg
+  Staging-Backend (FREE_DATABASE_URL)
+  → x7vnrj1prry8aljcbbqvjme0:5432
+  Staging-Worker (.env)
+  → 10.0.0.1:5433
+end note
+
+note bottom of db_other
+  Aktuell nicht in Verwendung
+  für diesen Stack
+end note
+@enduml
+----
+
+NOTE: Port-Mappings können sich nach Docker-Restarts ändern. Vor jedem Setup prüfen mit: `docker port <container-id>`
+
+=== DB-Verbindung verifizieren
+
+[source,bash]
+----
+# Von Netcup aus prüfen welche DB auf welchem Port liegt:
+PGPASSWORD=<password> psql -h 10.0.0.1 -p 5433 -U postgres -c '\dt' | grep videos
+# Wenn "videos" erscheint: das ist die richtige DB für den Worker
+----
+
+== GitLab CI/CD: Worker-Deployment
+
+=== `.gitlab-ci.yml` (Worker-Projekt)
+
+[source,yaml]
+----
+stages:
+  - test
+  - build
+  - deploy
+
+test:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  script:
+    - mvn test
+
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker login -u $DOCKERHUB_USERNAME -p $DOCKERHUB_PASSWORD
+    - docker build -f src/main/docker/Dockerfile.worker -t drdboehm/jahrbuch-processing-worker:latest .
+    - docker push drdboehm/jahrbuch-processing-worker:latest
+
+deploy-staging:
+  stage: deploy
+  environment: staging
+  only:
+    - main
+  before_script:
+    - eval $(ssh-agent -s)
+    - chmod 400 "$SSH_PRIVATE_KEY"
+    - ssh-add "$SSH_PRIVATE_KEY"
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - ssh-keyscan -H "$NETCUP_HOST" >> ~/.ssh/known_hosts
+  script:
+    - |
+      ssh deploy@$NETCUP_HOST \
+        "docker compose -f /opt/worker-staging/docker-compose.yml pull && \
+         docker compose -f /opt/worker-staging/docker-compose.yml up -d"
+
+deploy-prod:
+  stage: deploy
+  environment: production
+  when: manual
+  only:
+    - main
+  before_script:
+    - eval $(ssh-agent -s)
+    - chmod 400 "$SSH_PRIVATE_KEY"
+    - ssh-add "$SSH_PRIVATE_KEY"
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - ssh-keyscan -H "$NETCUP_HOST" >> ~/.ssh/known_hosts
+  script:
+    - |
+      ssh deploy@$NETCUP_HOST \
+        "docker compose -f /opt/worker/docker-compose.yml pull && \
+         docker compose -f /opt/worker/docker-compose.yml up -d"
+----
+
+=== GitLab CI/CD Variablen
+
+[cols="2,3,1", options="header"]
+|===
+|Variable |Beschreibung |Typ
+|`SSH_PRIVATE_KEY` |ED25519 Private Key für deploy@netcup |File (kein Masked)
+|`NETCUP_HOST` |185.163.117.234 |Variable
+|`DOCKERHUB_USERNAME` |drdboehm |Variable
+|`DOCKERHUB_PASSWORD` |DockerHub PAT |Masked
+|===
+
+IMPORTANT: `SSH_PRIVATE_KEY` muss als Typ **File** (nicht Variable) gesetzt werden, damit der mehrzeilige Key inkl. Newline korrekt übertragen wird. Der Key muss mit einem Newline (`\n`) enden, sonst schlägt `ssh-add` mit einem `libcrypto`-Fehler fehl.
+
+== Backend: Kafka-Producer
+
+=== `application.properties` (relevant)
+
+[source,properties]
+----
+# Kafka-Producer-Kanal
+mp.messaging.outgoing.video-processing.connector=smallrye-kafka
+mp.messaging.outgoing.video-processing.topic=video-processing
+mp.messaging.outgoing.video-processing.value.serializer=io.quarkus.kafka.client.serialization.ObjectMapperSerializer
+
+# Bootstrap-Server aus Umgebungsvariable (Prod/Staging über Coolify gesetzt)
+%prod.kafka.bootstrap.servers=${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+# Test-Modus: kein Kafka nötig
+%test.quarkus.kafka.devservices.enabled=false
+%test.mp.messaging.outgoing.video-processing.connector=smallrye-in-memory
+----
+
+=== Coolify-Umgebungsvariable
+
+[source]
+----
+KAFKA_BOOTSTRAP_SERVERS=10.0.0.2:9093   # Staging
+KAFKA_BOOTSTRAP_SERVERS=10.0.0.2:9092   # Prod (nach Freigabe setzen)
+----
+
+== Worker: Kafka-Consumer
+
+=== `application.properties`
+
+[source,properties]
+----
+mp.messaging.incoming.video-processing.connector=smallrye-kafka
+mp.messaging.incoming.video-processing.topic=video-processing
+mp.messaging.incoming.video-processing.value.deserializer=de.jamsintown.worker.video.VideoProcessingMessageDeserializer
+
+%prod.kafka.bootstrap.servers=${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+%test.quarkus.kafka.devservices.enabled=false
+%test.mp.messaging.incoming.video-processing.connector=smallrye-in-memory
+----
+
+IMPORTANT: Der Deserializer muss eine eigene Subklasse von `ObjectMapperDeserializer` sein. Ein direkter `ObjectMapperDeserializer<VideoProcessingMessage>` schlägt zur Laufzeit mit `NoSuchMethodException: <init>()` fehl, weil Quarkus den Default-Constructor benötigt.
+
+[source,java]
+----
+// RICHTIG: Eigene Subklasse
+public class VideoProcessingMessageDeserializer
+    extends ObjectMapperDeserializer<VideoProcessingMessage> {
+  public VideoProcessingMessageDeserializer() {
+    super(VideoProcessingMessage.class);
+  }
+}
+
+// FALSCH: Direkte Instanz-Konfiguration funktioniert nicht
+// mp.messaging.incoming.video-processing.value.deserializer.type=VideoProcessingMessage.class
+----
+
+== Bekannte Probleme und Lösungen
+
+=== Problem 1: docker0 / WireGuard Subnetz-Konflikt
+
+**Symptom:** Backend-Container (10.0.1.x) kann 10.0.0.2:9093 (Redpanda) nicht erreichen. `Kafka Bootstrap broker disconnected`.
+
+**Ursache:** Docker0 nutzt `10.0.0.0/24` — identisch mit WireGuard. Docker setzt DROP-Regel in `ip raw PREROUTING` für alle Pakete dst=10.0.0.2 die nicht von docker0 kommen.
+
+**Diagnose:**
+
+[source,bash]
+----
+# Paket-Tracing einschalten:
+nft add table ip trace_table
+nft add chain ip trace_table trace_chain '{ type filter hook prerouting priority -300; }'
+nft add rule ip trace_table trace_chain ip saddr 10.0.1.0/24 meta nftrace set 1
+nft monitor trace
+# Im anderen Terminal: Verbindungstest triggern
+# Dann trace_table wieder löschen:
+nft delete table ip trace_table
+----
+
+**Lösung:** Exception-Regel + FORWARD-Regeln (siehe Abschnitt 4).
+
+**Dauerlösung (TODO):** docker0 auf nicht-kollidierendes Subnetz (z.B. `172.17.0.0/16`) umstellen via `/etc/docker/daemon.json`:
+
+[source,json]
+----
+{
+  "bip": "172.17.0.1/24"
+}
+----
+
+---
+
+=== Problem 2: Redpanda advertised-addr = localhost
+
+**Symptom:** Kafka-Client verbindet sich initial (Bootstrap), disconnected dann sofort wieder. `Bootstrap broker 10.0.0.2:9093 disconnected`.
+
+**Ursache:** Redpanda advertised `localhost:9093` in der Metadata-Response. Der Kafka-Client versucht dann `localhost:9093` zu erreichen — nicht erreichbar von Hetzner aus.
+
+**Lösung:** `--advertise-kafka-addr PLAINTEXT://10.0.0.2:9093` in den Redpanda-Start-Argumenten setzen.
+
+---
+
+=== Problem 3: PostgreSQL-Authentifizierung schlägt fehl von Netcup
+
+**Symptom:** Worker startet, Fehlermeldung: `password authentication failed for user "postgres"`.
+
+**Ursache:** Docker-proxy auf Hetzner NAT-et die Source-IP des Workers. Die pg_hba.conf-Regel für `scram-sha-256` matcht zuerst.
+
+**Lösung:** `host all all all trust` in `pg_hba.conf` hinzufügen und DB-Container neu starten.
+
+---
+
+=== Problem 4: Redpanda Port-Konflikte (Staging vs. Prod)
+
+**Symptom:** Staging-Redpanda startet nicht. Port already in use.
+
+**Ursache:** Staging und Prod nutzen beide `network_mode: host`. Alle Default-Ports von Redpanda (9092, 33145, 8082, 9644) kollidieren.
+
+**Lösung:** Alle Redpanda-Ports für Staging auf alternative Ports umstellen:
+
+[cols="2,2,2", options="header"]
+|===
+|Dienst |Prod-Port |Staging-Port
+|Kafka |9092 |9093
+|RPC |33145 |33146
+|PandaProxy |8082 |8083
+|Schema Registry |8081 |8084
+|Admin API |9644 |9645
+|===
+
+---
+
+=== Problem 5: SSH_PRIVATE_KEY libcrypto-Fehler
+
+**Symptom:** `Error loading key "(stdin)": error in libcrypto`
+
+**Ursache:** SSH Private Key in GitLab ohne abschließendes Newline gespeichert.
+
+**Lösung:** Key in GitLab CI/CD Settings löschen und mit korrektem Newline-Abschluss neu einfügen. Typ muss `File` (nicht `Variable`) sein.
+
+---
+
+=== Problem 6: `docker compose restart` übernimmt keine .env-Änderungen
+
+**Symptom:** Worker nutzt alte DB-Credentials obwohl `.env` geändert wurde.
+
+**Ursache:** `docker compose restart` startet Container neu aber liest `.env` nicht neu ein. `.env` wird nur bei Container-Neuanlage (Recreate) gelesen.
+
+**Lösung:**
+
+[source,bash]
+----
+# FALSCH:
+docker compose restart
+
+# RICHTIG (erzwingt Recreate und liest .env neu):
+docker compose up -d
+----
+
+== Noch offene Punkte
+
+[cols="1,3,2", options="header"]
+|===
+|Priorität |Aufgabe |Status
+
+|🔴 Hoch
+|**File-Sharing `/data/captures`**: Videos liegen auf Hetzner, Worker braucht Zugriff auf Netcup. SSHFS vs. S3 (Minio/Tigris) entscheiden und implementieren.
+|Offen — Blocker für End-to-End-Test
+
+|🟡 Mittel
+|**nftables-Exception persistent machen**: `nft insert rule ip raw PREROUTING ...` überlebt keinen Docker-Daemon-Neustart. Lösung: Docker-poststart-Hook oder Daemon-Konfiguration.
+|Offen
+
+|🟡 Mittel
+|**docker0 Subnetz-Konflikt dauerhaft lösen**: docker0 von `10.0.0.0/24` auf `172.17.0.0/16` oder ähnliches umstellen um den Konflikt mit WireGuard zu beseitigen. Erfordert Coolify-Downtime.
+|Offen
+
+|🟡 Mittel
+|**Prod Redpanda**: `--advertise-kafka-addr` von `localhost:9092` auf `10.0.0.2:9092` umstellen und `KAFKA_BOOTSTRAP_SERVERS=10.0.0.2:9092` in Coolify setzen.
+|Offen — nach Staging-Erfolg
+
+|🟢 Niedrig
+|**Backend-MR mergen**: Branch `feature/86c9r2ybg-video-worker-kafka` nach erfolgreichem Staging-Test in main mergen.
+|Offen — wartet auf Staging-Erfolg
+
+|🟢 Niedrig
+|**Fly.io dekommissionieren**: `flyctl apps destroy` ausführen.
+|Offen
+
+|🟢 Niedrig
+|**Coolify DB-Port-Mapping klären**: Tatsächliche Zuordnung Staging/Prod dokumentieren und ggf. in Coolify korrigieren.
+|Offen
+|===
+
+== Diagnose-Checkliste
+
+[source,bash]
+----
+# 1. WireGuard-Verbindung
+ping -c 1 10.0.0.2                         # Hetzner → Netcup
+wg show wg0                                  # Peer-Status und AllowedIPs prüfen
+
+# 2. TCP-Konnektivität Backend-Container → Redpanda
+CONTAINER=$(docker ps --filter 'name=rf8fzkv9' --format '{{.Names}}' | head -1)
+docker exec $CONTAINER bash -c \
+  'timeout 3 bash -c "echo > /dev/tcp/10.0.0.2/9093" && echo OPEN || echo CLOSED'
+
+# 3. nftables PREROUTING Exception prüfen
+nft -a list chain ip raw PREROUTING | grep '10.0.0.2'
+# Erwartung: Exception-Regel (return) VOR der DROP-Regel
+
+# 4. Redpanda-Topic prüfen (von Netcup)
+docker compose -f /opt/worker-staging/docker-compose.yml exec -T redpanda \
+  rpk topic list
+
+# 5. Consumer-Group-Offset prüfen (Lag = 0 wenn Worker konsumiert)
+docker compose -f /opt/worker-staging/docker-compose.yml exec -T redpanda \
+  rpk group describe jahrbuch-processing-worker
+
+# 6. Worker-Logs
+ssh root@185.163.117.234 \
+  "docker compose -f /opt/worker-staging/docker-compose.yml logs --tail=30 worker"
+
+# 7. Backend-Kafka-Verbindung (in Backend-Logs)
+docker logs --tail=20 $CONTAINER 2>&1 | grep -E '(SRMSG|kafka|Kafka)'
+# Erwartung: SRMSG18258: connected to Kafka brokers '10.0.0.2:9093'
+----
