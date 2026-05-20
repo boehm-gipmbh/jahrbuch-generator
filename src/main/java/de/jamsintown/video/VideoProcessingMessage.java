@@ -1,3 +1,3 @@
 package de.jamsintown.video;
 
-public record VideoProcessingMessage(long videoId, String videoPath) {}
+public record VideoProcessingMessage(long videoId, String objectKey) {}
