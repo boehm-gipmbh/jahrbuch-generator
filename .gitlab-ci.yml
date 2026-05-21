@@ -190,7 +190,8 @@ deploy-staging:
   stage: deploy-staging
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
-  needs: [build-staging]
+  needs:
+    - job: build-staging
   script:
     - 'curl -sf -X GET "$(echo -n "$COOLIFY_STAGING_WEBHOOK")" -H "Authorization: Bearer $COOLIFY_TOKEN"'
   environment:
