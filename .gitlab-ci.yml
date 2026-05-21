@@ -139,7 +139,28 @@ e2e:
     expire_in: 7 days
   <<: *mvn_cache
 
-# ─── BUILD ────────────────────────────────────────────────────────────────────
+# ─── BUILD STAGING (JVM) ──────────────────────────────────────────────────────
+
+build-staging:
+  stage: build
+  interruptible: true
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+  before_script:
+    - docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
+    - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
+        -DgroupId=org.gphoto -DartifactId=gphoto2-java
+        -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
+  script:
+    - export REACT_APP_VERSION="staging-$(echo $CI_COMMIT_SHA | cut -c1-7) ($(date -u +%Y-%m-%d))"
+    - ./mvnw -Pfrontend clean package -B -DskipTests
+    - docker build -f Dockerfile.staging -t drdboehm/jahrbuch-generator:staging .
+    - docker push drdboehm/jahrbuch-generator:staging
+  <<: *mvn_cache
+
+# ─── BUILD PROD (Native) ─────────────────────────────────────────────────────
 
 build:
   stage: build
@@ -169,7 +190,7 @@ deploy-staging:
   stage: deploy-staging
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
-  needs: [build]
+  needs: [build-staging]
   script:
     - 'curl -sf -X GET "$(echo -n "$COOLIFY_STAGING_WEBHOOK")" -H "Authorization: Bearer $COOLIFY_TOKEN"'
   environment:
