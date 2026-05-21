@@ -23,10 +23,12 @@ public class VideoService {
     private String capturesPath;
 
     private final UserService userService;
+    private final MinioService minioService;
 
     @Inject
-    public VideoService(UserService userService) {
+    public VideoService(UserService userService, MinioService minioService) {
         this.userService = userService;
+        this.minioService = minioService;
     }
 
     public Uni<List<Video>> listForUser() {
@@ -116,14 +118,17 @@ public class VideoService {
     public Uni<Void> hardDelete(long id) {
         return findByIdIncludeDeleted(id)
                 .chain(video -> {
-                    String fullPath = capturesPath + video.pfad.replaceFirst("^/", "");
+                    String objectKey = video.pfad.replaceFirst("^/", "");
+                    String fullPath = capturesPath + objectKey;
                     try {
                         Files.deleteIfExists(Paths.get(fullPath));
                         Files.deleteIfExists(Paths.get(FfmpegService.toSnapshotPfad(fullPath)));
                     } catch (IOException e) {
                         return Uni.<Void>createFrom().failure(new RuntimeException("Fehler beim Löschen der Datei: " + e.getMessage(), e));
                     }
-                    return video.delete().replaceWithVoid();
+                    return minioService.delete(objectKey)
+                            .chain(() -> minioService.delete(objectKey + ".thumb.jpg"))
+                            .chain(() -> video.delete().replaceWithVoid());
                 });
     }
 

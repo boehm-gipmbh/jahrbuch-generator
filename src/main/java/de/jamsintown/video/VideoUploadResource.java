@@ -220,10 +220,10 @@ public class VideoUploadResource {
                             return storyService.findById(storyIdLong).chain(story -> {
                                 if (story != null) video.story = story;
                                 return videoService.create(video);
-                            }).invoke(v -> emitProcessingMessage(v)).map(v -> Response.ok(v).build());
+                            }).chain(v -> emitProcessingMessage(v).replaceWith(v)).map(v -> Response.ok(v).build());
                         }
                         return videoService.create(video)
-                                .invoke(v -> emitProcessingMessage(v))
+                                .chain(v -> emitProcessingMessage(v).replaceWith(v))
                                 .map(v -> Response.ok(v).build());
                     });
         }).onFailure().recoverWithItem(e -> {
@@ -341,9 +341,9 @@ public class VideoUploadResource {
                                     return storyService.findById(sid).chain(story -> {
                                         if (story != null) video.story = story;
                                         return videoService.create(video);
-                                    }).invoke(v -> emitProcessingMessage(v));
+                                    }).chain(v -> emitProcessingMessage(v).replaceWith(v));
                                 }
-                                return videoService.create(video).invoke(v -> emitProcessingMessage(v));
+                                return videoService.create(video).chain(v -> emitProcessingMessage(v).replaceWith(v));
                             });
                 });
 
@@ -394,10 +394,13 @@ public class VideoUploadResource {
         return Arrays.stream(allowedTypes.split(",")).anyMatch(t -> t.trim().equalsIgnoreCase(ext));
     }
 
-    private void emitProcessingMessage(Video video) {
+    private Uni<Void> emitProcessingMessage(Video video) {
         String objectKey = video.pfad.startsWith("/") ? video.pfad.substring(1) : video.pfad;
-        videoProcessingEmitter.send(new VideoProcessingMessage(video.id, objectKey));
-        log.info("Video-Processing-Message gesendet für Video {}: {}", video.id, objectKey);
+        return Uni.createFrom().completionStage(
+                        videoProcessingEmitter.send(new VideoProcessingMessage(video.id, objectKey)))
+                .invoke(() -> log.info("Video-Processing-Message gesendet für Video {}: {}", video.id, objectKey))
+                .onFailure().invoke(e -> log.error("Kafka-Send fehlgeschlagen für Video {}: {}", video.id, e.getMessage(), e))
+                .onFailure().recoverWithNull();
     }
 
     private static class UploadConfig {
