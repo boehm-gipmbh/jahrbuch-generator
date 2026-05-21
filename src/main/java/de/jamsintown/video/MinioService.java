@@ -1,12 +1,17 @@
 package de.jamsintown.video;
 
-import io.minio.*;
-import io.minio.errors.ErrorResponseException;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
+import io.vertx.core.Context;
+import io.vertx.core.Vertx;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.core.sync.ResponseTransformer;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
 
 import java.io.InputStream;
 
@@ -14,99 +19,99 @@ import java.io.InputStream;
 @ApplicationScoped
 public class MinioService {
 
-    private final MinioClient client;
-    private final String bucket;
+    @Inject
+    S3Client s3;
 
-    public MinioService(
-            @ConfigProperty(name = "minio.endpoint") String endpoint,
-            @ConfigProperty(name = "minio.access-key") String accessKey,
-            @ConfigProperty(name = "minio.secret-key") String secretKey,
-            @ConfigProperty(name = "minio.bucket", defaultValue = "captures") String bucket) {
-        this.bucket = bucket;
-        this.client = MinioClient.builder()
-                .endpoint(endpoint)
-                .credentials(accessKey, secretKey)
-                .build();
-    }
+    @ConfigProperty(name = "minio.bucket", defaultValue = "captures")
+    String bucket;
 
     public Uni<Void> upload(String objectKey, InputStream data, long contentLength, String contentType) {
+        Context ctx = Vertx.currentContext();
         return Uni.createFrom().<Void>emitter(emitter -> {
             Infrastructure.getDefaultWorkerPool().execute(() -> {
                 try {
-                    client.putObject(PutObjectArgs.builder()
+                    s3.putObject(PutObjectRequest.builder()
                             .bucket(bucket)
-                            .object(objectKey)
-                            .stream(data, contentLength, -1)
+                            .key(objectKey)
                             .contentType(contentType)
-                            .build());
-                    emitter.complete(null);
+                            .contentLength(contentLength)
+                            .build(),
+                            RequestBody.fromInputStream(data, contentLength));
+                    dispatch(ctx, () -> emitter.complete(null));
                 } catch (Exception e) {
-                    emitter.fail(e);
-                }
-            });
-        });
-    }
-
-    public Uni<GetObjectResponse> download(String objectKey, String rangeHeader) {
-        return Uni.createFrom().<GetObjectResponse>emitter(emitter -> {
-            Infrastructure.getDefaultWorkerPool().execute(() -> {
-                try {
-                    GetObjectArgs.Builder builder = GetObjectArgs.builder()
-                            .bucket(bucket)
-                            .object(objectKey);
-                    if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
-                        String spec = rangeHeader.substring(6);
-                        String[] parts = spec.split("-", 2);
-                        if (!parts[0].isEmpty()) {
-                            long offset = Long.parseLong(parts[0]);
-                            builder.offset(offset);
-                            if (!parts[1].isEmpty()) {
-                                long end = Long.parseLong(parts[1]);
-                                builder.length(end - offset + 1);
-                            }
-                        }
-                    }
-                    emitter.complete(client.getObject(builder.build()));
-                } catch (Exception e) {
-                    emitter.fail(e);
+                    dispatch(ctx, () -> emitter.fail(e));
                 }
             });
         });
     }
 
     public Uni<Long> getObjectSize(String objectKey) {
+        Context ctx = Vertx.currentContext();
         return Uni.createFrom().<Long>emitter(emitter -> {
             Infrastructure.getDefaultWorkerPool().execute(() -> {
                 try {
-                    StatObjectResponse stat = client.statObject(
-                            StatObjectArgs.builder().bucket(bucket).object(objectKey).build());
-                    emitter.complete(stat.size());
-                } catch (ErrorResponseException e) {
-                    if ("NoSuchKey".equals(e.errorResponse().code())) {
-                        emitter.complete(-1L);
+                    HeadObjectResponse head = s3.headObject(HeadObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(objectKey)
+                            .build());
+                    dispatch(ctx, () -> emitter.complete(head.contentLength()));
+                } catch (NoSuchKeyException e) {
+                    dispatch(ctx, () -> emitter.complete(-1L));
+                } catch (S3Exception e) {
+                    if (e.statusCode() == 404) {
+                        dispatch(ctx, () -> emitter.complete(-1L));
                     } else {
-                        emitter.fail(e);
+                        dispatch(ctx, () -> emitter.fail(e));
                     }
                 } catch (Exception e) {
-                    emitter.fail(e);
+                    dispatch(ctx, () -> emitter.fail(e));
+                }
+            });
+        });
+    }
+
+    public Uni<InputStream> download(String objectKey, String rangeHeader) {
+        Context ctx = Vertx.currentContext();
+        return Uni.createFrom().<InputStream>emitter(emitter -> {
+            Infrastructure.getDefaultWorkerPool().execute(() -> {
+                try {
+                    GetObjectRequest.Builder builder = GetObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(objectKey);
+                    if (rangeHeader != null && !rangeHeader.isBlank()) {
+                        builder.range(rangeHeader);
+                    }
+                    InputStream stream = s3.getObject(builder.build(), ResponseTransformer.toInputStream());
+                    dispatch(ctx, () -> emitter.complete(stream));
+                } catch (Exception e) {
+                    dispatch(ctx, () -> emitter.fail(e));
                 }
             });
         });
     }
 
     public Uni<Void> delete(String objectKey) {
+        Context ctx = Vertx.currentContext();
         return Uni.createFrom().<Void>emitter(emitter -> {
             Infrastructure.getDefaultWorkerPool().execute(() -> {
                 try {
-                    client.removeObject(RemoveObjectArgs.builder()
+                    s3.deleteObject(DeleteObjectRequest.builder()
                             .bucket(bucket)
-                            .object(objectKey)
+                            .key(objectKey)
                             .build());
-                    emitter.complete(null);
+                    dispatch(ctx, () -> emitter.complete(null));
                 } catch (Exception e) {
-                    emitter.fail(e);
+                    dispatch(ctx, () -> emitter.fail(e));
                 }
             });
         });
+    }
+
+    private static void dispatch(Context ctx, Runnable action) {
+        if (ctx != null) {
+            ctx.runOnContext(v -> action.run());
+        } else {
+            action.run();
+        }
     }
 }

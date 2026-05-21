@@ -1,7 +1,6 @@
 package de.jamsintown.video;
 
 import de.jamsintown.config.AppConfigService;
-import io.minio.GetObjectResponse;
 import io.smallrye.jwt.auth.principal.JWTParser;
 import io.smallrye.jwt.auth.principal.ParseException;
 import io.smallrye.mutiny.Uni;
@@ -80,22 +79,26 @@ public class VideoStreamResource {
                 return Uni.createFrom().item(
                         Response.status(Response.Status.NOT_FOUND).entity("Datei nicht gefunden").build());
             }
-            return minioService.download(objectKey, rangeHeader).map(response -> {
-                String mimeType = response.headers().get("Content-Type");
-                if (mimeType == null) mimeType = "video/mp4";
+            return minioService.download(objectKey, rangeHeader).map(stream -> {
                 if (rangeHeader != null && !rangeHeader.isBlank()) {
-                    String contentRange = response.headers().get("Content-Range");
-                    String contentLength = response.headers().get("Content-Length");
-                    return Response.status(206)
-                            .header("Content-Type", mimeType)
-                            .header("Accept-Ranges", "bytes")
-                            .header("Content-Range", contentRange)
-                            .header("Content-Length", contentLength)
-                            .entity((InputStream) response)
-                            .build();
+                    try {
+                        long[] range = parseRange(rangeHeader, size);
+                        long start = range[0], end = range[1], length = end - start + 1;
+                        return Response.status(206)
+                                .header("Content-Type", "video/mp4")
+                                .header("Accept-Ranges", "bytes")
+                                .header("Content-Range", "bytes " + start + "-" + end + "/" + size)
+                                .header("Content-Length", length)
+                                .entity(stream)
+                                .build();
+                    } catch (IllegalArgumentException e) {
+                        return Response.status(416)
+                                .header("Content-Range", "bytes */" + size)
+                                .build();
+                    }
                 }
-                return Response.ok((InputStream) response)
-                        .header("Content-Type", mimeType)
+                return Response.ok(stream)
+                        .header("Content-Type", "video/mp4")
                         .header("Accept-Ranges", "bytes")
                         .header("Content-Length", size)
                         .build();
