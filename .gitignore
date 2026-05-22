@@ -74,3 +74,4 @@ openapi.json
 
 # Infra-Configs (lokal)
 infra/
+kafka-video-pipeline-runbook.adoc
