@@ -67,8 +67,14 @@ class VideoServiceTest {
         };
     }
 
+    private MinioService minioStub() {
+        return new MinioService() {
+            @Override public Uni<Void> delete(String objectKey) { return Uni.createFrom().voidItem(); }
+        };
+    }
+
     private VideoService serviceWithVideo(Video video) throws Exception {
-        VideoService s = new VideoService(null) {
+        VideoService s = new VideoService(null, minioStub()) {
             @Override
             protected Uni<Video> findByIdIncludeDeleted(Long id) {
                 return Uni.createFrom().item(video);
@@ -79,7 +85,7 @@ class VideoServiceTest {
     }
 
     private VideoService serviceWithVideoForSoftDelete(Video video) throws Exception {
-        VideoService s = new VideoService(null) {
+        VideoService s = new VideoService(null, minioStub()) {
             @Override
             public Uni<Video> findById(Long id) {
                 return Uni.createFrom().item(video);
@@ -90,7 +96,7 @@ class VideoServiceTest {
     }
 
     private VideoService serviceWithVideoForRestore(Video video) throws Exception {
-        VideoService s = new VideoService(userServiceStub()) {
+        VideoService s = new VideoService(userServiceStub(), minioStub()) {
             @Override
             protected Uni<Video> findByIdIncludeDeleted(Long id) {
                 return Uni.createFrom().item(video);
@@ -101,7 +107,7 @@ class VideoServiceTest {
     }
 
     private VideoService serviceWithNotFound(long id) throws Exception {
-        VideoService s = new VideoService(null) {
+        VideoService s = new VideoService(null, minioStub()) {
             @Override
             protected Uni<Video> findByIdIncludeDeleted(Long videoId) {
                 return Uni.createFrom().failure(new ObjectNotFoundException(videoId, "Video"));

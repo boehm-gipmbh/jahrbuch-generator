@@ -13,6 +13,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -23,14 +24,17 @@ import java.nio.file.Paths;
 public class VideoStreamResource {
 
     private final AppConfigService appConfigService;
+    private final MinioService minioService;
     private final JWTParser jwtParser;
     private final String defaultCapturesPath;
 
     @Inject
     public VideoStreamResource(AppConfigService appConfigService,
+                                MinioService minioService,
                                 JWTParser jwtParser,
                                 @ConfigProperty(name = "jahrbuch.captures.path") String defaultCapturesPath) {
         this.appConfigService = appConfigService;
+        this.minioService = minioService;
         this.jwtParser = jwtParser;
         this.defaultCapturesPath = defaultCapturesPath;
     }
@@ -60,8 +64,46 @@ public class VideoStreamResource {
                                 Response.status(Response.Status.FORBIDDEN).entity("Zugriff verweigert").build());
                     }
 
-                    return buildVideoResponse(filePath.toFile(), rangeHeader);
+                    File localFile = filePath.toFile();
+                    if (localFile.exists() && localFile.isFile()) {
+                        return buildVideoResponse(localFile, rangeHeader);
+                    }
+                    return buildMinioResponse(pfad, rangeHeader);
                 });
+    }
+
+    private Uni<Response> buildMinioResponse(String pfad, String rangeHeader) {
+        String objectKey = pfad.startsWith("/") ? pfad.substring(1) : pfad;
+        return minioService.getObjectSize(objectKey).chain(size -> {
+            if (size < 0) {
+                return Uni.createFrom().item(
+                        Response.status(Response.Status.NOT_FOUND).entity("Datei nicht gefunden").build());
+            }
+            return minioService.download(objectKey, rangeHeader).map(stream -> {
+                if (rangeHeader != null && !rangeHeader.isBlank()) {
+                    try {
+                        long[] range = parseRange(rangeHeader, size);
+                        long start = range[0], end = range[1], length = end - start + 1;
+                        return Response.status(206)
+                                .header("Content-Type", "video/mp4")
+                                .header("Accept-Ranges", "bytes")
+                                .header("Content-Range", "bytes " + start + "-" + end + "/" + size)
+                                .header("Content-Length", length)
+                                .entity(stream)
+                                .build();
+                    } catch (IllegalArgumentException e) {
+                        return Response.status(416)
+                                .header("Content-Range", "bytes */" + size)
+                                .build();
+                    }
+                }
+                return Response.ok(stream)
+                        .header("Content-Type", "video/mp4")
+                        .header("Accept-Ranges", "bytes")
+                        .header("Content-Length", size)
+                        .build();
+            });
+        });
     }
 
     private Uni<Response> buildVideoResponse(File file, String rangeHeader) {

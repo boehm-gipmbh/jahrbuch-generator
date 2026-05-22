@@ -11,6 +11,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.reactive.messaging.Channel;
+import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.jboss.resteasy.reactive.server.multipart.FormValue;
 import org.jboss.resteasy.reactive.server.multipart.MultipartFormDataInput;
 
@@ -37,13 +39,18 @@ public class VideoUploadResource {
     private final UserService userService;
     private final AppConfigService appConfigService;
     private final FfmpegService ffmpegService;
+    private final MinioService minioService;
     private final io.vertx.mutiny.core.Vertx vertx;
     private final String defaultCapturesPath;
 
     @Inject
+    @Channel("video-processing")
+    Emitter<VideoProcessingMessage> videoProcessingEmitter;
+
+    @Inject
     public VideoUploadResource(VideoService videoService, StoryService storyService,
                                 UserService userService, AppConfigService appConfigService,
-                                FfmpegService ffmpegService,
+                                FfmpegService ffmpegService, MinioService minioService,
                                 io.vertx.mutiny.core.Vertx vertx,
                                 @ConfigProperty(name = "jahrbuch.captures.path") String defaultCapturesPath) {
         this.videoService = videoService;
@@ -51,6 +58,7 @@ public class VideoUploadResource {
         this.userService = userService;
         this.appConfigService = appConfigService;
         this.ffmpegService = ffmpegService;
+        this.minioService = minioService;
         this.vertx = vertx;
         this.defaultCapturesPath = defaultCapturesPath;
     }
@@ -172,10 +180,11 @@ public class VideoUploadResource {
                         }
                     }
                     cleanupTmp(config.capturesPath, uploadId);
-                    runFfmpeg(finalPath);
                     ZonedDateTime capturedAt = ffmpegService.readCreationTime(finalPath);
                     String metadata = ffmpegService.readMetadataJson(finalPath);
-                    vertxContext.runOnContext(v -> emitter.complete(new Object[]{finalPath, capturedAt, metadata}));
+                    long fileSize = finalPath.toFile().length();
+                    InputStream videoStream = java.nio.file.Files.newInputStream(finalPath);
+                    vertxContext.runOnContext(v -> emitter.complete(new Object[]{finalPath, capturedAt, metadata, fileSize, videoStream}));
                 } catch (Exception e) {
                     vertxContext.runOnContext(v -> emitter.fail(e));
                 }
@@ -184,27 +193,39 @@ public class VideoUploadResource {
             java.nio.file.Path finalPath = (java.nio.file.Path) result[0];
             ZonedDateTime capturedAt = (ZonedDateTime) result[1];
             String metadata = (String) result[2];
+            long fileSize = (long) result[3];
+            InputStream videoStream = (InputStream) result[4];
+            String objectKey = subDir + uniqueFileName;
 
-            Video video = new Video();
-            video.pfad = "/" + subDir + uniqueFileName;
-            video.title = videoTitle;
-            video.description = videoDesc;
-            video.priority = 3;
-            video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
-            if (metadata != null) video.metadata = metadata;
+            return minioService.upload(objectKey, videoStream, fileSize, "video/mp4")
+                    .invoke(() -> {
+                        try { Files.deleteIfExists(finalPath); } catch (Exception ignored) {}
+                    })
+                    .chain(() -> {
+                        Video video = new Video();
+                        video.pfad = "/" + objectKey;
+                        video.title = videoTitle;
+                        video.description = videoDesc;
+                        video.priority = 3;
+                        video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
+                        video.processingStatus = VideoProcessingStatus.PENDING;
+                        if (metadata != null) video.metadata = metadata;
 
-            Long storyId = null;
-            if (sid != null && !sid.isBlank()) {
-                try { storyId = Long.parseLong(sid); } catch (NumberFormatException ignored) {}
-            }
-            final Long storyIdLong = storyId;
-            if (storyIdLong != null) {
-                return storyService.findById(storyIdLong).chain(story -> {
-                    if (story != null) video.story = story;
-                    return videoService.create(video);
-                }).map(v -> Response.ok(v).build());
-            }
-            return videoService.create(video).map(v -> Response.ok(v).build());
+                        Long storyId = null;
+                        if (sid != null && !sid.isBlank()) {
+                            try { storyId = Long.parseLong(sid); } catch (NumberFormatException ignored) {}
+                        }
+                        final Long storyIdLong = storyId;
+                        if (storyIdLong != null) {
+                            return storyService.findById(storyIdLong).chain(story -> {
+                                if (story != null) video.story = story;
+                                return videoService.create(video);
+                            }).chain(v -> emitProcessingMessage(v).replaceWith(v)).map(v -> Response.ok(v).build());
+                        }
+                        return videoService.create(video)
+                                .chain(v -> emitProcessingMessage(v).replaceWith(v))
+                                .map(v -> Response.ok(v).build());
+                    });
         }).onFailure().recoverWithItem(e -> {
             log.error("Assembly-Fehler: {}", e.getMessage(), e);
             cleanupTmp(config.capturesPath, uploadId);
@@ -284,33 +305,46 @@ public class VideoUploadResource {
                     try (fileStream) {
                         Files.copy(fileStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
                     }
-                    runFfmpeg(targetPath);
                     ZonedDateTime capturedAt = ffmpegService.readCreationTime(targetPath);
                     String metadata = ffmpegService.readMetadataJson(targetPath);
-                    return new Object[]{targetPath, capturedAt, metadata};
+                    long fileSize = targetPath.toFile().length();
+                    InputStream videoStream = java.nio.file.Files.newInputStream(targetPath);
+                    return new Object[]{targetPath, capturedAt, metadata, fileSize, videoStream};
                 }).chain(result -> {
+                    java.nio.file.Path targetPath = (java.nio.file.Path) result[0];
                     ZonedDateTime capturedAt = (ZonedDateTime) result[1];
                     String metadata = (String) result[2];
-                    Video video = new Video();
-                    video.pfad = "/" + subDir + uniqueFileName;
-                    video.title = finalTitle;
-                    video.description = finalDesc;
-                    video.priority = 3;
-                    video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
-                    if (metadata != null) video.metadata = metadata;
+                    long fileSize = (long) result[3];
+                    InputStream videoStream = (InputStream) result[4];
+                    String objectKey = subDir + uniqueFileName;
 
-                    Long storyId = null;
-                    if (finalStoryIdStr != null && !finalStoryIdStr.isBlank()) {
-                        try { storyId = Long.parseLong(finalStoryIdStr); } catch (NumberFormatException ignored) {}
-                    }
-                    if (storyId != null) {
-                        final Long sid = storyId;
-                        return storyService.findById(sid).chain(story -> {
-                            if (story != null) video.story = story;
-                            return videoService.create(video);
-                        });
-                    }
-                    return videoService.create(video);
+                    return minioService.upload(objectKey, videoStream, fileSize, "video/mp4")
+                            .invoke(() -> {
+                                try { Files.deleteIfExists(targetPath); } catch (Exception ignored) {}
+                            })
+                            .chain(() -> {
+                                Video video = new Video();
+                                video.pfad = "/" + objectKey;
+                                video.title = finalTitle;
+                                video.description = finalDesc;
+                                video.priority = 3;
+                                video.capturedAt = capturedAt != null ? capturedAt : ZonedDateTime.now();
+                                video.processingStatus = VideoProcessingStatus.PENDING;
+                                if (metadata != null) video.metadata = metadata;
+
+                                Long storyId = null;
+                                if (finalStoryIdStr != null && !finalStoryIdStr.isBlank()) {
+                                    try { storyId = Long.parseLong(finalStoryIdStr); } catch (NumberFormatException ignored) {}
+                                }
+                                if (storyId != null) {
+                                    final Long sid = storyId;
+                                    return storyService.findById(sid).chain(story -> {
+                                        if (story != null) video.story = story;
+                                        return videoService.create(video);
+                                    }).chain(v -> emitProcessingMessage(v).replaceWith(v));
+                                }
+                                return videoService.create(video).chain(v -> emitProcessingMessage(v).replaceWith(v));
+                            });
                 });
 
             } catch (Exception e) {
@@ -360,17 +394,13 @@ public class VideoUploadResource {
         return Arrays.stream(allowedTypes.split(",")).anyMatch(t -> t.trim().equalsIgnoreCase(ext));
     }
 
-    private void runFfmpeg(java.nio.file.Path videoPath) {
-        if (!ffmpegService.isAvailable()) {
-            log.warn("FFmpeg nicht verfügbar — kein Transcode für {}", videoPath.getFileName());
-            return;
-        }
-        io.smallrye.mutiny.infrastructure.Infrastructure.getDefaultWorkerPool().execute(() -> {
-            ffmpegService.generateSnapshot(videoPath);
-            if (!"h264".equals(ffmpegService.detectCodec(videoPath))) {
-                ffmpegService.processVideo(videoPath);
-            }
-        });
+    private Uni<Void> emitProcessingMessage(Video video) {
+        String objectKey = video.pfad.startsWith("/") ? video.pfad.substring(1) : video.pfad;
+        return Uni.createFrom().completionStage(
+                        videoProcessingEmitter.send(new VideoProcessingMessage(video.id, objectKey)))
+                .invoke(() -> log.info("Video-Processing-Message gesendet für Video {}: {}", video.id, objectKey))
+                .onFailure().invoke(e -> log.error("Kafka-Send fehlgeschlagen für Video {}: {}", video.id, e.getMessage(), e))
+                .onFailure().recoverWithNull();
     }
 
     private static class UploadConfig {

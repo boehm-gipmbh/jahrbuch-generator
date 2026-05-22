@@ -2,7 +2,8 @@
 !build/*-runner
 !build/*-runner.jar
 !build/lib/*
-!build/quarkus-app/*
+!build/quarkus-app/**
 !target/*-runner
+!target/quarkus-app/**
 !migrate.sh
 !src/main/resources/db/migration/*.sql

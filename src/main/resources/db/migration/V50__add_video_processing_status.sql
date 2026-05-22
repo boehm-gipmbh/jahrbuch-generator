@@ -1,0 +1,1 @@
+ALTER TABLE videos ADD COLUMN processing_status VARCHAR(10) NOT NULL DEFAULT 'READY';

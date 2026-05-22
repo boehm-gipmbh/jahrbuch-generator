@@ -139,7 +139,7 @@ e2e:
     expire_in: 7 days
   <<: *mvn_cache
 
-# ─── BUILD ────────────────────────────────────────────────────────────────────
+# ─── BUILD (Native) ──────────────────────────────────────────────────────────
 
 build:
   stage: build
@@ -157,10 +157,13 @@ build:
   script:
     - export REACT_APP_VERSION="fly-$(echo $CI_COMMIT_SHA | cut -c1-7) ($(date -u +%Y-%m-%d))"
     - node --version
-    - ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B -Dquarkus.native.container-build=true -Dquarkus.native.container-runtime-options="--pull=missing" -DskipTests
+    - free -h
+    - ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B -Dquarkus.native.container-build=true -Dquarkus.native.container-runtime-options="--pull=missing" -Dquarkus.native.native-image-xmx=5g "-Dquarkus.native.additional-build-args=-J-XX:ActiveProcessorCount=2,--initialize-at-run-time=com.itextpdf.kernel.font.FontUtil" -DskipTests
     - SHA=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
     - docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:fly-$SHA
     - docker push drdboehm/jahrbuch-generator:fly-$SHA
+    - docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:staging
+    - docker push drdboehm/jahrbuch-generator:staging
   <<: *mvn_cache
 
 # ─── DEPLOY STAGING ──────────────────────────────────────────────────────────
