@@ -162,6 +162,8 @@ build:
     - SHA=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
     - docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:fly-$SHA
     - docker push drdboehm/jahrbuch-generator:fly-$SHA
+    - docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:staging
+    - docker push drdboehm/jahrbuch-generator:staging
   <<: *mvn_cache
 
 # ─── DEPLOY STAGING ──────────────────────────────────────────────────────────
