@@ -4,7 +4,7 @@ import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.MediaType;
 
 @Path("/api/v1/reactions")
 @RolesAllowed("user")
@@ -19,6 +19,8 @@ public class ReactionResource {
 
     @POST
     @Path("/{targetType}/{targetId}/{reactionType}")
+    @Consumes(MediaType.WILDCARD)
+    @Produces(MediaType.APPLICATION_JSON)
     public Uni<ReactionCounts> toggle(
             @PathParam("targetType") String targetType,
             @PathParam("targetId") Long targetId,
@@ -31,6 +33,7 @@ public class ReactionResource {
 
     @GET
     @Path("/{targetType}/{targetId}")
+    @Produces(MediaType.APPLICATION_JSON)
     public Uni<ReactionCounts> getCounts(
             @PathParam("targetType") String targetType,
             @PathParam("targetId") Long targetId) {
