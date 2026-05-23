@@ -22,10 +22,8 @@ exec java \\\n\
   -Dquarkus.http.host=0.0.0.0 \\\n\
   -Djava.util.logging.manager=org.jboss.logmanager.LogManager \\\n\
   -Dquarkus.datasource.reactive.url="${FREE_DATABASE_URL}" \\\n\
-  -Dquarkus.datasource.jdbc.url="${JDBC_URL}" \\\n\
-  -Dquarkus.datasource.username="${DB_USER}" \\\n\
-  -Dquarkus.datasource.password="${DB_PASS}" \\\n\
-  -Dquarkus.flyway.migrate-at-start=true \\\n\
+  -Dquarkus.datasource.jdbc=false \\\n\
+  -Dquarkus.flyway.migrate-at-start=false \\\n\
   -Dquarkus.hibernate-orm.database.generation=none \\\n\
   -jar /deployments/quarkus-run.jar\n' > /deployments/entrypoint.sh \
     && chmod +x /deployments/entrypoint.sh
