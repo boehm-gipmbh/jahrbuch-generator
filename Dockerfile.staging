@@ -8,16 +8,12 @@ COPY target/quarkus-app/lib/ /deployments/lib/
 COPY target/quarkus-app/*.jar /deployments/
 COPY target/quarkus-app/app/ /deployments/app/
 COPY target/quarkus-app/quarkus/ /deployments/quarkus/
+COPY migrate.sh /deployments/migrate.sh
+COPY src/main/resources/db/migration/ /deployments/migrations/
 
-RUN printf '#!/bin/bash\nset -e\n\
-DB_URL_NO_SCHEME="${FREE_DATABASE_URL#postgres://}"\n\
-DB_USERPASS="${DB_URL_NO_SCHEME%%@*}"\n\
-DB_USER="${DB_USERPASS%%:*}"\n\
-DB_PASS="${DB_USERPASS#*:}"\n\
-DB_HOSTPORTDB="${DB_URL_NO_SCHEME#*@}"\n\
-DB_HOSTPORT="${DB_HOSTPORTDB%%/*}"\n\
-DB_NAME="${DB_HOSTPORTDB#*/}"\n\
-JDBC_URL="jdbc:postgresql://${DB_HOSTPORT}/${DB_NAME}"\n\
+RUN chmod +x /deployments/migrate.sh && \
+    printf '#!/bin/bash\nset -e\n\
+/deployments/migrate.sh\n\
 exec java \\\n\
   -Dquarkus.http.host=0.0.0.0 \\\n\
   -Djava.util.logging.manager=org.jboss.logmanager.LogManager \\\n\
