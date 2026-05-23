@@ -49,17 +49,25 @@ public class ReactionService {
     }
 
     private Uni<ReactionCounts> counts(Reaction.TargetType targetType, Long targetId, Long userId) {
-        return Reaction.count("targetType = ?1 AND targetId = ?2 AND reactionType = ?3",
-                    targetType, targetId, Reaction.ReactionType.LIKE)
-            .chain(likes -> Reaction.count("targetType = ?1 AND targetId = ?2 AND reactionType = ?3",
-                    targetType, targetId, Reaction.ReactionType.FAVORIT)
-            .chain(favoriten -> Reaction.<Reaction>list(
+        return Reaction.<Reaction>list(
+                "targetType = ?1 AND targetId = ?2 ORDER BY createdAt ASC", targetType, targetId)
+            .chain(all -> Reaction.<Reaction>list(
                     "user.id = ?1 AND targetType = ?2 AND targetId = ?3", userId, targetType, targetId)
             .map(myList -> {
                 Set<Reaction.ReactionType> mine = EnumSet.noneOf(Reaction.ReactionType.class);
                 myList.forEach(r -> mine.add(r.reactionType));
-                return new ReactionCounts(likes, favoriten, mine);
-            })));
+
+                List<ReactionCounts.ReactionInfo> likes = all.stream()
+                    .filter(r -> r.reactionType == Reaction.ReactionType.LIKE)
+                    .map(r -> new ReactionCounts.ReactionInfo(r.user.name, r.createdAt))
+                    .toList();
+                List<ReactionCounts.ReactionInfo> favoriten = all.stream()
+                    .filter(r -> r.reactionType == Reaction.ReactionType.FAVORIT)
+                    .map(r -> new ReactionCounts.ReactionInfo(r.user.name, r.createdAt))
+                    .toList();
+
+                return new ReactionCounts(likes.size(), favoriten.size(), mine, likes, favoriten);
+            }));
     }
 
     public Uni<List<Reaction>> listForTarget(Reaction.TargetType targetType, Long targetId) {
