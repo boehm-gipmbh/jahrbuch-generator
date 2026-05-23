@@ -6,10 +6,10 @@ import java.util.Set;
 
 public record ReactionCounts(
     long likeCount,
-    long favoritCount,
+    long voteCount,
     Set<Reaction.ReactionType> myReactions,
     List<ReactionInfo> likes,
-    List<ReactionInfo> favoriten
+    List<ReactionInfo> votes
 ) {
     public record ReactionInfo(String userName, ZonedDateTime createdAt) {}
 }

@@ -61,12 +61,12 @@ public class ReactionService {
                     .filter(r -> r.reactionType == Reaction.ReactionType.LIKE)
                     .map(r -> new ReactionCounts.ReactionInfo(r.user.name, r.createdAt))
                     .toList();
-                List<ReactionCounts.ReactionInfo> favoriten = all.stream()
-                    .filter(r -> r.reactionType == Reaction.ReactionType.FAVORIT)
+                List<ReactionCounts.ReactionInfo> votes = all.stream()
+                    .filter(r -> r.reactionType == Reaction.ReactionType.VOTE)
                     .map(r -> new ReactionCounts.ReactionInfo(r.user.name, r.createdAt))
                     .toList();
 
-                return new ReactionCounts(likes.size(), favoriten.size(), mine, likes, favoriten);
+                return new ReactionCounts(likes.size(), votes.size(), mine, likes, votes);
             }));
     }
 

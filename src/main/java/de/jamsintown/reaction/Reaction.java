@@ -32,5 +32,5 @@ public class Reaction extends PanacheEntity {
     public ZonedDateTime createdAt;
 
     public enum TargetType { BILD, TEXT }
-    public enum ReactionType { LIKE, FAVORIT }
+    public enum ReactionType { LIKE, VOTE }
 }
