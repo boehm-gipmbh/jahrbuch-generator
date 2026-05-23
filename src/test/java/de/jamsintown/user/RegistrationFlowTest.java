@@ -8,6 +8,7 @@ import io.restassured.http.ContentType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -31,6 +32,7 @@ import static org.hamcrest.Matchers.*;
  */
 @QuarkusTest
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@DisabledIfEnvironmentVariable(named = "SKIP_INTEGRATION_TESTS", matches = "true")
 class RegistrationFlowTest {
 
     // Wird zwischen Tests weitergegeben (statisch, da @QuarkusTest-Instanz pro Test)
