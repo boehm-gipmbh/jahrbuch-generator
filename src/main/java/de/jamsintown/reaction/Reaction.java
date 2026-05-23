@@ -31,6 +31,6 @@ public class Reaction extends PanacheEntity {
     @Column(name = "created_at", updatable = false, nullable = false)
     public ZonedDateTime createdAt;
 
-    public enum TargetType { BILD, TEXT }
+    public enum TargetType { BILD, TEXT, VIDEO }
     public enum ReactionType { LIKE, VOTE }
 }
