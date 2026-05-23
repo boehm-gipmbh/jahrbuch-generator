@@ -8,9 +8,27 @@ COPY target/quarkus-app/lib/ /deployments/lib/
 COPY target/quarkus-app/*.jar /deployments/
 COPY target/quarkus-app/app/ /deployments/app/
 COPY target/quarkus-app/quarkus/ /deployments/quarkus/
-COPY docker-entrypoint-staging.sh /deployments/entrypoint.sh
 
-RUN chmod +x /deployments/entrypoint.sh
+RUN printf '#!/bin/bash\nset -e\n\
+DB_URL_NO_SCHEME="${FREE_DATABASE_URL#postgres://}"\n\
+DB_USERPASS="${DB_URL_NO_SCHEME%%@*}"\n\
+DB_USER="${DB_USERPASS%%:*}"\n\
+DB_PASS="${DB_USERPASS#*:}"\n\
+DB_HOSTPORTDB="${DB_URL_NO_SCHEME#*@}"\n\
+DB_HOSTPORT="${DB_HOSTPORTDB%%/*}"\n\
+DB_NAME="${DB_HOSTPORTDB#*/}"\n\
+JDBC_URL="jdbc:postgresql://${DB_HOSTPORT}/${DB_NAME}"\n\
+exec java \\\n\
+  -Dquarkus.http.host=0.0.0.0 \\\n\
+  -Djava.util.logging.manager=org.jboss.logmanager.LogManager \\\n\
+  -Dquarkus.datasource.reactive.url="${FREE_DATABASE_URL}" \\\n\
+  -Dquarkus.datasource.jdbc.url="${JDBC_URL}" \\\n\
+  -Dquarkus.datasource.username="${DB_USER}" \\\n\
+  -Dquarkus.datasource.password="${DB_PASS}" \\\n\
+  -Dquarkus.flyway.migrate-at-start=true \\\n\
+  -Dquarkus.hibernate-orm.database.generation=none \\\n\
+  -jar /deployments/quarkus-run.jar\n' > /deployments/entrypoint.sh \
+    && chmod +x /deployments/entrypoint.sh
 
 EXPOSE 8080
 
