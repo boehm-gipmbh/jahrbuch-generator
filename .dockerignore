@@ -6,4 +6,5 @@
 !target/*-runner
 !target/quarkus-app/**
 !migrate.sh
+!docker-entrypoint-staging.sh
 !src/main/resources/db/migration/*.sql
