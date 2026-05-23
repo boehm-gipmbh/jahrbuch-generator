@@ -8,8 +8,10 @@ COPY target/quarkus-app/lib/ /deployments/lib/
 COPY target/quarkus-app/*.jar /deployments/
 COPY target/quarkus-app/app/ /deployments/app/
 COPY target/quarkus-app/quarkus/ /deployments/quarkus/
+COPY docker-entrypoint-staging.sh /deployments/entrypoint.sh
+
+RUN chmod +x /deployments/entrypoint.sh
 
 EXPOSE 8080
-ENV JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
 
-CMD ["java", "-Dquarkus.http.host=0.0.0.0", "-Djava.util.logging.manager=org.jboss.logmanager.LogManager", "-jar", "/deployments/quarkus-run.jar"]
+CMD ["/deployments/entrypoint.sh"]
