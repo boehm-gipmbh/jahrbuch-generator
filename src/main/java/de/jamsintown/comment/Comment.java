@@ -36,4 +36,7 @@ public class Comment extends PanacheEntity {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false, nullable = false)
     public ZonedDateTime createdAt;
+
+    @Column(name = "deleted_at")
+    public ZonedDateTime deletedAt;
 }

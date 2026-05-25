@@ -53,8 +53,10 @@ public class CommentService {
         return buildDeletionContext().chain(ctx ->
             Comment.<Comment>findById(commentId).chain(c -> {
                 if (c == null) throw new NotFoundException();
+                if (c.deletedAt != null) throw new NotFoundException();
                 if (!ctx.canDelete(c.user.id)) throw new ForbiddenException();
-                return c.delete();
+                c.deletedAt = java.time.ZonedDateTime.now();
+                return c.<Comment>persistAndFlush().replaceWithVoid();
             })
         );
     }

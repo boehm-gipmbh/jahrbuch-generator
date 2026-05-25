@@ -11,10 +11,21 @@ public record CommentDTO(
     Long parentId,
     boolean mine,
     boolean canDelete,
+    boolean deleted,
     List<CommentDTO> replies
 ) {
     static CommentDTO from(Comment c, Long myUserId, boolean canDelete, List<CommentDTO> replies) {
-        return new CommentDTO(c.id, c.content, c.user.name, c.createdAt, c.parentId,
-                c.user.id.equals(myUserId), canDelete, replies);
+        boolean deleted = c.deletedAt != null;
+        return new CommentDTO(
+            c.id,
+            deleted ? null : c.content,
+            deleted ? null : c.user.name,
+            c.createdAt,
+            c.parentId,
+            !deleted && c.user.id.equals(myUserId),
+            !deleted && canDelete,
+            deleted,
+            replies
+        );
     }
 }
