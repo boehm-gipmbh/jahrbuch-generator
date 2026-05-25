@@ -139,6 +139,41 @@ e2e:
     expire_in: 7 days
   <<: *mvn_cache
 
+# ─── BUILD (JVM, Feature-Branches) ──────────────────────────────────────────
+
+build-jvm:
+  stage: build
+  interruptible: true
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "main"
+  before_script:
+    - docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
+    - ./mvnw install:install-file -Dfile=libs/gphoto2-java-1.5-SNAPSHOT.jar
+        -DgroupId=org.gphoto -DartifactId=gphoto2-java
+        -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
+  script:
+    - export REACT_APP_VERSION="jvm-$(echo $CI_COMMIT_SHA | cut -c1-7) ($(date -u +%Y-%m-%d))"
+    - export NODE_OPTIONS="--max-old-space-size=3072"
+    - ./mvnw -Pfrontend clean package -DskipTests -B
+    - docker build -f Dockerfile.staging -t drdboehm/jahrbuch-generator:staging .
+    - docker push drdboehm/jahrbuch-generator:staging
+  <<: *mvn_cache
+
+# ─── DEPLOY STAGING (JVM, Feature-Branches) ──────────────────────────────────
+
+deploy-staging-jvm:
+  stage: deploy-staging
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "main"
+  needs: [build-jvm]
+  script:
+    - 'curl -sf -X GET "$(echo -n "$COOLIFY_STAGING_WEBHOOK")" -H "Authorization: Bearer $COOLIFY_TOKEN"'
+  environment:
+    name: staging
+    url: https://staging.jahrbuch.jamsintown.de
+
 # ─── BUILD (Native) ──────────────────────────────────────────────────────────
 
 build:
