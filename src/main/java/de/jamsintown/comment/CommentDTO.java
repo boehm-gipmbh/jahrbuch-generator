@@ -10,9 +10,11 @@ public record CommentDTO(
     ZonedDateTime createdAt,
     Long parentId,
     boolean mine,
+    boolean canDelete,
     List<CommentDTO> replies
 ) {
-    static CommentDTO from(Comment c, Long myUserId, List<CommentDTO> replies) {
-        return new CommentDTO(c.id, c.content, c.user.name, c.createdAt, c.parentId, c.user.id.equals(myUserId), replies);
+    static CommentDTO from(Comment c, Long myUserId, boolean canDelete, List<CommentDTO> replies) {
+        return new CommentDTO(c.id, c.content, c.user.name, c.createdAt, c.parentId,
+                c.user.id.equals(myUserId), canDelete, replies);
     }
 }
