@@ -65,8 +65,11 @@ public class ReactionService {
                     .filter(r -> r.reactionType == Reaction.ReactionType.VOTE)
                     .map(r -> new ReactionCounts.ReactionInfo(r.user.name, r.createdAt))
                     .toList();
+                long dislikes = all.stream()
+                    .filter(r -> r.reactionType == Reaction.ReactionType.DISLIKE)
+                    .count();
 
-                return new ReactionCounts(likes.size(), votes.size(), mine, likes, votes);
+                return new ReactionCounts(likes.size(), votes.size(), dislikes, mine, likes, votes);
             }));
     }
 

@@ -12,9 +12,10 @@ public record CommentDTO(
     boolean mine,
     boolean canDelete,
     boolean deleted,
+    boolean excludedFromPdf,
     List<CommentDTO> replies
 ) {
-    static CommentDTO from(Comment c, Long myUserId, boolean canDelete, List<CommentDTO> replies) {
+    static CommentDTO from(Comment c, Long myUserId, boolean canDelete, boolean excludedFromPdf, List<CommentDTO> replies) {
         boolean deleted = c.deletedAt != null;
         return new CommentDTO(
             c.id,
@@ -25,6 +26,7 @@ public record CommentDTO(
             !deleted && c.user.id.equals(myUserId),
             !deleted && canDelete,
             deleted,
+            excludedFromPdf,
             replies
         );
     }

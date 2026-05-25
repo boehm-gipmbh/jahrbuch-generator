@@ -1,6 +1,8 @@
 package de.jamsintown.comment;
 
 import de.jamsintown.reaction.Reaction;
+import de.jamsintown.reaction.Reaction.TargetType;
+import de.jamsintown.reaction.Reaction.ReactionType;
 import de.jamsintown.user.User;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
@@ -27,15 +29,27 @@ public class CommentService {
         this.jwt = jwt;
     }
 
-    public Uni<List<CommentDTO>> getComments(Reaction.TargetType targetType, Long targetId) {
+    public Uni<List<CommentDTO>> getComments(TargetType targetType, Long targetId) {
         return buildDeletionContext().chain(ctx ->
             Comment.<Comment>list("targetType = ?1 AND targetId = ?2 ORDER BY createdAt ASC", targetType, targetId)
-                .map(all -> toTree(all, ctx))
+                .chain(all -> {
+                    if (all.isEmpty()) return Uni.createFrom().item(List.of());
+                    List<Long> ids = all.stream().map(c -> c.id).toList();
+                    return Reaction.<Reaction>list(
+                        "targetType = ?1 AND reactionType = ?2 AND targetId IN ?3",
+                        TargetType.COMMENT, ReactionType.DISLIKE, ids
+                    ).map(dislikes -> {
+                        Set<Long> dislikedIds = dislikes.stream()
+                            .map(r -> r.targetId)
+                            .collect(Collectors.toSet());
+                        return toTree(all, ctx, dislikedIds);
+                    });
+                })
         );
     }
 
     @WithTransaction
-    public Uni<CommentDTO> addComment(Reaction.TargetType targetType, Long targetId, CommentRequest req) {
+    public Uni<CommentDTO> addComment(TargetType targetType, Long targetId, CommentRequest req) {
         return userService.getCurrentUser().chain(user -> {
             Comment c = new Comment();
             c.targetType = targetType;
@@ -44,7 +58,7 @@ public class CommentService {
             c.content = req.content().trim();
             c.user = user;
             return c.<Comment>persistAndFlush()
-                .map(saved -> CommentDTO.from(saved, user.id, true, List.of()));
+                .map(saved -> CommentDTO.from(saved, user.id, true, false, List.of()));
         });
     }
 
@@ -87,7 +101,7 @@ public class CommentService {
         });
     }
 
-    private List<CommentDTO> toTree(List<Comment> all, DeletionContext ctx) {
+    private List<CommentDTO> toTree(List<Comment> all, DeletionContext ctx, Set<Long> dislikedIds) {
         var byParent = all.stream()
             .filter(c -> c.parentId != null)
             .collect(Collectors.groupingBy(c -> c.parentId));
@@ -96,9 +110,9 @@ public class CommentService {
             .filter(c -> c.parentId == null)
             .map(c -> {
                 List<CommentDTO> replies = byParent.getOrDefault(c.id, List.of()).stream()
-                    .map(r -> CommentDTO.from(r, ctx.myId(), ctx.canDelete(r.user.id), List.of()))
+                    .map(r -> CommentDTO.from(r, ctx.myId(), ctx.canDelete(r.user.id), dislikedIds.contains(r.id), List.of()))
                     .toList();
-                return CommentDTO.from(c, ctx.myId(), ctx.canDelete(c.user.id), replies);
+                return CommentDTO.from(c, ctx.myId(), ctx.canDelete(c.user.id), dislikedIds.contains(c.id), replies);
             })
             .toList();
     }
