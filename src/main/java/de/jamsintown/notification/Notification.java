@@ -30,6 +30,9 @@ public class Notification extends PanacheEntity {
     @Column(name = "reporter_name")
     public String reporterName;
 
+    @Column(columnDefinition = "TEXT")
+    public String message;
+
     @Column(name = "read_at")
     public ZonedDateTime readAt;
 

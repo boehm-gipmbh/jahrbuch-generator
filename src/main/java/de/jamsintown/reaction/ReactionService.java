@@ -24,7 +24,7 @@ public class ReactionService {
     }
 
     @WithTransaction
-    public Uni<ReactionCounts> toggle(Reaction.TargetType targetType, Long targetId, Reaction.ReactionType reactionType) {
+    public Uni<ReactionCounts> toggle(Reaction.TargetType targetType, Long targetId, Reaction.ReactionType reactionType, String message) {
         return userService.getCurrentUser().chain(user ->
             Reaction.<Reaction>find(
                 "user.id = ?1 AND targetType = ?2 AND targetId = ?3 AND reactionType = ?4",
@@ -43,7 +43,7 @@ public class ReactionService {
                     action = r.<Reaction>persistAndFlush().replaceWithVoid();
                 }
                 Uni<Void> notify = isNewReport
-                    ? notificationService.createReportNotifications(user, targetType, targetId)
+                    ? notificationService.createReportNotifications(user, targetType, targetId, message)
                     : Uni.createFrom().voidItem();
                 return action.chain(() -> notify).chain(() -> counts(targetType, targetId, user.id));
             })

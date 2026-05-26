@@ -29,7 +29,7 @@ public class NotificationService {
     }
 
     @WithTransaction
-    public Uni<Void> createReportNotifications(User reporter, Reaction.TargetType targetType, Long targetId) {
+    public Uni<Void> createReportNotifications(User reporter, Reaction.TargetType targetType, Long targetId, String message) {
         return findGroupAdmins(reporter).chain(admins -> {
             if (admins.isEmpty()) {
                 LOG.infof("Keine Group-Admins für Reporter %s gefunden", reporter.name);
@@ -43,6 +43,7 @@ public class NotificationService {
                 n.targetId = targetId;
                 n.type = Notification.NotificationType.REPORT;
                 n.reporterName = reporter.name;
+                n.message = message;
                 return n;
             }).toList();
 
@@ -53,9 +54,13 @@ public class NotificationService {
                 .toList();
 
             String subject = "Inhalt gemeldet von " + reporter.name;
+            String messageHtml = (message != null && !message.isBlank())
+                ? "<p><strong>Begründung:</strong> %s</p>".formatted(message)
+                : "";
             String body = "<p>Der Nutzer <strong>%s</strong> hat einen Inhalt vom Typ <strong>%s</strong> (ID: %d) gemeldet.</p>"
-                .formatted(reporter.name, targetType.name(), targetId) +
-                "<p>Bitte prüfe den Inhalt und entscheide über eine Löschung.</p>";
+                .formatted(reporter.name, targetType.name(), targetId)
+                + messageHtml
+                + "<p>Bitte prüfe den Inhalt und entscheide über eine Löschung.</p>";
 
             return persist.chain(() ->
                 mailService.sendToAll(subject, body, recipients, null, null)

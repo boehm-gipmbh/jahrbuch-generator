@@ -10,9 +10,10 @@ public record NotificationDTO(
     Long targetId,
     Notification.NotificationType type,
     String reporterName,
+    String message,
     ZonedDateTime createdAt
 ) {
     static NotificationDTO from(Notification n) {
-        return new NotificationDTO(n.id, n.targetType, n.targetId, n.type, n.reporterName, n.createdAt);
+        return new NotificationDTO(n.id, n.targetType, n.targetId, n.type, n.reporterName, n.message, n.createdAt);
     }
 }
