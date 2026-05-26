@@ -1,3 +1,4 @@
+CREATE SEQUENCE IF NOT EXISTS notifications_seq START WITH 1 INCREMENT BY 50;
 CREATE TABLE notifications (
     id BIGINT PRIMARY KEY DEFAULT nextval('notifications_seq'),
     recipient_id BIGINT NOT NULL REFERENCES users(id),
@@ -8,5 +9,4 @@ CREATE TABLE notifications (
     read_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE SEQUENCE IF NOT EXISTS notifications_seq START WITH 1 INCREMENT BY 50;
 CREATE INDEX idx_notifications_recipient ON notifications(recipient_id, read_at);
