@@ -8,6 +8,7 @@ public record ReactionCounts(
     long likeCount,
     long voteCount,
     long dislikeCount,
+    long reportCount,
     Set<Reaction.ReactionType> myReactions,
     List<ReactionInfo> likes,
     List<ReactionInfo> votes

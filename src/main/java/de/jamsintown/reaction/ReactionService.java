@@ -1,5 +1,6 @@
 package de.jamsintown.reaction;
 
+import de.jamsintown.notification.NotificationService;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
@@ -14,10 +15,12 @@ import java.util.Set;
 public class ReactionService {
 
     private final UserService userService;
+    private final NotificationService notificationService;
 
     @Inject
-    public ReactionService(UserService userService) {
+    public ReactionService(UserService userService, NotificationService notificationService) {
         this.userService = userService;
+        this.notificationService = notificationService;
     }
 
     @WithTransaction
@@ -28,6 +31,7 @@ public class ReactionService {
                 user.id, targetType, targetId, reactionType
             ).firstResult().chain(existing -> {
                 Uni<Void> action;
+                boolean isNewReport = existing == null && reactionType == Reaction.ReactionType.REPORT;
                 if (existing != null) {
                     action = existing.delete();
                 } else {
@@ -38,7 +42,10 @@ public class ReactionService {
                     r.reactionType = reactionType;
                     action = r.<Reaction>persistAndFlush().replaceWithVoid();
                 }
-                return action.chain(() -> counts(targetType, targetId, user.id));
+                Uni<Void> notify = isNewReport
+                    ? notificationService.createReportNotifications(user, targetType, targetId)
+                    : Uni.createFrom().voidItem();
+                return action.chain(() -> notify).chain(() -> counts(targetType, targetId, user.id));
             })
         );
     }
@@ -68,8 +75,11 @@ public class ReactionService {
                 long dislikes = all.stream()
                     .filter(r -> r.reactionType == Reaction.ReactionType.DISLIKE)
                     .count();
+                long reports = all.stream()
+                    .filter(r -> r.reactionType == Reaction.ReactionType.REPORT)
+                    .count();
 
-                return new ReactionCounts(likes.size(), votes.size(), dislikes, mine, likes, votes);
+                return new ReactionCounts(likes.size(), votes.size(), dislikes, reports, mine, likes, votes);
             }));
     }
 
