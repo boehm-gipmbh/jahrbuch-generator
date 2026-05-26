@@ -70,6 +70,39 @@ public class NotificationService {
         });
     }
 
+    @WithTransaction
+    public Uni<Void> createWithdrawalNotifications(User reporter, Reaction.TargetType targetType, Long targetId) {
+        return findGroupAdmins(reporter).chain(admins -> {
+            if (admins.isEmpty()) return Uni.createFrom().voidItem();
+
+            List<Notification> notifications = admins.stream().map(admin -> {
+                Notification n = new Notification();
+                n.recipient = admin;
+                n.targetType = targetType;
+                n.targetId = targetId;
+                n.type = Notification.NotificationType.REPORT_WITHDRAWN;
+                n.reporterName = reporter.name;
+                return n;
+            }).toList();
+
+            Uni<Void> persist = Notification.persist(notifications).replaceWithVoid();
+
+            List<Recipient> recipients = admins.stream()
+                .map(a -> new Recipient(a.id, a.name, a.email))
+                .toList();
+
+            String subject = "Meldung zurückgezogen von " + reporter.name;
+            String body = "<p>Der Nutzer <strong>%s</strong> hat seine Meldung für einen Inhalt vom Typ <strong>%s</strong> (ID: %d) zurückgezogen.</p>"
+                .formatted(reporter.name, targetType.name(), targetId);
+
+            return persist.chain(() ->
+                mailService.sendToAll(subject, body, recipients, null, null)
+                    .invoke(result -> LOG.infof("Rücknahme-Mails: %d gesendet, %d fehlgeschlagen", result.sent, result.failed))
+                    .replaceWithVoid()
+            );
+        });
+    }
+
     public Uni<List<NotificationDTO>> getUnread(Long userId) {
         return Notification.<Notification>list(
             "recipient.id = ?1 AND readAt IS NULL ORDER BY createdAt DESC", userId

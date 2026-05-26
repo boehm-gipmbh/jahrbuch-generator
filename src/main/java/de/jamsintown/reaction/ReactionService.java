@@ -31,7 +31,9 @@ public class ReactionService {
                 user.id, targetType, targetId, reactionType
             ).firstResult().chain(existing -> {
                 Uni<Void> action;
-                boolean isNewReport = existing == null && reactionType == Reaction.ReactionType.REPORT;
+                boolean isReport = reactionType == Reaction.ReactionType.REPORT;
+                boolean isNewReport = existing == null && isReport;
+                boolean isWithdrawnReport = existing != null && isReport;
                 if (existing != null) {
                     action = existing.delete();
                 } else {
@@ -44,7 +46,9 @@ public class ReactionService {
                 }
                 Uni<Void> notify = isNewReport
                     ? notificationService.createReportNotifications(user, targetType, targetId, message)
-                    : Uni.createFrom().voidItem();
+                    : isWithdrawnReport
+                        ? notificationService.createWithdrawalNotifications(user, targetType, targetId)
+                        : Uni.createFrom().voidItem();
                 return action.chain(() -> notify).chain(() -> counts(targetType, targetId, user.id));
             })
         );

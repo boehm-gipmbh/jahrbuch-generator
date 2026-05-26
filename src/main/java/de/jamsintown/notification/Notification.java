@@ -40,5 +40,5 @@ public class Notification extends PanacheEntity {
     @Column(name = "created_at", updatable = false, nullable = false)
     public ZonedDateTime createdAt;
 
-    public enum NotificationType { REPORT }
+    public enum NotificationType { REPORT, REPORT_WITHDRAWN }
 }
