@@ -1,5 +1,6 @@
 package de.jamsintown.reaction;
 
+import de.jamsintown.notification.NotificationService;
 import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
@@ -14,20 +15,25 @@ import java.util.Set;
 public class ReactionService {
 
     private final UserService userService;
+    private final NotificationService notificationService;
 
     @Inject
-    public ReactionService(UserService userService) {
+    public ReactionService(UserService userService, NotificationService notificationService) {
         this.userService = userService;
+        this.notificationService = notificationService;
     }
 
     @WithTransaction
-    public Uni<ReactionCounts> toggle(Reaction.TargetType targetType, Long targetId, Reaction.ReactionType reactionType) {
+    public Uni<ReactionCounts> toggle(Reaction.TargetType targetType, Long targetId, Reaction.ReactionType reactionType, String message) {
         return userService.getCurrentUser().chain(user ->
             Reaction.<Reaction>find(
                 "user.id = ?1 AND targetType = ?2 AND targetId = ?3 AND reactionType = ?4",
                 user.id, targetType, targetId, reactionType
             ).firstResult().chain(existing -> {
                 Uni<Void> action;
+                boolean isReport = reactionType == Reaction.ReactionType.REPORT;
+                boolean isNewReport = existing == null && isReport;
+                boolean isWithdrawnReport = existing != null && isReport;
                 if (existing != null) {
                     action = existing.delete();
                 } else {
@@ -38,7 +44,12 @@ public class ReactionService {
                     r.reactionType = reactionType;
                     action = r.<Reaction>persistAndFlush().replaceWithVoid();
                 }
-                return action.chain(() -> counts(targetType, targetId, user.id));
+                Uni<Void> notify = isNewReport
+                    ? notificationService.createReportNotifications(user, targetType, targetId, message)
+                    : isWithdrawnReport
+                        ? notificationService.createWithdrawalNotifications(user, targetType, targetId)
+                        : Uni.createFrom().voidItem();
+                return action.chain(() -> notify).chain(() -> counts(targetType, targetId, user.id));
             })
         );
     }
@@ -65,8 +76,14 @@ public class ReactionService {
                     .filter(r -> r.reactionType == Reaction.ReactionType.VOTE)
                     .map(r -> new ReactionCounts.ReactionInfo(r.user.name, r.createdAt))
                     .toList();
+                long dislikes = all.stream()
+                    .filter(r -> r.reactionType == Reaction.ReactionType.DISLIKE)
+                    .count();
+                long reports = all.stream()
+                    .filter(r -> r.reactionType == Reaction.ReactionType.REPORT)
+                    .count();
 
-                return new ReactionCounts(likes.size(), votes.size(), mine, likes, votes);
+                return new ReactionCounts(likes.size(), votes.size(), dislikes, reports, mine, likes, votes);
             }));
     }
 

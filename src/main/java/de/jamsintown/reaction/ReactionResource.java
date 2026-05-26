@@ -17,18 +17,23 @@ public class ReactionResource {
         this.reactionService = reactionService;
     }
 
+    public record ReportRequest(String message) {}
+
     @POST
     @Path("/{targetType}/{targetId}/{reactionType}")
-    @Consumes(MediaType.WILDCARD)
+    @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Uni<ReactionCounts> toggle(
             @PathParam("targetType") String targetType,
             @PathParam("targetId") Long targetId,
-            @PathParam("reactionType") String reactionType) {
+            @PathParam("reactionType") String reactionType,
+            ReportRequest body) {
+        String message = body != null ? body.message() : null;
         return reactionService.toggle(
                 Reaction.TargetType.valueOf(targetType.toUpperCase()),
                 targetId,
-                Reaction.ReactionType.valueOf(reactionType.toUpperCase()));
+                Reaction.ReactionType.valueOf(reactionType.toUpperCase()),
+                message);
     }
 
     @GET
