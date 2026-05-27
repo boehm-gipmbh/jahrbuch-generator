@@ -196,12 +196,12 @@ public class PdfService {
         Uni<Map<Long, ItemStats>> bildStatsUni = buildStats(Reaction.TargetType.BILD, bildIds, wantReactions, wantComments, depth, maxItems);
         Uni<Map<Long, ItemStats>> textStatsUni = buildStats(Reaction.TargetType.TEXT, textIds, wantReactions, wantComments, depth, maxItems);
 
-        return Uni.combine().all().unis(bildStatsUni, textStatsUni).asTuple()
-            .map(t -> {
+        return bildStatsUni.chain(bildStats ->
+            textStatsUni.map(textStats -> {
                 @SuppressWarnings("unchecked")
-                Map<Long, ItemStats>[] result = new Map[]{t.getItem1(), t.getItem2()};
+                Map<Long, ItemStats>[] result = new Map[]{bildStats, textStats};
                 return result;
-            });
+            }));
     }
 
     private Uni<Map<Long, ItemStats>> buildStats(
@@ -227,15 +227,13 @@ public class PdfService {
 
         Uni<Map<Long, List<Comment>>> commentsUni = wantComments
             ? Comment.<Comment>list(
-                "targetType = ?1 AND targetId IN ?2 AND deletedAt IS NULL",
-                Sort.by("createdAt"), targetType, ids)
+                "SELECT c FROM Comment c JOIN FETCH c.user WHERE c.targetType = ?1 AND c.targetId IN ?2 AND c.deletedAt IS NULL ORDER BY c.createdAt",
+                targetType, ids)
               .map(list -> list.stream().collect(Collectors.groupingBy(c -> c.targetId)))
             : Uni.createFrom().item(Map.of());
 
-        return Uni.combine().all().unis(reactionsUni, commentsUni).asTuple()
-            .map(t -> {
-                Map<Long, long[]> reactions = t.getItem1();
-                Map<Long, List<Comment>> commentsMap = t.getItem2();
+        return reactionsUni.chain(reactions ->
+            commentsUni.map(commentsMap -> {
                 Map<Long, ItemStats> result = new HashMap<>();
                 for (Long id : ids) {
                     long[] counts = reactions.getOrDefault(id, new long[2]);
@@ -246,7 +244,7 @@ public class PdfService {
                     result.put(id, new ItemStats(counts[0], counts[1], commentLines));
                 }
                 return result;
-            });
+            }));
     }
 
     /** Builds flat list of [authorName, text, indent] respecting depth and maxItems.
