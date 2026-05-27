@@ -1,7 +1,10 @@
 package de.jamsintown.pdf;
 
+import com.itextpdf.io.font.PdfEncodings;
 import com.itextpdf.io.image.ImageDataFactory;
 import com.itextpdf.kernel.colors.DeviceRgb;
+import com.itextpdf.kernel.font.PdfFont;
+import com.itextpdf.kernel.font.PdfFontFactory;
 import com.itextpdf.kernel.events.Event;
 import com.itextpdf.kernel.events.IEventHandler;
 import com.itextpdf.kernel.events.PdfDocumentEvent;
@@ -274,12 +277,27 @@ public class PdfService {
         return renderPdf(stories, options, false);
     }
 
+    private static PdfFont loadUnicodeFont() {
+        try (var in = PdfService.class.getResourceAsStream("/fonts/DejaVuSans.ttf")) {
+            if (in == null) return null;
+            byte[] bytes = in.readAllBytes();
+            return PdfFontFactory.createFont(bytes, PdfEncodings.IDENTITY_H);
+        } catch (Exception e) {
+            log.warn("DejaVuSans-Font konnte nicht geladen werden: {}", e.getMessage());
+            return null;
+        }
+    }
+
     byte[] renderPdf(List<StoryData> stories, PdfOptions options, boolean compact) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
             PdfDocument pdfDoc = new PdfDocument(new PdfWriter(out));
             Document doc = new Document(pdfDoc, PageSize.A4);
             doc.setMargins(40, 40, 50, 40);
+            PdfFont unicodeFont = loadUnicodeFont();
+            if (unicodeFont != null) {
+                doc.setFont(unicodeFont);
+            }
 
             if (options != null && options.pageNumbers()) {
                 pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PageNumberHandler());
