@@ -61,14 +61,26 @@ public class PdfService {
     private final UserService userService;
     private final Vertx vertx;
 
+    /** Pfad zur extrahierten DejaVuSans-Temp-Datei — einmal gesetzt, nie wieder geändert. */
+    private static volatile java.nio.file.Path fontTempPath = null;
+
     private static PdfFont makeUnicodeFont() {
-        try (var in = PdfService.class.getResourceAsStream("/fonts/DejaVuSans.ttf")) {
-            if (in == null) {
-                log.warn("DejaVuSans.ttf nicht gefunden – Unicode-Symbole werden moeglicherweise nicht angezeigt");
-                return null;
+        try {
+            java.nio.file.Path path = fontTempPath;
+            if (path == null) {
+                try (var in = PdfService.class.getResourceAsStream("/fonts/DejaVuSans.ttf")) {
+                    if (in == null) {
+                        log.warn("DejaVuSans.ttf nicht gefunden im Classpath");
+                        return null;
+                    }
+                    path = java.nio.file.Files.createTempFile("DejaVuSans", ".ttf");
+                    java.nio.file.Files.write(path, in.readAllBytes());
+                    path.toFile().deleteOnExit();
+                    fontTempPath = path;
+                    log.info("DejaVuSans.ttf extrahiert nach {}", path);
+                }
             }
-            byte[] bytes = in.readAllBytes();
-            PdfFont font = PdfFontFactory.createFont(bytes, PdfEncodings.IDENTITY_H,
+            PdfFont font = PdfFontFactory.createFont(path.toString(), PdfEncodings.IDENTITY_H,
                 PdfFontFactory.EmbeddingStrategy.FORCE_EMBEDDED);
             font.setSubset(false);
             return font;
