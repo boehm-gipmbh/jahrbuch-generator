@@ -78,7 +78,7 @@ public class PdfService {
                 .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
     }
 
-    /** Generates a PDF without membership check — for admin use only. Uses compact image quality to stay within email attachment limits. */
+    /** Generates a PDF without membership check \u2014 for admin use only. Uses compact image quality to stay within email attachment limits. */
     public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options) {
         return loadAllStoryDataNoCheck(groupId, options)
             .chain(storyDataList -> {
@@ -342,7 +342,7 @@ public class PdfService {
             .setMarginTop(pageHeight / 2 - 80));
     }
 
-    // Pastel palette — 8 colors, one per story (cycling)
+    // Pastel palette \u2014 8 colors, one per story (cycling)
     private static final DeviceRgb[] STORY_COLORS = {
         new DeviceRgb(0.36f, 0.54f, 0.66f), // steel blue
         new DeviceRgb(0.55f, 0.35f, 0.53f), // mauve
@@ -690,29 +690,50 @@ public class PdfService {
         return (map != null && id != null) ? map.get(id) : null;
     }
 
-    private static final DeviceRgb STATS_COLOR = new DeviceRgb(0.5f, 0.5f, 0.5f);
-    private static final DeviceRgb REPLY_COLOR  = new DeviceRgb(0.6f, 0.6f, 0.6f);
+    private static final DeviceRgb REPLY_COLOR = new DeviceRgb(0.55f, 0.55f, 0.55f);
+
+    /** Schriftgröße und Farbe skalieren mit der Gesamtzahl der Reaktionen. */
+    private static float reactionFontSize(long total) {
+        if (total >= 10) return 12f;
+        if (total >= 6)  return 11f;
+        if (total >= 3)  return 10f;
+        return 9f;
+    }
+
+    private static DeviceRgb reactionColor(long total) {
+        if (total >= 10) return new DeviceRgb(0.72f, 0.05f, 0.05f); // Dunkelrot
+        if (total >= 6)  return new DeviceRgb(0.88f, 0.10f, 0.10f); // Kräftiges Rot
+        if (total >= 3)  return new DeviceRgb(0.90f, 0.25f, 0.35f); // Leuchtendes Pink-Rot
+        return new DeviceRgb(0.85f, 0.35f, 0.50f);                   // Mittleres Pink
+    }
 
     private void appendStats(Div div, ItemStats stats) {
         if (stats == null) return;
         if (stats.likes() > 0 || stats.votes() > 0) {
+            long total = stats.likes() + stats.votes();
+            float fontSize = reactionFontSize(total);
+            DeviceRgb color = reactionColor(total);
+            boolean bold = total >= 6;
+
             StringBuilder sb = new StringBuilder();
-            if (stats.likes() > 0) sb.append("♥ ").append(stats.likes());
+            if (stats.likes() > 0) sb.append("\u2665 ").append(stats.likes());
             if (stats.votes() > 0) {
                 if (!sb.isEmpty()) sb.append("   ");
-                sb.append("★ ").append(stats.votes());
+                sb.append("\u2605 ").append(stats.votes());
             }
-            div.add(new Paragraph(sb.toString())
-                .setFontSize(7).setFontColor(STATS_COLOR)
-                .setMarginTop(2).setMarginBottom(stats.comments().isEmpty() ? 0 : 2));
+            Paragraph p = new Paragraph(sb.toString())
+                .setFontSize(fontSize).setFontColor(color)
+                .setMarginTop(2).setMarginBottom(stats.comments().isEmpty() ? 0 : 2);
+            if (bold) p.setBold();
+            div.add(p);
         }
         for (String[] line : stats.comments()) {
             boolean isReply = "1".equals(line[2]);
-            String text = "„" + truncate(line[1], 80) + "“ — " + line[0];
+            String text = "\u201E" + truncate(line[1], 80) + "\u201C \u2014 " + line[0];
             div.add(new Paragraph(text)
-                .setFontSize(isReply ? 6 : 7)
+                .setFontSize(isReply ? 7 : 8)
                 .setItalic()
-                .setFontColor(isReply ? REPLY_COLOR : STATS_COLOR)
+                .setFontColor(REPLY_COLOR)
                 .setMarginLeft(isReply ? 8 : 0)
                 .setMarginTop(1).setMarginBottom(0));
         }
