@@ -61,6 +61,27 @@ public class PdfService {
     private final UserService userService;
     private final Vertx vertx;
 
+    // Fonts werden einmalig geladen — müssen pro PdfDocument neu eingebettet werden
+    private static final byte[] FONT_REGULAR = loadFontBytes("/fonts/DejaVuSans.ttf");
+    private static final byte[] FONT_BOLD    = loadFontBytes("/fonts/DejaVuSans-Bold.ttf");
+
+    private static byte[] loadFontBytes(String resource) {
+        try (var in = PdfService.class.getResourceAsStream(resource)) {
+            return in != null ? in.readAllBytes() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static PdfFont makeFont(byte[] bytes) {
+        if (bytes == null) return null;
+        try {
+            return PdfFontFactory.createFont(bytes, PdfEncodings.IDENTITY_H);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Inject
     public PdfService(UserService userService, Vertx vertx) {
         this.userService = userService;
@@ -277,24 +298,13 @@ public class PdfService {
         return renderPdf(stories, options, false);
     }
 
-    private static PdfFont loadUnicodeFont() {
-        try (var in = PdfService.class.getResourceAsStream("/fonts/DejaVuSans.ttf")) {
-            if (in == null) return null;
-            byte[] bytes = in.readAllBytes();
-            return PdfFontFactory.createFont(bytes, PdfEncodings.IDENTITY_H);
-        } catch (Exception e) {
-            log.warn("DejaVuSans-Font konnte nicht geladen werden: {}", e.getMessage());
-            return null;
-        }
-    }
-
     byte[] renderPdf(List<StoryData> stories, PdfOptions options, boolean compact) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
             PdfDocument pdfDoc = new PdfDocument(new PdfWriter(out));
             Document doc = new Document(pdfDoc, PageSize.A4);
             doc.setMargins(40, 40, 50, 40);
-            PdfFont unicodeFont = loadUnicodeFont();
+            PdfFont unicodeFont = makeFont(FONT_REGULAR);
             if (unicodeFont != null) {
                 doc.setFont(unicodeFont);
             }
@@ -724,7 +734,10 @@ public class PdfService {
             Paragraph p = new Paragraph(sb.toString())
                 .setFontSize(fontSize).setFontColor(color)
                 .setMarginTop(2).setMarginBottom(stats.comments().isEmpty() ? 0 : 2);
-            if (bold) p.setBold();
+            if (bold) {
+                PdfFont boldFont = makeFont(FONT_BOLD);
+                if (boldFont != null) p.setFont(boldFont);
+            }
             div.add(p);
         }
         for (String[] line : stats.comments()) {
