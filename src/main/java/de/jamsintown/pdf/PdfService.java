@@ -61,25 +61,19 @@ public class PdfService {
     private final UserService userService;
     private final Vertx vertx;
 
-    // Font wird einmalig geladen — pro PdfDocument neu eingebettet (setSubset(false) für Browser-Kompatibilität)
-    private static final byte[] FONT_REGULAR = loadFontBytes("/fonts/DejaVuSans.ttf");
-
-    private static byte[] loadFontBytes(String resource) {
-        try (var in = PdfService.class.getResourceAsStream(resource)) {
-            return in != null ? in.readAllBytes() : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private static PdfFont makeFont(byte[] bytes) {
-        if (bytes == null) return null;
-        try {
+    private static PdfFont makeUnicodeFont() {
+        try (var in = PdfService.class.getResourceAsStream("/fonts/DejaVuSans.ttf")) {
+            if (in == null) {
+                log.warn("DejaVuSans.ttf nicht gefunden – Unicode-Symbole werden moeglicherweise nicht angezeigt");
+                return null;
+            }
+            byte[] bytes = in.readAllBytes();
             PdfFont font = PdfFontFactory.createFont(bytes, PdfEncodings.IDENTITY_H,
                 PdfFontFactory.EmbeddingStrategy.FORCE_EMBEDDED);
-            font.setSubset(false); // vollständige Einbettung – kein Subsetting, Browser-Kompatibilität
+            font.setSubset(false);
             return font;
         } catch (Exception e) {
+            log.warn("DejaVuSans konnte nicht geladen werden: {}", e.getMessage());
             return null;
         }
     }
@@ -306,7 +300,7 @@ public class PdfService {
             PdfDocument pdfDoc = new PdfDocument(new PdfWriter(out));
             Document doc = new Document(pdfDoc, PageSize.A4);
             doc.setMargins(40, 40, 50, 40);
-            PdfFont unicodeFont = makeFont(FONT_REGULAR);
+            PdfFont unicodeFont = makeUnicodeFont();
             if (unicodeFont != null) {
                 doc.setFont(unicodeFont);
             }
