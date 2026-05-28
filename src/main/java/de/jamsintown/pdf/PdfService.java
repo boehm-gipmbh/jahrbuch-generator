@@ -712,10 +712,10 @@ public class PdfService {
 
     /** Schriftgröße und Farbe skalieren mit der Gesamtzahl der Reaktionen. */
     private static float reactionFontSize(long total) {
-        if (total >= 10) return 12f;
-        if (total >= 6)  return 11f;
-        if (total >= 3)  return 10f;
-        return 9f;
+        if (total >= 10) return 15f;
+        if (total >= 6)  return 14f;
+        if (total >= 3)  return 13f;
+        return 12f;
     }
 
     private static DeviceRgb reactionColor(long total) {
@@ -745,11 +745,11 @@ public class PdfService {
             boolean isReply = "1".equals(line[2]);
             String text = "\u201E" + truncate(line[1], 80) + "\u201C \u2014 " + line[0];
             div.add(new Paragraph(text)
-                .setFontSize(isReply ? 7 : 8)
+                .setFontSize(isReply ? 9 : 10)
                 .setItalic()
                 .setFontColor(REPLY_COLOR)
-                .setMarginLeft(isReply ? 8 : 0)
-                .setMarginTop(1).setMarginBottom(0));
+                .setMarginLeft(isReply ? 10 : 0)
+                .setMarginTop(2).setMarginBottom(0));
         }
     }
 
