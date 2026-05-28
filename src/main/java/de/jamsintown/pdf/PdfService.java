@@ -61,9 +61,8 @@ public class PdfService {
     private final UserService userService;
     private final Vertx vertx;
 
-    // Fonts werden einmalig geladen — müssen pro PdfDocument neu eingebettet werden
+    // Font wird einmalig geladen — pro PdfDocument neu eingebettet (setSubset(false) für Browser-Kompatibilität)
     private static final byte[] FONT_REGULAR = loadFontBytes("/fonts/DejaVuSans.ttf");
-    private static final byte[] FONT_BOLD    = loadFontBytes("/fonts/DejaVuSans-Bold.ttf");
 
     private static byte[] loadFontBytes(String resource) {
         try (var in = PdfService.class.getResourceAsStream(resource)) {
@@ -76,7 +75,10 @@ public class PdfService {
     private static PdfFont makeFont(byte[] bytes) {
         if (bytes == null) return null;
         try {
-            return PdfFontFactory.createFont(bytes, PdfEncodings.IDENTITY_H);
+            PdfFont font = PdfFontFactory.createFont(bytes, PdfEncodings.IDENTITY_H,
+                PdfFontFactory.EmbeddingStrategy.FORCE_EMBEDDED);
+            font.setSubset(false); // vollständige Einbettung – kein Subsetting, Browser-Kompatibilität
+            return font;
         } catch (Exception e) {
             return null;
         }
@@ -723,22 +725,15 @@ public class PdfService {
             long total = stats.likes() + stats.votes();
             float fontSize = reactionFontSize(total);
             DeviceRgb color = reactionColor(total);
-            boolean bold = total >= 6;
-
             StringBuilder sb = new StringBuilder();
             if (stats.likes() > 0) sb.append("\u2665 ").append(stats.likes());
             if (stats.votes() > 0) {
                 if (!sb.isEmpty()) sb.append("   ");
                 sb.append("\u2605 ").append(stats.votes());
             }
-            Paragraph p = new Paragraph(sb.toString())
+            div.add(new Paragraph(sb.toString())
                 .setFontSize(fontSize).setFontColor(color)
-                .setMarginTop(2).setMarginBottom(stats.comments().isEmpty() ? 0 : 2);
-            if (bold) {
-                PdfFont boldFont = makeFont(FONT_BOLD);
-                if (boldFont != null) p.setFont(boldFont);
-            }
-            div.add(p);
+                .setMarginTop(2).setMarginBottom(stats.comments().isEmpty() ? 0 : 2));
         }
         for (String[] line : stats.comments()) {
             boolean isReply = "1".equals(line[2]);
