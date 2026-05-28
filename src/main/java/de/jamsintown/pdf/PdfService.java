@@ -398,14 +398,14 @@ public class PdfService {
             String title = story != null ? story.name : "Sonstige";
             doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
-                doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
+                doc.add(new Paragraph(story.description).setFontSize(12).setItalic().setMarginBottom(8));
             }
             renderThreeColumn(doc, sd, compact);
         } else if ("1col".equals(layout)) {
             String title = story != null ? story.name : "Sonstige";
             doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
-                doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
+                doc.add(new Paragraph(story.description).setFontSize(12).setItalic().setMarginBottom(8));
             }
             renderOneColumn(doc, sd, compact);
         } else {
@@ -413,7 +413,7 @@ public class PdfService {
             String title = story != null ? story.name : "Sonstige";
             doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
-                doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
+                doc.add(new Paragraph(story.description).setFontSize(12).setItalic().setMarginBottom(8));
             }
             renderTwoColumn(doc, sd, compact);
         }
@@ -626,7 +626,7 @@ public class PdfService {
             div.add(img);
             String title = bild.getTitle();
             if (title != null && !title.isBlank()) {
-                div.add(new Paragraph(title).setFontSize(8).setItalic().setTextAlignment(TextAlignment.CENTER).setMarginTop(2));
+                div.add(new Paragraph(title).setFontSize(9).setItalic().setTextAlignment(TextAlignment.CENTER).setMarginTop(2));
             }
         } catch (Exception e) {
             log.warn("Bild nicht gefunden: {}", path);
@@ -679,7 +679,7 @@ public class PdfService {
         String title = bild.getTitle();
         if (title != null && !title.isBlank()) {
             frame.add(new Paragraph(title)
-                .setFontSize(hero ? 9 : 7).setItalic()
+                .setFontSize(hero ? 10 : 8).setItalic()
                 .setTextAlignment(TextAlignment.CENTER)
                 .setMarginTop(4).setMarginBottom(0));
         }
@@ -695,10 +695,10 @@ public class PdfService {
     private Div buildTextDiv(Text text, ItemStats stats) {
         Div div = new Div().setMarginBottom(6);
         if (text.title != null && !text.title.isBlank()) {
-            div.add(new Paragraph(text.title).setFontSize(12).setBold());
+            div.add(new Paragraph(text.title).setFontSize(14).setBold());
         }
         if (text.description != null && !text.description.isBlank()) {
-            div.add(new Paragraph(text.description).setFontSize(10).setTextAlignment(TextAlignment.JUSTIFIED));
+            div.add(new Paragraph(text.description).setFontSize(12).setTextAlignment(TextAlignment.JUSTIFIED));
         }
         appendStats(div, stats);
         return div;
