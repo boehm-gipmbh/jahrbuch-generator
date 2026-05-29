@@ -6,7 +6,7 @@ stages:
   - deploy-prod
 
 variables:
-  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Xmx2g"
 
 .mvn_cache: &mvn_cache
   cache:
@@ -193,7 +193,7 @@ build:
     - export REACT_APP_VERSION="fly-$(echo $CI_COMMIT_SHA | cut -c1-7) ($(date -u +%Y-%m-%d))"
     - node --version
     - free -h
-    - ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B -Dquarkus.native.container-build=true -Dquarkus.native.container-runtime-options="--pull=missing" -Dquarkus.native.native-image-xmx=5g "-Dquarkus.native.additional-build-args=-J-XX:ActiveProcessorCount=2,--initialize-at-run-time=com.itextpdf.kernel.font.FontUtil" -DskipTests
+    - ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B -Dquarkus.native.container-build=true -Dquarkus.native.container-runtime-options="--pull=missing" -Dquarkus.native.native-image-xmx=8g "-Dquarkus.native.additional-build-args=-J-XX:ActiveProcessorCount=2,--initialize-at-run-time=com.itextpdf.kernel.font.FontUtil,--initialize-at-build-time=org.bouncycastle" -DskipTests
     - SHA=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
     - docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:fly-$SHA
     - docker push drdboehm/jahrbuch-generator:fly-$SHA

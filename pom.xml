@@ -372,6 +372,13 @@
                     </plugin>
                 </plugins>
             </build>
+            <dependencies>
+                <dependency>
+                    <groupId>com.itextpdf</groupId>
+                    <artifactId>bouncy-castle-adapter</artifactId>
+                    <version>${itext7.version}</version>
+                </dependency>
+            </dependencies>
         </profile>
 
         <profile>

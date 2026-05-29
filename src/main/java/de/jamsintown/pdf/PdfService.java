@@ -1,7 +1,10 @@
 package de.jamsintown.pdf;
 
+import com.itextpdf.io.font.PdfEncodings;
 import com.itextpdf.io.image.ImageDataFactory;
 import com.itextpdf.kernel.colors.DeviceRgb;
+import com.itextpdf.kernel.font.PdfFont;
+import com.itextpdf.kernel.font.PdfFontFactory;
 import com.itextpdf.kernel.events.Event;
 import com.itextpdf.kernel.events.IEventHandler;
 import com.itextpdf.kernel.events.PdfDocumentEvent;
@@ -23,6 +26,8 @@ import com.itextpdf.layout.properties.TextAlignment;
 import com.itextpdf.layout.properties.UnitValue;
 import com.itextpdf.layout.properties.VerticalAlignment;
 import de.jamsintown.bild.Bild;
+import de.jamsintown.comment.Comment;
+import de.jamsintown.reaction.Reaction;
 import de.jamsintown.story.Story;
 import de.jamsintown.text.Text;
 import de.jamsintown.user.Gruppe;
@@ -56,6 +61,35 @@ public class PdfService {
     private final UserService userService;
     private final Vertx vertx;
 
+    /** Pfad zur extrahierten DejaVuSans-Temp-Datei — einmal gesetzt, nie wieder geändert. */
+    private static volatile java.nio.file.Path fontTempPath = null;
+
+    private static PdfFont makeUnicodeFont() {
+        try {
+            java.nio.file.Path path = fontTempPath;
+            if (path == null) {
+                try (var in = PdfService.class.getResourceAsStream("/fonts/DejaVuSans.ttf")) {
+                    if (in == null) {
+                        log.warn("DejaVuSans.ttf nicht gefunden im Classpath");
+                        return null;
+                    }
+                    path = java.nio.file.Files.createTempFile("DejaVuSans", ".ttf");
+                    java.nio.file.Files.write(path, in.readAllBytes());
+                    path.toFile().deleteOnExit();
+                    fontTempPath = path;
+                    log.info("DejaVuSans.ttf extrahiert nach {}", path);
+                }
+            }
+            PdfFont font = PdfFontFactory.createFont(path.toString(), PdfEncodings.IDENTITY_H,
+                PdfFontFactory.EmbeddingStrategy.FORCE_EMBEDDED);
+            font.setSubset(false);
+            return font;
+        } catch (Exception e) {
+            log.warn("DejaVuSans konnte nicht geladen werden: {}", e.getMessage());
+            return null;
+        }
+    }
+
     @Inject
     public PdfService(UserService userService, Vertx vertx) {
         this.userService = userService;
@@ -73,7 +107,7 @@ public class PdfService {
                 .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
     }
 
-    /** Generates a PDF without membership check — for admin use only. Uses compact image quality to stay within email attachment limits. */
+    /** Generates a PDF without membership check \u2014 for admin use only. Uses compact image quality to stay within email attachment limits. */
     public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options) {
         return loadAllStoryDataNoCheck(groupId, options)
             .chain(storyDataList -> {
@@ -100,7 +134,7 @@ public class PdfService {
                 }))
             .chain(gruppe -> loadStoriesOrdered(gruppe, options)
                 .chain(stories -> Multi.createFrom().iterable(stories)
-                    .onItem().transformToUniAndConcatenate(this::loadStoryData)
+                    .onItem().transformToUniAndConcatenate(s -> loadStoryData(s, options))
                     .collect().asList())
                 .chain(storyDataList -> appendPendingData(storyDataList, gruppe, options)));
     }
@@ -111,7 +145,7 @@ public class PdfService {
             .onItem().ifNull().failWith(() -> new NotFoundException("Gruppe nicht gefunden: " + groupId))
             .chain(gruppe -> loadStoriesOrdered(gruppe, options)
                 .chain(stories -> Multi.createFrom().iterable(stories)
-                    .onItem().transformToUniAndConcatenate(this::loadStoryData)
+                    .onItem().transformToUniAndConcatenate(s -> loadStoryData(s, options))
                     .collect().asList())
                 .chain(storyDataList -> appendPendingData(storyDataList, gruppe, options)));
     }
@@ -150,13 +184,17 @@ public class PdfService {
             return texteUni.map(texte -> {
                 if (bilder.isEmpty() && texte.isEmpty()) return storyDataList;
                 List<StoryData> result = new ArrayList<>(storyDataList);
-                result.add(new StoryData(null, bilder, texte));
+                result.add(new StoryData(null, bilder, texte, Map.of(), Map.of()));
                 return result;
             });
         });
     }
 
     private Uni<StoryData> loadStoryData(Story story) {
+        return loadStoryData(story, null);
+    }
+
+    private Uni<StoryData> loadStoryData(Story story, PdfOptions options) {
         return Bild.<Bild>find(
             "story = ?1 AND deleted = false",
             Sort.by("storyColumn").and("storyPosition"),
@@ -167,7 +205,101 @@ public class PdfService {
             Sort.by("storyColumn").and("storyPosition"),
             story
         ).list()
-        .map(texte -> new StoryData(story, bilder, texte)));
+        .chain(texte -> loadItemStats(bilder, texte, options)
+            .map(stats -> new StoryData(story, bilder, texte, stats[0], stats[1]))));
+    }
+
+    /** Returns [bildStats, textStats] */
+    private Uni<Map<Long, ItemStats>[]> loadItemStats(List<Bild> bilder, List<Text> texte, PdfOptions options) {
+        boolean wantReactions = options == null || options.includeReactions();
+        boolean wantComments  = options == null || options.includeComments();
+        int depth    = (options != null && options.commentDepth() > 0) ? options.commentDepth() : 1;
+        int maxItems = options != null ? options.commentMaxPerItem() : 5;
+
+        if (!wantReactions && !wantComments) {
+            @SuppressWarnings("unchecked")
+            Map<Long, ItemStats>[] empty = new Map[]{Map.of(), Map.of()};
+            return Uni.createFrom().item(empty);
+        }
+
+        List<Long> bildIds = bilder.stream().map(b -> b.id).filter(Objects::nonNull).toList();
+        List<Long> textIds = texte.stream().map(t -> t.id).filter(Objects::nonNull).toList();
+
+        Uni<Map<Long, ItemStats>> bildStatsUni = buildStats(Reaction.TargetType.BILD, bildIds, wantReactions, wantComments, depth, maxItems);
+        Uni<Map<Long, ItemStats>> textStatsUni = buildStats(Reaction.TargetType.TEXT, textIds, wantReactions, wantComments, depth, maxItems);
+
+        return bildStatsUni.chain(bildStats ->
+            textStatsUni.map(textStats -> {
+                @SuppressWarnings("unchecked")
+                Map<Long, ItemStats>[] result = new Map[]{bildStats, textStats};
+                return result;
+            }));
+    }
+
+    private Uni<Map<Long, ItemStats>> buildStats(
+            Reaction.TargetType targetType, List<Long> ids,
+            boolean wantReactions, boolean wantComments, int depth, int maxItems) {
+
+        if (ids.isEmpty()) return Uni.createFrom().item(Map.of());
+
+        Uni<Map<Long, long[]>> reactionsUni = wantReactions
+            ? Reaction.<Reaction>list(
+                "targetType = ?1 AND targetId IN ?2 AND reactionType IN ?3",
+                targetType, ids, List.of(Reaction.ReactionType.LIKE, Reaction.ReactionType.VOTE))
+              .map(list -> {
+                  Map<Long, long[]> m = new HashMap<>();
+                  for (Reaction r : list) {
+                      long[] counts = m.computeIfAbsent(r.targetId, k -> new long[2]);
+                      if (r.reactionType == Reaction.ReactionType.LIKE)  counts[0]++;
+                      if (r.reactionType == Reaction.ReactionType.VOTE)  counts[1]++;
+                  }
+                  return m;
+              })
+            : Uni.createFrom().item(Map.of());
+
+        Uni<Map<Long, List<Comment>>> commentsUni = wantComments
+            ? Comment.<Comment>list(
+                "SELECT c FROM Comment c JOIN FETCH c.user WHERE c.targetType = ?1 AND c.targetId IN ?2 AND c.deletedAt IS NULL ORDER BY c.createdAt",
+                targetType, ids)
+              .map(list -> list.stream().collect(Collectors.groupingBy(c -> c.targetId)))
+            : Uni.createFrom().item(Map.of());
+
+        return reactionsUni.chain(reactions ->
+            commentsUni.map(commentsMap -> {
+                Map<Long, ItemStats> result = new HashMap<>();
+                for (Long id : ids) {
+                    long[] counts = reactions.getOrDefault(id, new long[2]);
+                    List<Comment> allComments = commentsMap.getOrDefault(id, List.of());
+
+                    // Build comment tree respecting depth
+                    List<String[]> commentLines = buildCommentLines(allComments, depth, maxItems);
+                    result.put(id, new ItemStats(counts[0], counts[1], commentLines));
+                }
+                return result;
+            }));
+    }
+
+    /** Builds flat list of [authorName, text, indent] respecting depth and maxItems.
+     *  Depth 1: top-level only. Depth 2: top-level + direct replies. */
+    private List<String[]> buildCommentLines(List<Comment> comments, int depth, int max) {
+        List<Comment> topLevel = comments.stream()
+            .filter(c -> c.parentId == null)
+            .toList();
+        List<String[]> lines = new ArrayList<>();
+        for (Comment c : topLevel) {
+            if (max > 0 && lines.size() >= max) break;
+            lines.add(new String[]{c.user != null ? c.user.name : "?", c.content, "0"});
+            if (depth >= 2) {
+                List<Comment> replies = comments.stream()
+                    .filter(r -> r.parentId != null && r.parentId.equals(c.id))
+                    .toList();
+                for (Comment r : replies) {
+                    if (max > 0 && lines.size() >= max) break;
+                    lines.add(new String[]{r.user != null ? r.user.name : "?", r.content, "1"});
+                }
+            }
+        }
+        return lines;
     }
 
     byte[] renderPdf(List<StoryData> stories, PdfOptions options) {
@@ -180,6 +312,10 @@ public class PdfService {
             PdfDocument pdfDoc = new PdfDocument(new PdfWriter(out));
             Document doc = new Document(pdfDoc, PageSize.A4);
             doc.setMargins(40, 40, 50, 40);
+            PdfFont unicodeFont = makeUnicodeFont();
+            if (unicodeFont != null) {
+                doc.setFont(unicodeFont);
+            }
 
             if (options != null && options.pageNumbers()) {
                 pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PageNumberHandler());
@@ -224,7 +360,7 @@ public class PdfService {
             .setMarginTop(pageHeight / 2 - 80));
     }
 
-    // Pastel palette — 8 colors, one per story (cycling)
+    // Pastel palette \u2014 8 colors, one per story (cycling)
     private static final DeviceRgb[] STORY_COLORS = {
         new DeviceRgb(0.36f, 0.54f, 0.66f), // steel blue
         new DeviceRgb(0.55f, 0.35f, 0.53f), // mauve
@@ -262,14 +398,14 @@ public class PdfService {
             String title = story != null ? story.name : "Sonstige";
             doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
-                doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
+                doc.add(new Paragraph(story.description).setFontSize(12).setItalic().setMarginBottom(8));
             }
             renderThreeColumn(doc, sd, compact);
         } else if ("1col".equals(layout)) {
             String title = story != null ? story.name : "Sonstige";
             doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
-                doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
+                doc.add(new Paragraph(story.description).setFontSize(12).setItalic().setMarginBottom(8));
             }
             renderOneColumn(doc, sd, compact);
         } else {
@@ -277,7 +413,7 @@ public class PdfService {
             String title = story != null ? story.name : "Sonstige";
             doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
-                doc.add(new Paragraph(story.description).setFontSize(10).setItalic().setMarginBottom(8));
+                doc.add(new Paragraph(story.description).setFontSize(12).setItalic().setMarginBottom(8));
             }
             renderTwoColumn(doc, sd, compact);
         }
@@ -325,12 +461,10 @@ public class PdfService {
         }
 
         for (int i = 0; i < heroes.size(); i++) {
-            doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact));
+            doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact,
+                stats(sd.bildStats(), heroes.get(i).id)));
         }
 
-        // All remaining items (images + texts) sorted by storyPosition into a single
-        // 2-column newspaper grid: each item occupies one slot, alternating left/right.
-        // Text items wrap within column width; iText handles A4 page breaks naturally.
         record Item(int pos, boolean isBild, Bild bild, Text text) {}
         List<Item> flow = Stream.concat(
             restBilder.stream().map(b -> new Item(b.storyPosition != null ? b.storyPosition : 0, true, b, null)),
@@ -348,9 +482,10 @@ public class PdfService {
             Item item = flow.get(i);
             Cell target = (i % 2 == 0) ? left : right;
             if (item.isBild()) {
-                target.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(88), heroes.size() + i, false, compact));
+                target.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(88), heroes.size() + i, false, compact,
+                    stats(sd.bildStats(), item.bild().id)));
             } else {
-                target.add(buildTextDiv(item.text()).setMarginTop(4).setMarginBottom(8));
+                target.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id)).setMarginTop(4).setMarginBottom(8));
             }
         }
         grid.addCell(left);
@@ -371,9 +506,9 @@ public class PdfService {
 
         for (Item item : items) {
             if (item.isBild()) {
-                doc.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact));
+                doc.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact, stats(sd.bildStats(), item.bild().id)));
             } else {
-                doc.add(buildTextDiv(item.text()));
+                doc.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id)));
             }
         }
     }
@@ -403,14 +538,14 @@ public class PdfService {
 
         Cell leftCell = new Cell().setBorder(null).setPaddingRight(3).setVerticalAlignment(VerticalAlignment.TOP);
         for (Item item : col0) {
-            if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact));
-            else leftCell.add(buildTextDiv(item.text()));
+            if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact, stats(sd.bildStats(), item.bild().id)));
+            else leftCell.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id)));
         }
 
         Cell rightCell = new Cell().setBorder(null).setPaddingLeft(3).setVerticalAlignment(VerticalAlignment.TOP);
         for (Item item : col1) {
-            if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact));
-            else rightCell.add(buildTextDiv(item.text()));
+            if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact, stats(sd.bildStats(), item.bild().id)));
+            else rightCell.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id)));
         }
 
         table.addCell(leftCell);
@@ -440,8 +575,8 @@ public class PdfService {
             Cell cell = new Cell().setBorder(null).setPaddingLeft(padLeft).setPaddingRight(padRight)
                 .setVerticalAlignment(VerticalAlignment.TOP);
             for (Item item : colItems.apply(c)) {
-                if (item.isBild()) cell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact));
-                else cell.add(buildTextDiv(item.text()));
+                if (item.isBild()) cell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact, stats(sd.bildStats(), item.bild().id)));
+                else cell.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id)));
             }
             table.addCell(cell);
         }
@@ -471,10 +606,14 @@ public class PdfService {
     }
 
     private Div buildBildDiv(Bild bild, UnitValue width) {
-        return buildBildDiv(bild, width, false);
+        return buildBildDiv(bild, width, false, null);
     }
 
     private Div buildBildDiv(Bild bild, UnitValue width, boolean compact) {
+        return buildBildDiv(bild, width, compact, null);
+    }
+
+    private Div buildBildDiv(Bild bild, UnitValue width, boolean compact, ItemStats stats) {
         Div div = new Div().setMarginBottom(6);
         String path = capturesPath + bild.getPfad().replaceFirst("^/", "");
         try {
@@ -487,20 +626,25 @@ public class PdfService {
             div.add(img);
             String title = bild.getTitle();
             if (title != null && !title.isBlank()) {
-                div.add(new Paragraph(title).setFontSize(8).setItalic().setTextAlignment(TextAlignment.CENTER).setMarginTop(2));
+                div.add(new Paragraph(title).setFontSize(9).setItalic().setTextAlignment(TextAlignment.CENTER).setMarginTop(2));
             }
         } catch (Exception e) {
             log.warn("Bild nicht gefunden: {}", path);
             div.add(new Paragraph("[Bild nicht gefunden: " + bild.getPfad() + "]").setFontSize(8));
         }
+        appendStats(div, stats);
         return div;
     }
 
     private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero) {
-        return buildPolaroidDiv(bild, width, seed, hero, false);
+        return buildPolaroidDiv(bild, width, seed, hero, false, null);
     }
 
     private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero, boolean compact) {
+        return buildPolaroidDiv(bild, width, seed, hero, compact, null);
+    }
+
+    private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero, boolean compact, ItemStats stats) {
         double maxDeg = hero ? 2.5 : 4.0;
         double angle = ((new Random((bild.id != null ? bild.id : 0L) + seed).nextDouble() * 2 - 1) * maxDeg) * Math.PI / 180.0;
 
@@ -535,23 +679,83 @@ public class PdfService {
         String title = bild.getTitle();
         if (title != null && !title.isBlank()) {
             frame.add(new Paragraph(title)
-                .setFontSize(hero ? 9 : 7).setItalic()
+                .setFontSize(hero ? 10 : 8).setItalic()
                 .setTextAlignment(TextAlignment.CENTER)
                 .setMarginTop(4).setMarginBottom(0));
         }
         wrapper.add(frame);
+        appendStats(wrapper, stats);
         return wrapper;
     }
 
     private Div buildTextDiv(Text text) {
+        return buildTextDiv(text, null);
+    }
+
+    private Div buildTextDiv(Text text, ItemStats stats) {
         Div div = new Div().setMarginBottom(6);
         if (text.title != null && !text.title.isBlank()) {
-            div.add(new Paragraph(text.title).setFontSize(12).setBold());
+            div.add(new Paragraph(text.title).setFontSize(14).setBold());
         }
         if (text.description != null && !text.description.isBlank()) {
-            div.add(new Paragraph(text.description).setFontSize(10).setTextAlignment(TextAlignment.JUSTIFIED));
+            div.add(new Paragraph(text.description).setFontSize(12).setTextAlignment(TextAlignment.JUSTIFIED));
         }
+        appendStats(div, stats);
         return div;
+    }
+
+    private static ItemStats stats(Map<Long, ItemStats> map, Long id) {
+        return (map != null && id != null) ? map.get(id) : null;
+    }
+
+    private static final DeviceRgb REPLY_COLOR = new DeviceRgb(0.55f, 0.55f, 0.55f);
+
+    /** Schriftgröße und Farbe skalieren mit der Gesamtzahl der Reaktionen. */
+    private static float reactionFontSize(long total) {
+        if (total >= 10) return 22f;
+        if (total >= 6)  return 20f;
+        if (total >= 3)  return 18f;
+        return 16f;
+    }
+
+    private static DeviceRgb reactionColor(long total) {
+        if (total >= 10) return new DeviceRgb(0.72f, 0.05f, 0.05f); // Dunkelrot
+        if (total >= 6)  return new DeviceRgb(0.88f, 0.10f, 0.10f); // Kräftiges Rot
+        if (total >= 3)  return new DeviceRgb(0.90f, 0.25f, 0.35f); // Leuchtendes Pink-Rot
+        return new DeviceRgb(0.85f, 0.35f, 0.50f);                   // Mittleres Pink
+    }
+
+    private void appendStats(Div div, ItemStats stats) {
+        if (stats == null) return;
+        if (stats.likes() > 0 || stats.votes() > 0) {
+            long total = stats.likes() + stats.votes();
+            float fontSize = reactionFontSize(total);
+            DeviceRgb color = reactionColor(total);
+            StringBuilder sb = new StringBuilder();
+            if (stats.likes() > 0) sb.append("\u2665 ").append(stats.likes());
+            if (stats.votes() > 0) {
+                if (!sb.isEmpty()) sb.append("   ");
+                sb.append("\u2605 ").append(stats.votes());
+            }
+            div.add(new Paragraph(sb.toString())
+                .setFontSize(fontSize).setFontColor(color)
+                .setMarginTop(2).setMarginBottom(stats.comments().isEmpty() ? 0 : 2));
+        }
+        for (String[] line : stats.comments()) {
+            boolean isReply = "1".equals(line[2]);
+            String text = "\u201E" + truncate(line[1], 80) + "\u201C \u2014 " + line[0];
+            div.add(new Paragraph(text)
+                .setFontSize(isReply ? 11 : 13)
+                .setItalic()
+                .setFontColor(REPLY_COLOR)
+                .setMarginLeft(isReply ? 10 : 0)
+                .setMarginTop(2).setMarginBottom(0));
+        }
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max - 1) + "…";
     }
 
     private static class PageNumberHandler implements IEventHandler {
@@ -705,5 +909,13 @@ public class PdfService {
         }
     }
 
-    record StoryData(Story story, List<Bild> bilder, List<Text> texte) {}
+    record ItemStats(long likes, long votes, List<String[]> comments) {}
+
+    record StoryData(
+        Story story,
+        List<Bild> bilder,
+        List<Text> texte,
+        Map<Long, ItemStats> bildStats,
+        Map<Long, ItemStats> textStats
+    ) {}
 }
