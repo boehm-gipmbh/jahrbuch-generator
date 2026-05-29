@@ -143,11 +143,6 @@
             <version>${itext7.version}</version>
             <type>pom</type>
         </dependency>
-        <dependency>
-            <groupId>com.itextpdf</groupId>
-            <artifactId>bouncy-castle-adapter</artifactId>
-            <version>${itext7.version}</version>
-        </dependency>
         <!-- Ersetze die aktuelle quarkus-lombok Dependency mit dieser: -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -377,6 +372,13 @@
                     </plugin>
                 </plugins>
             </build>
+            <dependencies>
+                <dependency>
+                    <groupId>com.itextpdf</groupId>
+                    <artifactId>bouncy-castle-adapter</artifactId>
+                    <version>${itext7.version}</version>
+                </dependency>
+            </dependencies>
         </profile>
 
         <profile>

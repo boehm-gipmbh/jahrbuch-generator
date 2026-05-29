@@ -6,7 +6,7 @@ stages:
   - deploy-prod
 
 variables:
-  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Xmx2g"
 
 .mvn_cache: &mvn_cache
   cache:
