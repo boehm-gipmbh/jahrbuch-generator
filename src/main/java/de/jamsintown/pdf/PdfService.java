@@ -101,19 +101,27 @@ public class PdfService {
     }
 
     public Uni<byte[]> generateForGroup(Long groupId, PdfOptions options) {
+        return generateForGroup(groupId, options, PdfSettings.defaults());
+    }
+
+    public Uni<byte[]> generateForGroup(Long groupId, PdfOptions options, PdfSettings settings) {
         return loadAllStoryData(groupId, options)
             .chain(storyDataList -> Uni.createFrom()
-                .item(() -> renderPdf(storyDataList, options))
+                .item(() -> renderPdf(storyDataList, options, false, settings))
                 .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
     }
 
     /** Generates a PDF without membership check \u2014 for admin use only. Uses compact image quality to stay within email attachment limits. */
     public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options) {
+        return generateForGroupAsAdmin(groupId, options, PdfSettings.defaults());
+    }
+
+    public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options, PdfSettings settings) {
         return loadAllStoryDataNoCheck(groupId, options)
             .chain(storyDataList -> {
                 io.vertx.core.Context eventLoopCtx = vertx.getOrCreateContext();
                 return Uni.createFrom()
-                    .item(() -> renderPdf(storyDataList, options, true))
+                    .item(() -> renderPdf(storyDataList, options, true, settings))
                     .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
                     .emitOn(cmd -> eventLoopCtx.runOnContext(ignored -> cmd.run()));
             });
@@ -303,10 +311,14 @@ public class PdfService {
     }
 
     byte[] renderPdf(List<StoryData> stories, PdfOptions options) {
-        return renderPdf(stories, options, false);
+        return renderPdf(stories, options, false, PdfSettings.defaults());
     }
 
     byte[] renderPdf(List<StoryData> stories, PdfOptions options, boolean compact) {
+        return renderPdf(stories, options, compact, PdfSettings.defaults());
+    }
+
+    byte[] renderPdf(List<StoryData> stories, PdfOptions options, boolean compact, PdfSettings settings) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
             PdfDocument pdfDoc = new PdfDocument(new PdfWriter(out));
@@ -338,7 +350,7 @@ public class PdfService {
             }
 
             for (int i = 0; i < stories.size(); i++) {
-                renderStory(doc, stories.get(i), i, options, compact);
+                renderStory(doc, stories.get(i), i, options, compact, settings);
                 if (i < stories.size() - 1) {
                     doc.add(new AreaBreak());
                 }
@@ -373,18 +385,14 @@ public class PdfService {
     };
 
     private void renderStory(Document doc, StoryData sd) {
-        renderStory(doc, sd, 0, null, false);
+        renderStory(doc, sd, 0, null, false, PdfSettings.defaults());
     }
 
     private void renderStory(Document doc, StoryData sd, int storyIndex) {
-        renderStory(doc, sd, storyIndex, null, false);
+        renderStory(doc, sd, storyIndex, null, false, PdfSettings.defaults());
     }
 
-    private void renderStory(Document doc, StoryData sd, int storyIndex, PdfOptions options) {
-        renderStory(doc, sd, storyIndex, options, false);
-    }
-
-    private void renderStory(Document doc, StoryData sd, int storyIndex, PdfOptions options, boolean compact) {
+    private void renderStory(Document doc, StoryData sd, int storyIndex, PdfOptions options, boolean compact, PdfSettings settings) {
         Story story = sd.story();
         String layout = story != null ? story.layout : null;
 
@@ -392,46 +400,45 @@ public class PdfService {
             DeviceRgb color = STORY_COLORS[storyIndex % STORY_COLORS.length];
             String title = story != null ? story.name : "Sonstige";
             String subtitle = story != null ? story.description : null;
-            renderStoryHeader(doc, title, subtitle, color);
-            renderScrapbook(doc, sd, color, compact);
+            renderStoryHeader(doc, title, subtitle, color, settings);
+            renderScrapbook(doc, sd, color, compact, settings);
         } else if ("grid".equals(layout)) {
             String title = story != null ? story.name : "Sonstige";
-            doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
+            doc.add(new Paragraph(title).setFontSize(settings.storyHeaderTitleSize()).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
-                doc.add(new Paragraph(story.description).setFontSize(12).setItalic().setMarginBottom(8));
+                doc.add(new Paragraph(story.description).setFontSize(settings.storyHeaderSubtitleSize()).setItalic().setMarginBottom(8));
             }
             renderThreeColumn(doc, sd, compact);
         } else if ("1col".equals(layout)) {
             String title = story != null ? story.name : "Sonstige";
-            doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
+            doc.add(new Paragraph(title).setFontSize(settings.storyHeaderTitleSize()).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
-                doc.add(new Paragraph(story.description).setFontSize(12).setItalic().setMarginBottom(8));
+                doc.add(new Paragraph(story.description).setFontSize(settings.storyHeaderSubtitleSize()).setItalic().setMarginBottom(8));
             }
             renderOneColumn(doc, sd, compact);
         } else {
             // Default: 2-column classic (layout == "2col" or null)
             String title = story != null ? story.name : "Sonstige";
-            doc.add(new Paragraph(title).setFontSize(18).setBold().setMarginBottom(4));
+            doc.add(new Paragraph(title).setFontSize(settings.storyHeaderTitleSize()).setBold().setMarginBottom(4));
             if (story != null && story.description != null && !story.description.isBlank()) {
-                doc.add(new Paragraph(story.description).setFontSize(12).setItalic().setMarginBottom(8));
+                doc.add(new Paragraph(story.description).setFontSize(settings.storyHeaderSubtitleSize()).setItalic().setMarginBottom(8));
             }
             renderTwoColumn(doc, sd, compact);
         }
     }
 
-    private void renderStoryHeader(Document doc, String title, String subtitle, DeviceRgb color) {
-        // Colored title band
+    private void renderStoryHeader(Document doc, String title, String subtitle, DeviceRgb color, PdfSettings settings) {
         Table header = new Table(UnitValue.createPercentArray(new float[]{1})).useAllAvailableWidth();
         Cell titleCell = new Cell().setBorder(null)
             .setBackgroundColor(color)
             .setPadding(12);
         titleCell.add(new Paragraph(title)
-            .setFontSize(22).setBold()
+            .setFontSize(settings.storyHeaderTitleSize()).setBold()
             .setFontColor(com.itextpdf.kernel.colors.ColorConstants.WHITE)
             .setMargin(0));
         if (subtitle != null && !subtitle.isBlank()) {
             titleCell.add(new Paragraph(subtitle)
-                .setFontSize(10)
+                .setFontSize(settings.storyHeaderSubtitleSize())
                 .setFontColor(new DeviceRgb(0.9f, 0.9f, 0.9f))
                 .setMarginTop(3).setMarginBottom(0));
         }
@@ -441,10 +448,10 @@ public class PdfService {
     }
 
     private void renderScrapbook(Document doc, StoryData sd, DeviceRgb accentColor) {
-        renderScrapbook(doc, sd, accentColor, false);
+        renderScrapbook(doc, sd, accentColor, false, PdfSettings.defaults());
     }
 
-    private void renderScrapbook(Document doc, StoryData sd, DeviceRgb accentColor, boolean compact) {
+    private void renderScrapbook(Document doc, StoryData sd, DeviceRgb accentColor, boolean compact, PdfSettings settings) {
         List<Bild> bilder = sd.bilder();
         List<Text> texte = sd.texte();
 
@@ -462,7 +469,7 @@ public class PdfService {
 
         for (int i = 0; i < heroes.size(); i++) {
             doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact,
-                stats(sd.bildStats(), heroes.get(i).id)));
+                stats(sd.bildStats(), heroes.get(i).id), settings));
         }
 
         record Item(int pos, boolean isBild, Bild bild, Text text) {}
@@ -483,9 +490,9 @@ public class PdfService {
             Cell target = (i % 2 == 0) ? left : right;
             if (item.isBild()) {
                 target.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(88), heroes.size() + i, false, compact,
-                    stats(sd.bildStats(), item.bild().id)));
+                    stats(sd.bildStats(), item.bild().id), settings));
             } else {
-                target.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id)).setMarginTop(4).setMarginBottom(8));
+                target.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id), settings).setMarginTop(4).setMarginBottom(8));
             }
         }
         grid.addCell(left);
@@ -606,14 +613,18 @@ public class PdfService {
     }
 
     private Div buildBildDiv(Bild bild, UnitValue width) {
-        return buildBildDiv(bild, width, false, null);
+        return buildBildDiv(bild, width, false, null, PdfSettings.defaults());
     }
 
     private Div buildBildDiv(Bild bild, UnitValue width, boolean compact) {
-        return buildBildDiv(bild, width, compact, null);
+        return buildBildDiv(bild, width, compact, null, PdfSettings.defaults());
     }
 
     private Div buildBildDiv(Bild bild, UnitValue width, boolean compact, ItemStats stats) {
+        return buildBildDiv(bild, width, compact, stats, PdfSettings.defaults());
+    }
+
+    private Div buildBildDiv(Bild bild, UnitValue width, boolean compact, ItemStats stats, PdfSettings settings) {
         Div div = new Div().setMarginBottom(6);
         String path = capturesPath + bild.getPfad().replaceFirst("^/", "");
         try {
@@ -626,25 +637,29 @@ public class PdfService {
             div.add(img);
             String title = bild.getTitle();
             if (title != null && !title.isBlank()) {
-                div.add(new Paragraph(title).setFontSize(9).setItalic().setTextAlignment(TextAlignment.CENTER).setMarginTop(2));
+                div.add(new Paragraph(title).setFontSize(settings.imageCaptionSize()).setItalic().setTextAlignment(TextAlignment.CENTER).setMarginTop(2));
             }
         } catch (Exception e) {
             log.warn("Bild nicht gefunden: {}", path);
             div.add(new Paragraph("[Bild nicht gefunden: " + bild.getPfad() + "]").setFontSize(8));
         }
-        appendStats(div, stats);
+        appendStats(div, stats, settings);
         return div;
     }
 
     private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero) {
-        return buildPolaroidDiv(bild, width, seed, hero, false, null);
+        return buildPolaroidDiv(bild, width, seed, hero, false, null, PdfSettings.defaults());
     }
 
     private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero, boolean compact) {
-        return buildPolaroidDiv(bild, width, seed, hero, compact, null);
+        return buildPolaroidDiv(bild, width, seed, hero, compact, null, PdfSettings.defaults());
     }
 
     private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero, boolean compact, ItemStats stats) {
+        return buildPolaroidDiv(bild, width, seed, hero, compact, stats, PdfSettings.defaults());
+    }
+
+    private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero, boolean compact, ItemStats stats, PdfSettings settings) {
         double maxDeg = hero ? 2.5 : 4.0;
         double angle = ((new Random((bild.id != null ? bild.id : 0L) + seed).nextDouble() * 2 - 1) * maxDeg) * Math.PI / 180.0;
 
@@ -678,29 +693,34 @@ public class PdfService {
 
         String title = bild.getTitle();
         if (title != null && !title.isBlank()) {
+            float captionSize = hero ? settings.imageCaptionSize() + 1 : settings.imageCaptionSize();
             frame.add(new Paragraph(title)
-                .setFontSize(hero ? 10 : 8).setItalic()
+                .setFontSize(captionSize).setItalic()
                 .setTextAlignment(TextAlignment.CENTER)
                 .setMarginTop(4).setMarginBottom(0));
         }
         wrapper.add(frame);
-        appendStats(wrapper, stats);
+        appendStats(wrapper, stats, settings);
         return wrapper;
     }
 
     private Div buildTextDiv(Text text) {
-        return buildTextDiv(text, null);
+        return buildTextDiv(text, null, PdfSettings.defaults());
     }
 
     private Div buildTextDiv(Text text, ItemStats stats) {
+        return buildTextDiv(text, stats, PdfSettings.defaults());
+    }
+
+    private Div buildTextDiv(Text text, ItemStats stats, PdfSettings settings) {
         Div div = new Div().setMarginBottom(6);
         if (text.title != null && !text.title.isBlank()) {
-            div.add(new Paragraph(text.title).setFontSize(14).setBold());
+            div.add(new Paragraph(text.title).setFontSize(settings.textTitleSize()).setBold());
         }
         if (text.description != null && !text.description.isBlank()) {
-            div.add(new Paragraph(text.description).setFontSize(12).setTextAlignment(TextAlignment.JUSTIFIED));
+            div.add(new Paragraph(text.description).setFontSize(settings.textDescriptionSize()).setTextAlignment(TextAlignment.JUSTIFIED));
         }
-        appendStats(div, stats);
+        appendStats(div, stats, settings);
         return div;
     }
 
@@ -726,6 +746,10 @@ public class PdfService {
     }
 
     private void appendStats(Div div, ItemStats stats) {
+        appendStats(div, stats, PdfSettings.defaults());
+    }
+
+    private void appendStats(Div div, ItemStats stats, PdfSettings settings) {
         if (stats == null) return;
         if (stats.likes() > 0 || stats.votes() > 0) {
             long total = stats.likes() + stats.votes();
@@ -745,7 +769,7 @@ public class PdfService {
             boolean isReply = "1".equals(line[2]);
             String text = "\u201E" + truncate(line[1], 80) + "\u201C \u2014 " + line[0];
             div.add(new Paragraph(text)
-                .setFontSize(isReply ? 11 : 13)
+                .setFontSize(isReply ? settings.commentReplySize() : settings.commentTopLevelSize())
                 .setItalic()
                 .setFontColor(REPLY_COLOR)
                 .setMarginLeft(isReply ? 10 : 0)
