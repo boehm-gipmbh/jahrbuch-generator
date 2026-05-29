@@ -25,7 +25,7 @@ class PdfServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new PdfService(null, null);
+        service = new PdfService(null, null, new com.fasterxml.jackson.databind.ObjectMapper());
         setCapturesPath(service, tempDir.toString() + "/");
     }
 

@@ -9,9 +9,12 @@ import com.itextpdf.kernel.events.Event;
 import com.itextpdf.kernel.events.IEventHandler;
 import com.itextpdf.kernel.events.PdfDocumentEvent;
 import com.itextpdf.kernel.geom.PageSize;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.itextpdf.kernel.pdf.EncryptionConstants;
 import com.itextpdf.kernel.pdf.PdfDocument;
 import com.itextpdf.kernel.pdf.PdfPage;
 import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.kernel.pdf.WriterProperties;
 import com.itextpdf.kernel.pdf.canvas.PdfCanvas;
 import com.itextpdf.kernel.pdf.extgstate.PdfExtGState;
 import com.itextpdf.layout.Canvas;
@@ -60,6 +63,7 @@ public class PdfService {
 
     private final UserService userService;
     private final Vertx vertx;
+    private final ObjectMapper objectMapper;
 
     /** Pfad zur extrahierten DejaVuSans-Temp-Datei — einmal gesetzt, nie wieder geändert. */
     private static volatile java.nio.file.Path fontTempPath = null;
@@ -91,9 +95,24 @@ public class PdfService {
     }
 
     @Inject
-    public PdfService(UserService userService, Vertx vertx) {
+    public PdfService(UserService userService, Vertx vertx, ObjectMapper objectMapper) {
         this.userService = userService;
         this.vertx = vertx;
+        this.objectMapper = objectMapper;
+    }
+
+    @WithSession
+    Uni<PdfSettings> loadPdfSettings(Long groupId) {
+        return Gruppe.<Gruppe>findById(groupId)
+            .map(gruppe -> {
+                if (gruppe == null || gruppe.pdfSettings == null) return PdfSettings.defaults();
+                try {
+                    return objectMapper.readValue(gruppe.pdfSettings, PdfSettings.class);
+                } catch (Exception e) {
+                    log.warn("Konnte PDF-Einstellungen nicht parsen für Gruppe {}: {}", groupId, e.getMessage());
+                    return PdfSettings.defaults();
+                }
+            });
     }
 
     public Uni<byte[]> generateForGroup(Long groupId) {
@@ -101,7 +120,8 @@ public class PdfService {
     }
 
     public Uni<byte[]> generateForGroup(Long groupId, PdfOptions options) {
-        return generateForGroup(groupId, options, PdfSettings.defaults());
+        return loadPdfSettings(groupId)
+            .chain(settings -> generateForGroup(groupId, options, settings));
     }
 
     public Uni<byte[]> generateForGroup(Long groupId, PdfOptions options, PdfSettings settings) {
@@ -113,7 +133,8 @@ public class PdfService {
 
     /** Generates a PDF without membership check \u2014 for admin use only. Uses compact image quality to stay within email attachment limits. */
     public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options) {
-        return generateForGroupAsAdmin(groupId, options, PdfSettings.defaults());
+        return loadPdfSettings(groupId)
+            .chain(settings -> generateForGroupAsAdmin(groupId, options, settings));
     }
 
     public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options, PdfSettings settings) {
@@ -321,7 +342,16 @@ public class PdfService {
     byte[] renderPdf(List<StoryData> stories, PdfOptions options, boolean compact, PdfSettings settings) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
-            PdfDocument pdfDoc = new PdfDocument(new PdfWriter(out));
+            WriterProperties writerProps = new WriterProperties();
+            if (settings.pdfPassword() != null && !settings.pdfPassword().isBlank()) {
+                writerProps.setStandardEncryption(
+                    settings.pdfPassword().getBytes(),
+                    null,
+                    EncryptionConstants.ALLOW_PRINTING,
+                    EncryptionConstants.ENCRYPTION_AES_128
+                );
+            }
+            PdfDocument pdfDoc = new PdfDocument(new PdfWriter(out, writerProps));
             Document doc = new Document(pdfDoc, PageSize.A4);
             doc.setMargins(40, 40, 50, 40);
             PdfFont unicodeFont = makeUnicodeFont();
