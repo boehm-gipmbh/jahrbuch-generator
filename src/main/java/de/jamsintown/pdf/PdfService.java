@@ -362,8 +362,9 @@ public class PdfService {
             if (options != null && options.pageNumbers()) {
                 pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PageNumberHandler());
             }
-            if (options != null && options.passepartoutStyle() != null && !options.passepartoutStyle().isBlank() && !"none".equals(options.passepartoutStyle())) {
-                pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PassepartoutHandler(options.passepartoutStyle()));
+            String passepartoutStyle = settings.passepartoutStyle();
+            if (passepartoutStyle != null && !passepartoutStyle.isBlank() && !"none".equals(passepartoutStyle)) {
+                pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PassepartoutHandler(passepartoutStyle));
             }
 
             if (stories.isEmpty()) {
