@@ -128,7 +128,7 @@ public class GruppeResource {
     @GET
     @Path("{id}/pdf-config")
     @Produces(MediaType.APPLICATION_JSON)
-    @RolesAllowed({"admin", "group-admin"})
+    @RolesAllowed("group-admin")
     @WithSession
     public Uni<PdfSettings> getPdfConfig(@PathParam("id") long groupId) {
         return userService.getCurrentUser()
@@ -149,7 +149,7 @@ public class GruppeResource {
     @Path("{id}/pdf-config")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @RolesAllowed({"admin", "group-admin"})
+    @RolesAllowed("group-admin")
     @WithTransaction
     public Uni<PdfSettings> putPdfConfig(@PathParam("id") long groupId, PdfSettings settings) {
         return userService.getCurrentUser()

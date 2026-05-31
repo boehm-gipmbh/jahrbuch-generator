@@ -34,7 +34,7 @@ public class BildResource {
 
     @GET
     @Path("/by-group/{groupId}")
-    @RolesAllowed({"admin", "group-admin"})
+    @RolesAllowed("group-admin")
     @WithSession
     public Uni<List<Bild>> getByGroup(@PathParam("groupId") long groupId) {
         return Gruppe.<Gruppe>findById(groupId)
