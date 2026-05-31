@@ -247,7 +247,7 @@ public class PdfService {
             .map(bild -> {
                 if (bild == null) return null;
                 String diskPath = capturesPath + bild.pfad.replaceFirst("^/", "");
-                return new ResolvedBackground(diskPath, bg.opacity(), bg.tint());
+                return new ResolvedBackground(diskPath, bg.opacity(), bg.tint(), bg.offsetX(), bg.offsetY(), bg.zoom());
             });
     }
 
@@ -1015,7 +1015,7 @@ public class PdfService {
 
     record ItemStats(long likes, long votes, List<String[]> comments) {}
 
-    record ResolvedBackground(String diskPath, float opacity, String tint) {}
+    record ResolvedBackground(String diskPath, float opacity, String tint, float offsetX, float offsetY, float zoom) {}
 
     record ResolvedGroupBackground(ResolvedBackground coverFront, ResolvedBackground coverBack, ResolvedBackground toc) {
         static ResolvedGroupBackground empty() { return new ResolvedGroupBackground(null, null, null); }
@@ -1059,16 +1059,18 @@ public class PdfService {
                 PdfCanvas cv = new PdfCanvas(page.newContentStreamBefore(), page.getResources(), pdf);
                 cv.saveState();
                 cv.setExtGState(new PdfExtGState().setFillOpacity(bg.opacity()));
-                // Cover-Skalierung: proportional skalieren bis die Seite vollständig bedeckt ist
+                // Cover-Skalierung mit Zoom und Offset
                 float imgW = imageData.getWidth();
                 float imgH = imageData.getHeight();
                 float pageW = r.getWidth();
                 float pageH = r.getHeight();
-                float scale = Math.max(pageW / imgW, pageH / imgH);
+                float zoom = bg.zoom() <= 0f ? 1f : bg.zoom();
+                float scale = Math.max(pageW / imgW, pageH / imgH) * zoom;
                 float drawW = imgW * scale;
                 float drawH = imgH * scale;
-                float x = r.getLeft() + (pageW - drawW) / 2f;
-                float y = r.getBottom() + (pageH - drawH) / 2f;
+                // offsetX/Y: 0 = zentriert, -1 = links/oben, +1 = rechts/unten
+                float x = r.getLeft() + (pageW - drawW) / 2f * (1f + bg.offsetX());
+                float y = r.getBottom() + (pageH - drawH) / 2f * (1f + bg.offsetY());
                 cv.addImageFittedIntoRectangle(imageData,
                     new com.itextpdf.kernel.geom.Rectangle(x, y, drawW, drawH), false);
                 if (bg.tint() != null && !bg.tint().isBlank()) {
