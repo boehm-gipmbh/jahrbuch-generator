@@ -1059,7 +1059,18 @@ public class PdfService {
                 PdfCanvas cv = new PdfCanvas(page.newContentStreamBefore(), page.getResources(), pdf);
                 cv.saveState();
                 cv.setExtGState(new PdfExtGState().setFillOpacity(bg.opacity()));
-                cv.addImageFittedIntoRectangle(imageData, r, false);
+                // Cover-Skalierung: proportional skalieren bis die Seite vollständig bedeckt ist
+                float imgW = imageData.getWidth();
+                float imgH = imageData.getHeight();
+                float pageW = r.getWidth();
+                float pageH = r.getHeight();
+                float scale = Math.max(pageW / imgW, pageH / imgH);
+                float drawW = imgW * scale;
+                float drawH = imgH * scale;
+                float x = r.getLeft() + (pageW - drawW) / 2f;
+                float y = r.getBottom() + (pageH - drawH) / 2f;
+                cv.addImageFittedIntoRectangle(imageData,
+                    new com.itextpdf.kernel.geom.Rectangle(x, y, drawW, drawH), false);
                 if (bg.tint() != null && !bg.tint().isBlank()) {
                     DeviceRgb tint = parseTintColor(bg.tint());
                     if (tint != null) {
