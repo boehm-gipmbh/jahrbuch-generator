@@ -60,6 +60,10 @@ class PdfServiceTest {
         return t;
     }
 
+    private static PdfService.StoryData sd(Story story, List<Bild> bilder, List<Text> texte) {
+        return new PdfService.StoryData(story, bilder, texte, Map.of(), Map.of(), null);
+    }
+
     private boolean isPdf(byte[] bytes) {
         return bytes != null && bytes.length > 4
             && bytes[0] == '%' && bytes[1] == 'P' && bytes[2] == 'D' && bytes[3] == 'F';
@@ -73,17 +77,16 @@ class PdfServiceTest {
 
     @Test
     void renderPdf_eineStory_liefertGueltigesPdf() {
-        var sd = new PdfService.StoryData(story("Testgeschichte", "2col"), List.of(), List.of(), Map.of(), Map.of());
+        var sd = sd(story("Testgeschichte", "2col"), List.of(), List.of());
         byte[] result = service.renderPdf(List.of(sd), null);
         assertTrue(isPdf(result));
     }
 
     @Test
     void renderPdf_einspaltigesLayout_keinFehler() {
-        var sd = new PdfService.StoryData(story("1col Story", "1col"),
+        var sd = sd(story("1col Story", "1col"),
             List.of(bild("/nichtvorhanden.jpg", "Bild")),
-            List.of(text("Überschrift", "Inhalt")),
-            Map.of(), Map.of());
+            List.of(text("Überschrift", "Inhalt")));
         byte[] result = service.renderPdf(List.of(sd), null);
         assertTrue(isPdf(result));
     }
@@ -94,14 +97,14 @@ class PdfServiceTest {
         linkes.storyColumn = 0;
         Bild rechtes = bild("/rechts.jpg", "Rechts");
         rechtes.storyColumn = 1;
-        var sd = new PdfService.StoryData(story("2col Story", "2col"), List.of(linkes, rechtes), List.of(), Map.of(), Map.of());
+        var sd = sd(story("2col Story", "2col"), List.of(linkes, rechtes), List.of());
         byte[] result = service.renderPdf(List.of(sd), null);
         assertTrue(isPdf(result));
     }
 
     @Test
     void renderPdf_mitDeckblatt_liefertGueltigesPdf() {
-        var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of(), Map.of(), Map.of());
+        var sd = sd(story("Story", "1col"), List.of(), List.of());
         PdfOptions options = new PdfOptions(null, false, false, true, "Mein Jahrbuch 2025", false, false, false, 1, 5);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
@@ -109,14 +112,14 @@ class PdfServiceTest {
 
     @Test
     void renderPdf_mitLeeresDeckblattTitle_verwendetFallback() {
-        var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of(), Map.of(), Map.of());
+        var sd = sd(story("Story", "1col"), List.of(), List.of());
         PdfOptions options = new PdfOptions(null, false, false, true, "  ", false, false, false, 1, 5);
         assertDoesNotThrow(() -> service.renderPdf(List.of(sd), options));
     }
 
     @Test
     void renderPdf_mitSeitenzahlen_liefertGueltigesPdf() {
-        var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of(), Map.of(), Map.of());
+        var sd = sd(story("Story", "1col"), List.of(), List.of());
         PdfOptions options = new PdfOptions(null, false, false, false, null, true, false, false, 1, 5);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
@@ -124,18 +127,17 @@ class PdfServiceTest {
 
     @Test
     void renderPdf_pendingSektion_nullStory_keinFehler() {
-        var pending = new PdfService.StoryData(null,
+        var pending = sd(null,
             List.of(bild("/irgendein.jpg", "Bild ohne Story")),
-            List.of(text("Text ohne Story", "Beschreibung")),
-            Map.of(), Map.of());
+            List.of(text("Text ohne Story", "Beschreibung")));
         byte[] result = service.renderPdf(List.of(pending), null);
         assertTrue(isPdf(result));
     }
 
     @Test
     void renderPdf_bildDateiNichtVorhanden_liefertTrotzdemPdf() {
-        var sd = new PdfService.StoryData(story("Story", "1col"),
-            List.of(bild("/nichtvorhanden.jpg", "Fehlendes Bild")), List.of(), Map.of(), Map.of());
+        var sd = sd(story("Story", "1col"),
+            List.of(bild("/nichtvorhanden.jpg", "Fehlendes Bild")), List.of());
         byte[] result = service.renderPdf(List.of(sd), null);
         assertTrue(isPdf(result));
     }
@@ -144,16 +146,16 @@ class PdfServiceTest {
     void renderPdf_bildDateiVorhanden_wirdEingebettet() throws Exception {
         Path img = tempDir.resolve("test.jpg");
         Files.write(img, "FAKE_IMAGE_DATA".getBytes(StandardCharsets.UTF_8));
-        var sd = new PdfService.StoryData(story("Story", "1col"),
-            List.of(bild("/test.jpg", "Vorhandenes Bild")), List.of(), Map.of(), Map.of());
+        var sd = sd(story("Story", "1col"),
+            List.of(bild("/test.jpg", "Vorhandenes Bild")), List.of());
         assertDoesNotThrow(() -> service.renderPdf(List.of(sd), null));
     }
 
     @Test
     void renderPdf_mehrerStories_jeweilsEigeneSeitenbreak() {
-        var sd1 = new PdfService.StoryData(story("Story 1", "1col"), List.of(), List.of(), Map.of(), Map.of());
-        var sd2 = new PdfService.StoryData(story("Story 2", "1col"), List.of(), List.of(), Map.of(), Map.of());
-        var sd3 = new PdfService.StoryData(story("Story 3", "1col"), List.of(), List.of(), Map.of(), Map.of());
+        var sd1 = sd(story("Story 1", "1col"), List.of(), List.of());
+        var sd2 = sd(story("Story 2", "1col"), List.of(), List.of());
+        var sd3 = sd(story("Story 3", "1col"), List.of(), List.of());
         byte[] result = service.renderPdf(List.of(sd1, sd2, sd3), null);
         assertTrue(isPdf(result));
         assertTrue(result.length > 1000, "Mehrseitiges PDF sollte größer sein");
@@ -163,8 +165,8 @@ class PdfServiceTest {
     void renderPdf_scrapbookLayout_keinFehler() {
         Bild hero = bild("/hero.jpg", "Hero");
         hero.hauptbild = true;
-        var sd = new PdfService.StoryData(story("Scrapbook Story", "scrapbook"),
-            List.of(hero, bild("/a.jpg", "A"), bild("/b.jpg", "B")), List.of(), Map.of(), Map.of());
+        var sd = sd(story("Scrapbook Story", "scrapbook"),
+            List.of(hero, bild("/a.jpg", "A"), bild("/b.jpg", "B")), List.of());
         byte[] result = service.renderPdf(List.of(sd), null);
         assertTrue(isPdf(result));
     }
@@ -174,17 +176,16 @@ class PdfServiceTest {
         Bild b0 = bild("/a.jpg", "A"); b0.storyColumn = 0;
         Bild b1 = bild("/b.jpg", "B"); b1.storyColumn = 1;
         Bild b2 = bild("/c.jpg", "C"); b2.storyColumn = 2;
-        var sd = new PdfService.StoryData(story("Grid Story", "grid"), List.of(b0, b1, b2), List.of(), Map.of(), Map.of());
+        var sd = sd(story("Grid Story", "grid"), List.of(b0, b1, b2), List.of());
         byte[] result = service.renderPdf(List.of(sd), null);
         assertTrue(isPdf(result));
     }
 
     @Test
     void renderPdf_alleOptionen_kombiniert() {
-        var sd = new PdfService.StoryData(story("Story", "2col"),
+        var sd = sd(story("Story", "2col"),
             List.of(bild("/bild.jpg", "Titel")),
-            List.of(text("Text", "Inhalt")),
-            Map.of(), Map.of());
+            List.of(text("Text", "Inhalt")));
         PdfOptions options = new PdfOptions(List.of(1L), false, false, true, "Jahrbuch 2025", true, true, true, 1, 5);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
