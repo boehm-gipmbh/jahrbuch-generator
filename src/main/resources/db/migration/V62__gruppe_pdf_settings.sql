@@ -1,0 +1,1 @@
+ALTER TABLE gruppen ADD COLUMN IF NOT EXISTS pdf_settings JSONB;

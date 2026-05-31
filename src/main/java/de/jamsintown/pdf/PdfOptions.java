@@ -11,7 +11,6 @@ public record PdfOptions(
     boolean coverPage,
     String coverTitle,
     boolean pageNumbers,
-    String passepartoutStyle,
     boolean includeReactions,
     boolean includeComments,
     int commentDepth,

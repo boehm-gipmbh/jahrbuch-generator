@@ -25,7 +25,7 @@ class PdfServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new PdfService(null, null);
+        service = new PdfService(null, null, new com.fasterxml.jackson.databind.ObjectMapper());
         setCapturesPath(service, tempDir.toString() + "/");
     }
 
@@ -102,7 +102,7 @@ class PdfServiceTest {
     @Test
     void renderPdf_mitDeckblatt_liefertGueltigesPdf() {
         var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of(), Map.of(), Map.of());
-        PdfOptions options = new PdfOptions(null, false, false, true, "Mein Jahrbuch 2025", false, null, false, false, 1, 5);
+        PdfOptions options = new PdfOptions(null, false, false, true, "Mein Jahrbuch 2025", false, false, false, 1, 5);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
     }
@@ -110,14 +110,14 @@ class PdfServiceTest {
     @Test
     void renderPdf_mitLeeresDeckblattTitle_verwendetFallback() {
         var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of(), Map.of(), Map.of());
-        PdfOptions options = new PdfOptions(null, false, false, true, "  ", false, null, false, false, 1, 5);
+        PdfOptions options = new PdfOptions(null, false, false, true, "  ", false, false, false, 1, 5);
         assertDoesNotThrow(() -> service.renderPdf(List.of(sd), options));
     }
 
     @Test
     void renderPdf_mitSeitenzahlen_liefertGueltigesPdf() {
         var sd = new PdfService.StoryData(story("Story", "1col"), List.of(), List.of(), Map.of(), Map.of());
-        PdfOptions options = new PdfOptions(null, false, false, false, null, true, null, false, false, 1, 5);
+        PdfOptions options = new PdfOptions(null, false, false, false, null, true, false, false, 1, 5);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
     }
@@ -185,7 +185,7 @@ class PdfServiceTest {
             List.of(bild("/bild.jpg", "Titel")),
             List.of(text("Text", "Inhalt")),
             Map.of(), Map.of());
-        PdfOptions options = new PdfOptions(List.of(1L), false, false, true, "Jahrbuch 2025", true, "gold", true, true, 1, 5);
+        PdfOptions options = new PdfOptions(List.of(1L), false, false, true, "Jahrbuch 2025", true, true, true, 1, 5);
         byte[] result = service.renderPdf(List.of(sd), options);
         assertTrue(isPdf(result));
     }
