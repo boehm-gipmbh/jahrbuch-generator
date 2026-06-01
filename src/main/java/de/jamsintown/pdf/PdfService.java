@@ -1157,46 +1157,21 @@ public class PdfService {
 
             try {
                 com.itextpdf.io.image.ImageData imageData = ImageDataFactory.create(bg.diskPath());
+                PdfCanvas cv = new PdfCanvas(page.newContentStreamBefore(), page.getResources(), pdf);
+                cv.saveState();
+                cv.setExtGState(new PdfExtGState().setFillOpacity(bg.opacity()));
+                // Cover-Skalierung mit Zoom und Offset
+                float imgW = imageData.getWidth();
+                float imgH = imageData.getHeight();
                 float pageW = r.getWidth();
                 float pageH = r.getHeight();
                 float zoom = bg.zoom() <= 0f ? 1f : bg.zoom();
-                PdfCanvas cv = new PdfCanvas(page.newContentStreamBefore(), page.getResources(), pdf);
-                // Cover-Skalierung mit Zoom und Offset (vorab berechnen für Blur-Maske)
-                float imgW = imageData.getWidth();
-                float imgH = imageData.getHeight();
                 float scale = Math.max(pageW / imgW, pageH / imgH) * zoom;
                 float drawW = imgW * scale;
                 float drawH = imgH * scale;
                 // offsetX/Y: 0 = zentriert, -1 = links/oben, +1 = rechts/unten
                 float x = r.getLeft() + (pageW - drawW) / 2f * (1f + bg.offsetX());
                 float y = r.getBottom() + (pageH - drawH) / 2f * (1f + bg.offsetY());
-
-                cv.saveState();
-                // Blur-Extend: bei Zoom < 1 unscharf gestrecktes Bild nur in den Streifen
-                if (zoom < 1f) {
-                    java.awt.image.BufferedImage blurBg = createBlurredCover(bg.diskPath());
-                    if (blurBg != null) {
-                        try {
-                            java.io.ByteArrayOutputStream blurOut = new java.io.ByteArrayOutputStream();
-                            javax.imageio.ImageIO.write(blurBg, "jpeg", blurOut);
-                            com.itextpdf.io.image.ImageData blurData = ImageDataFactory.create(blurOut.toByteArray());
-                            blurData.setInterpolation(true);
-                            cv.setExtGState(new PdfExtGState().setFillOpacity(1f));
-                            cv.addImageFittedIntoRectangle(blurData,
-                                new com.itextpdf.kernel.geom.Rectangle(0, 0, pageW, pageH), false);
-                            // Weißes Rechteck über den Bildbereich – Blur nur in den Rändern sichtbar
-                            float maskX = Math.max(0, x);
-                            float maskY = Math.max(0, y);
-                            float maskW = Math.min(pageW, x + drawW) - maskX;
-                            float maskH = Math.min(pageH, y + drawH) - maskY;
-                            if (maskW > 0 && maskH > 0) {
-                                cv.setFillColor(new DeviceRgb(1f, 1f, 1f));
-                                cv.rectangle(maskX, maskY, maskW, maskH).fill();
-                            }
-                        } catch (Exception ignored) {}
-                    }
-                }
-                cv.setExtGState(new PdfExtGState().setFillOpacity(bg.opacity()));
                 cv.addImageFittedIntoRectangle(imageData,
                     new com.itextpdf.kernel.geom.Rectangle(x, y, drawW, drawH), false);
                 if (bg.tint() != null && !bg.tint().isBlank()) {
@@ -1211,24 +1186,6 @@ public class PdfService {
             } catch (Exception e) {
                 // Silently skip – fehlendes oder ungültiges Bild
             }
-        }
-    }
-
-    private static java.awt.image.BufferedImage createBlurredCover(String diskPath) {
-        try {
-            java.awt.image.BufferedImage orig = javax.imageio.ImageIO.read(new java.io.File(diskPath));
-            if (orig == null) return null;
-            // Kleines Thumbnail reicht – PDF-Viewer interpoliert weich dank Interpolate-Flag
-            int w = 80;
-            int h = Math.max(1, orig.getHeight() * w / orig.getWidth());
-            java.awt.image.BufferedImage small = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
-            java.awt.Graphics2D g = small.createGraphics();
-            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.drawImage(orig, 0, 0, w, h, null);
-            g.dispose();
-            return small;
-        } catch (Exception e) {
-            return null;
         }
     }
 
