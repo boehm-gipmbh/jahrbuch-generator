@@ -37,8 +37,8 @@ public class OutpaintService {
     @ConfigProperty(name = "jahrbuch.captures.path", defaultValue = "/tmp/captures/")
     String capturesPath;
 
-    @ConfigProperty(name = "jahrbuch.replicate.api-key", defaultValue = "")
-    String replicateApiKey;
+    @ConfigProperty(name = "jahrbuch.replicate.api-key")
+    java.util.Optional<String> replicateApiKey;
 
     private final ObjectMapper objectMapper;
     private final HttpClient http = HttpClient.newHttpClient();
@@ -49,7 +49,7 @@ public class OutpaintService {
     }
 
     public boolean isConfigured() {
-        return replicateApiKey != null && !replicateApiKey.isBlank();
+        return replicateApiKey.isPresent() && !replicateApiKey.get().isBlank();
     }
 
     public Uni<String> outpaint(Bild bild) {
@@ -69,6 +69,7 @@ public class OutpaintService {
             return outpaintedPfad;
         }
 
+        String apiKey = replicateApiKey.orElseThrow(() -> new RuntimeException("Replicate API Key nicht konfiguriert"));
         try {
             BufferedImage orig = ImageIO.read(new File(diskPath));
             if (orig == null) throw new RuntimeException("Bild konnte nicht geladen werden: " + diskPath);
@@ -106,8 +107,8 @@ public class OutpaintService {
             String imageB64 = toBase64Jpeg(canvas);
             String maskB64 = toBase64Png(mask);
 
-            String predictionId = createPrediction(imageB64, maskB64, scaledW, canvasH);
-            String resultUrl = pollUntilDone(predictionId);
+            String predictionId = createPrediction(imageB64, maskB64, scaledW, canvasH, apiKey);
+            String resultUrl = pollUntilDone(predictionId, apiKey);
             downloadAndSave(resultUrl, outpaintedDiskPath);
 
             log.info("Outpainting abgeschlossen: {}", outpaintedDiskPath);
@@ -119,7 +120,7 @@ public class OutpaintService {
         }
     }
 
-    private String createPrediction(String imageB64, String maskB64, int width, int height) throws Exception {
+    private String createPrediction(String imageB64, String maskB64, int width, int height, String apiKey) throws Exception {
         String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
             put("input", new java.util.LinkedHashMap<>() {{
                 put("image", "data:image/jpeg;base64," + imageB64);
@@ -134,7 +135,7 @@ public class OutpaintService {
 
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create("https://api.replicate.com/v1/models/black-forest-labs/flux-fill-pro/predictions"))
-            .header("Authorization", "Bearer " + replicateApiKey)
+            .header("Authorization", "Bearer " + apiKey)
             .header("Content-Type", "application/json")
             .header("Prefer", "wait=5")
             .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -154,7 +155,7 @@ public class OutpaintService {
         return json.get("id").asText();
     }
 
-    private String pollUntilDone(String predictionId) throws Exception {
+    private String pollUntilDone(String predictionId, String apiKey) throws Exception {
         if (predictionId.startsWith("__direct__:")) {
             return predictionId.substring("__direct__:".length());
         }
@@ -164,7 +165,7 @@ public class OutpaintService {
             Thread.sleep(3000);
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .header("Authorization", "Bearer " + replicateApiKey)
+                .header("Authorization", "Bearer " + apiKey)
                 .GET()
                 .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
