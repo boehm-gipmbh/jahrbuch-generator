@@ -247,7 +247,7 @@ public class PdfService {
             .map(bild -> {
                 if (bild == null) return null;
                 String diskPath = capturesPath + bild.pfad.replaceFirst("^/", "");
-                return new ResolvedBackground(diskPath, bg.opacity(), bg.tint(), bg.offsetX(), bg.offsetY(), bg.zoom());
+                return new ResolvedBackground(diskPath, bg.opacity(), bg.tint(), bg.offsetX(), bg.offsetY(), bg.zoom(), bg.fillColor());
             });
     }
 
@@ -1116,7 +1116,7 @@ public class PdfService {
 
     record ItemStats(long likes, long votes, List<String[]> comments) {}
 
-    record ResolvedBackground(String diskPath, float opacity, String tint, float offsetX, float offsetY, float zoom) {}
+    record ResolvedBackground(String diskPath, float opacity, String tint, float offsetX, float offsetY, float zoom, String fillColor) {}
 
     record ResolvedGroupBackground(ResolvedBackground coverFront, ResolvedBackground coverBack, ResolvedBackground toc) {
         static ResolvedGroupBackground empty() { return new ResolvedGroupBackground(null, null, null); }
@@ -1159,6 +1159,15 @@ public class PdfService {
                 com.itextpdf.io.image.ImageData imageData = ImageDataFactory.create(bg.diskPath());
                 PdfCanvas cv = new PdfCanvas(page.newContentStreamBefore(), page.getResources(), pdf);
                 cv.saveState();
+                // Füllfarbe hinter dem Bild (sichtbar wenn Bild die Seite nicht vollständig bedeckt)
+                if (bg.fillColor() != null && !bg.fillColor().isBlank()) {
+                    DeviceRgb fill = parseTintColor(bg.fillColor());
+                    if (fill != null) {
+                        cv.setExtGState(new PdfExtGState().setFillOpacity(1f));
+                        cv.setFillColor(fill);
+                        cv.rectangle(0, 0, r.getWidth(), r.getHeight()).fill();
+                    }
+                }
                 cv.setExtGState(new PdfExtGState().setFillOpacity(bg.opacity()));
                 // Cover-Skalierung mit Zoom und Offset
                 float imgW = imageData.getWidth();
