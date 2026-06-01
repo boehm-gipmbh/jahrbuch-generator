@@ -148,7 +148,7 @@ public class OutpaintService {
 
         // Wenn Prefer: wait=5 funktioniert hat, ist das Ergebnis direkt da
         if (json.has("output") && !json.get("output").isNull()) {
-            String url = json.get("output").asText();
+            String url = extractOutputUrl(json.get("output"));
             return "__direct__:" + url;
         }
         return json.get("id").asText();
@@ -171,7 +171,7 @@ public class OutpaintService {
             JsonNode json = objectMapper.readTree(response.body());
             String status = json.get("status").asText();
             if ("succeeded".equals(status)) {
-                return json.get("output").asText();
+                return extractOutputUrl(json.get("output"));
             } else if ("failed".equals(status) || "canceled".equals(status)) {
                 throw new RuntimeException("Replicate Prediction " + status + ": " + json.path("error").asText());
             }
@@ -189,6 +189,13 @@ public class OutpaintService {
             throw new RuntimeException("Download fehlgeschlagen: " + response.statusCode());
         }
         Files.write(target, response.body());
+    }
+
+    private static String extractOutputUrl(JsonNode output) {
+        if (output.isArray() && output.size() > 0) {
+            return output.get(0).asText();
+        }
+        return output.asText();
     }
 
     private static String toBase64Jpeg(BufferedImage img) throws Exception {
