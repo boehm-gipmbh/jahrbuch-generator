@@ -542,7 +542,8 @@ public class PdfService {
         if (pageNum > 0) {
             p.addTabStops(new com.itextpdf.layout.element.TabStop(
                 width - 20,
-                com.itextpdf.layout.properties.TabAlignment.RIGHT));
+                com.itextpdf.layout.properties.TabAlignment.RIGHT,
+                new com.itextpdf.kernel.pdf.canvas.draw.DottedLine()));
             p.add(storyName);
             p.add(new com.itextpdf.layout.element.Tab());
             p.add(String.valueOf(pageNum));
