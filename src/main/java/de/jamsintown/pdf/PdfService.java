@@ -413,7 +413,13 @@ public class PdfService {
 
             boolean hasCover = options != null && options.coverPage();
             boolean showToc = hasCover && settings.isTocEnabled();
-            int tocPageIndex = -1;
+
+            // Pass 1: Seitenstarts pro Story ermitteln (nur wenn TOC mit Seitenzahlen benötigt)
+            int[] storyStartPages = null;
+            if (showToc && settings.isTocShowPageNumbers()) {
+                storyStartPages = calcStoryStartPages(stories, options, compact, settings,
+                    (hasCover ? 1 : 0) + (showToc ? 1 : 0));
+            }
 
             if (hasCover) {
                 bgCtrl.set(groupBg.coverFront());
@@ -423,8 +429,7 @@ public class PdfService {
                 if (showToc) {
                     bgCtrl.set(groupBg.toc());
                     doc.add(new AreaBreak());
-                    doc.flush();
-                    tocPageIndex = pdfDoc.getNumberOfPages();
+                    renderTocInline(doc, stories, storyStartPages, settings, unicodeFont);
                 }
                 bgCtrl.set(stories.isEmpty() ? null : stories.get(0).resolvedBackground());
                 doc.add(new AreaBreak());
@@ -432,18 +437,12 @@ public class PdfService {
                 bgCtrl.set(stories.get(0).resolvedBackground());
             }
 
-            int[] storyStartPages = new int[stories.size()];
             for (int i = 0; i < stories.size(); i++) {
-                storyStartPages[i] = pdfDoc.getNumberOfPages();
                 renderStory(doc, stories.get(i), i, options, compact, settings);
                 if (i < stories.size() - 1) {
                     bgCtrl.set(stories.get(i + 1).resolvedBackground());
                     doc.add(new AreaBreak());
                 }
-            }
-
-            if (tocPageIndex > 0) {
-                renderTocPage(pdfDoc, tocPageIndex, stories, storyStartPages, settings, unicodeFont);
             }
 
             if (groupBg.coverBack() != null) {
@@ -467,61 +466,90 @@ public class PdfService {
             .setMarginTop(pageHeight / 2 - 80));
     }
 
-    private void renderTocPage(PdfDocument pdfDoc, int pageIndex, List<StoryData> stories,
-            int[] storyStartPages, PdfSettings settings, PdfFont font) {
+    /**
+     * Pass 1: Stories in ein Wegwerf-Dokument rendern um die Seitenanfänge zu ermitteln.
+     * pageOffset = Anzahl der Seiten vor den Stories im echten PDF (Cover + TOC).
+     */
+    private int[] calcStoryStartPages(List<StoryData> stories, PdfOptions options,
+            boolean compact, PdfSettings settings, int pageOffset) {
+        int[] starts = new int[stories.size()];
         try {
-            PdfPage page = pdfDoc.getPage(pageIndex);
-            com.itextpdf.kernel.geom.Rectangle pageSize = pdfDoc.getDefaultPageSize();
-            float pageW = pageSize.getWidth();
-            float pageH = pageSize.getHeight();
-            float ml = 40, mr = 40, mt = 50;
-            float contentW = pageW - ml - mr;
+            ByteArrayOutputStream tempOut = new ByteArrayOutputStream();
+            PdfDocument tempPdf = new PdfDocument(new PdfWriter(tempOut));
+            Document tempDoc = new Document(tempPdf, PageSize.A4);
+            tempDoc.setMargins(40, 40, 50, 40);
+            PdfFont font = makeUnicodeFont();
+            if (font != null) tempDoc.setFont(font);
 
-            PdfCanvas pdfCanvas = new PdfCanvas(page.newContentStreamAfter(), page.getResources(), pdfDoc);
-
-            String tocTitle = settings.tocTitleOrDefault();
-            float titleSize = settings.tocTitleSizeOrDefault();
-            float entrySize = settings.tocEntrySizeOrDefault();
-            float lineH = entrySize * 1.6f;
-            boolean showPageNums = settings.isTocShowPageNumbers();
-            int cols = settings.tocColumnsOrDefault();
-
-            float y = pageH - mt - titleSize;
-
-            if (font != null) {
-                // Titel zentriert
-                pdfCanvas.beginText()
-                    .setFontAndSize(font, titleSize)
-                    .moveText(pageW / 2 - font.getWidth(tocTitle, titleSize) / 2, y)
-                    .showText(tocTitle)
-                    .endText();
-                y -= titleSize * 2.2f;
-
-                // Einträge
-                float colW = cols == 2 ? (contentW - 20) / 2 : contentW;
-                for (int i = 0; i < stories.size(); i++) {
-                    String name = stories.get(i).story().name;
-                    int col = i % cols;
-                    float xBase = ml + col * (colW + 20);
-
-                    pdfCanvas.beginText().setFontAndSize(font, entrySize);
-                    pdfCanvas.moveText(xBase, y);
-                    pdfCanvas.showText(name);
-                    if (showPageNums) {
-                        String pageNum = String.valueOf(storyStartPages[i]);
-                        float numW = font.getWidth(pageNum, entrySize);
-                        pdfCanvas.moveText(colW - font.getWidth(name, entrySize) - numW, 0);
-                        pdfCanvas.showText(pageNum);
-                    }
-                    pdfCanvas.endText();
-
-                    if (cols == 1 || col == cols - 1) y -= lineH;
-                }
+            int pagesBeforeStory = 0;
+            for (int i = 0; i < stories.size(); i++) {
+                if (i > 0) tempDoc.add(new AreaBreak());
+                renderStory(tempDoc, stories.get(i), i, options, compact, settings);
+                tempDoc.flush();
+                starts[i] = pageOffset + pagesBeforeStory + 1;
+                pagesBeforeStory = tempPdf.getNumberOfPages();
             }
-            pdfCanvas.release();
+            tempDoc.close();
         } catch (Exception e) {
-            log.warn("TOC-Rendering fehlgeschlagen", e);
+            log.warn("Seitenzahl-Berechnung für TOC fehlgeschlagen", e);
+            return null;
         }
+        return starts;
+    }
+
+    private void renderTocInline(Document doc, List<StoryData> stories, int[] storyStartPages,
+            PdfSettings settings, PdfFont font) {
+        String tocTitle = settings.tocTitleOrDefault();
+        float titleSize = settings.tocTitleSizeOrDefault();
+        float entrySize = settings.tocEntrySizeOrDefault();
+        boolean showPageNums = storyStartPages != null && settings.isTocShowPageNumbers();
+        int cols = settings.tocColumnsOrDefault();
+        float contentW = 515f;
+
+        if (font != null) doc.setFont(font);
+
+        doc.add(new Paragraph(tocTitle)
+            .setFontSize(titleSize)
+            .setBold()
+            .setTextAlignment(TextAlignment.CENTER)
+            .setMarginBottom(20));
+
+        if (cols == 2) {
+            float colW = (contentW - 20) / 2;
+            Table table = new Table(new float[]{colW, colW}).setWidth(contentW);
+            for (int i = 0; i < stories.size(); i++) {
+                Paragraph p = buildTocEntry(stories.get(i).story().name,
+                    showPageNums ? storyStartPages[i] : -1, entrySize, colW);
+                table.addCell(new com.itextpdf.layout.element.Cell()
+                    .setBorder(com.itextpdf.layout.borders.Border.NO_BORDER)
+                    .setPadding(3).add(p));
+            }
+            if (stories.size() % 2 != 0) {
+                table.addCell(new com.itextpdf.layout.element.Cell()
+                    .setBorder(com.itextpdf.layout.borders.Border.NO_BORDER));
+            }
+            doc.add(table);
+        } else {
+            for (int i = 0; i < stories.size(); i++) {
+                doc.add(buildTocEntry(stories.get(i).story().name,
+                    showPageNums ? storyStartPages[i] : -1, entrySize, contentW));
+            }
+        }
+    }
+
+    private Paragraph buildTocEntry(String storyName, int pageNum, float fontSize, float width) {
+        Paragraph p = new Paragraph().setFontSize(fontSize).setMarginBottom(6);
+        if (pageNum > 0) {
+            p.addTabStops(new com.itextpdf.layout.element.TabStop(
+                width - 20,
+                com.itextpdf.layout.properties.TabAlignment.RIGHT));
+            p.add(storyName);
+            p.add(new com.itextpdf.layout.element.Tab());
+            p.add(String.valueOf(pageNum));
+        } else {
+            p.add(storyName);
+        }
+        return p;
     }
 
     // Pastel palette \u2014 8 colors, one per story (cycling)
