@@ -1207,17 +1207,36 @@ public class PdfService {
         try {
             java.awt.image.BufferedImage orig = javax.imageio.ImageIO.read(new java.io.File(diskPath));
             if (orig == null) return null;
-            int w = 80;
+            int w = 300;
             int h = Math.max(1, orig.getHeight() * w / orig.getWidth());
-            java.awt.image.BufferedImage small = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
-            java.awt.Graphics2D g = small.createGraphics();
+            java.awt.image.BufferedImage scaled = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = scaled.createGraphics();
             g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             g.drawImage(orig, 0, 0, w, h, null);
             g.dispose();
-            return small;
+            return gaussianBlur(scaled, 12);
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static java.awt.image.BufferedImage gaussianBlur(java.awt.image.BufferedImage src, int radius) {
+        int size = 2 * radius + 1;
+        float sigma = radius / 3f;
+        float[] kernel = new float[size * size];
+        float sum = 0;
+        for (int y = -radius; y <= radius; y++) {
+            for (int x = -radius; x <= radius; x++) {
+                float v = (float) Math.exp(-(x * x + y * y) / (2 * sigma * sigma));
+                kernel[(y + radius) * size + (x + radius)] = v;
+                sum += v;
+            }
+        }
+        for (int i = 0; i < kernel.length; i++) kernel[i] /= sum;
+        java.awt.image.ConvolveOp op = new java.awt.image.ConvolveOp(
+            new java.awt.image.Kernel(size, size, kernel),
+            java.awt.image.ConvolveOp.EDGE_NO_OP, null);
+        return op.filter(src, null);
     }
 
     private static DeviceRgb parseTintColor(String hex) {
