@@ -423,6 +423,8 @@ public class PdfService {
                 if (showToc) {
                     bgCtrl.set(groupBg.toc());
                     doc.add(new AreaBreak());
+                    // Unsichtbares Element damit iText die Seite im PdfDocument anlegt
+                    doc.add(new Paragraph("​").setFontSize(0.001f).setMarginTop(0).setMarginBottom(0));
                     tocPageIndex = pdfDoc.getNumberOfPages();
                 }
                 bgCtrl.set(stories.isEmpty() ? null : stories.get(0).resolvedBackground());
@@ -469,7 +471,7 @@ public class PdfService {
     private void renderTocPage(PdfDocument pdfDoc, int pageIndex, List<StoryData> stories,
             int[] storyStartPages, PdfSettings settings, PdfFont font) {
         PdfPage page = pdfDoc.getPage(pageIndex);
-        com.itextpdf.kernel.geom.Rectangle pageRect = page.getPageSize();
+        com.itextpdf.kernel.geom.Rectangle pageRect = pdfDoc.getDefaultPageSize();
         float ml = 40, mr = 40, mt = 50, mb = 50;
         com.itextpdf.kernel.geom.Rectangle contentRect = new com.itextpdf.kernel.geom.Rectangle(
             ml, mb, pageRect.getWidth() - ml - mr, pageRect.getHeight() - mt - mb);
