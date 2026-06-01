@@ -412,23 +412,37 @@ public class PdfService {
             }
 
             boolean hasCover = options != null && options.coverPage();
+            boolean showToc = hasCover && settings.tocEnabled();
+            int tocPageIndex = -1;
+
             if (hasCover) {
                 bgCtrl.set(groupBg.coverFront());
                 String title = options.coverTitle() != null && !options.coverTitle().isBlank()
                     ? options.coverTitle() : "Jahrbuch";
                 renderCoverPage(doc, title);
+                if (showToc) {
+                    bgCtrl.set(groupBg.toc());
+                    doc.add(new AreaBreak());
+                    tocPageIndex = pdfDoc.getNumberOfPages();
+                }
                 bgCtrl.set(stories.isEmpty() ? null : stories.get(0).resolvedBackground());
                 doc.add(new AreaBreak());
             } else if (!stories.isEmpty()) {
                 bgCtrl.set(stories.get(0).resolvedBackground());
             }
 
+            int[] storyStartPages = new int[stories.size()];
             for (int i = 0; i < stories.size(); i++) {
+                storyStartPages[i] = pdfDoc.getNumberOfPages();
                 renderStory(doc, stories.get(i), i, options, compact, settings);
                 if (i < stories.size() - 1) {
                     bgCtrl.set(stories.get(i + 1).resolvedBackground());
                     doc.add(new AreaBreak());
                 }
+            }
+
+            if (tocPageIndex > 0) {
+                renderTocPage(pdfDoc, tocPageIndex, stories, storyStartPages, settings, unicodeFont);
             }
 
             if (groupBg.coverBack() != null) {
@@ -450,6 +464,73 @@ public class PdfService {
             .setBold()
             .setTextAlignment(TextAlignment.CENTER)
             .setMarginTop(pageHeight / 2 - 80));
+    }
+
+    private void renderTocPage(PdfDocument pdfDoc, int pageIndex, List<StoryData> stories,
+            int[] storyStartPages, PdfSettings settings, PdfFont font) {
+        PdfPage page = pdfDoc.getPage(pageIndex);
+        com.itextpdf.kernel.geom.Rectangle pageRect = page.getPageSize();
+        float ml = 40, mr = 40, mt = 50, mb = 50;
+        com.itextpdf.kernel.geom.Rectangle contentRect = new com.itextpdf.kernel.geom.Rectangle(
+            ml, mb, pageRect.getWidth() - ml - mr, pageRect.getHeight() - mt - mb);
+
+        try (Canvas canvas = new Canvas(new PdfCanvas(page), contentRect)) {
+            if (font != null) canvas.setFont(font);
+
+            String tocTitle = settings.tocTitle() != null && !settings.tocTitle().isBlank()
+                ? settings.tocTitle() : "Inhaltsverzeichnis";
+            canvas.add(new Paragraph(tocTitle)
+                .setFontSize(settings.tocTitleSize())
+                .setBold()
+                .setTextAlignment(TextAlignment.CENTER)
+                .setMarginBottom(24));
+
+            float entrySize = settings.tocEntrySize();
+            boolean showPageNums = settings.tocShowPageNumbers();
+            int cols = settings.tocColumns();
+            float contentWidth = contentRect.getWidth();
+
+            if (cols == 2) {
+                float colWidth = (contentWidth - 16) / 2;
+                Table table = new Table(new float[]{colWidth, colWidth}).setWidth(contentWidth);
+                for (int i = 0; i < stories.size(); i++) {
+                    com.itextpdf.layout.element.Cell cell = new com.itextpdf.layout.element.Cell()
+                        .setBorder(com.itextpdf.layout.borders.Border.NO_BORDER)
+                        .setPadding(2);
+                    Paragraph p = buildTocEntry(stories.get(i).story().name,
+                        showPageNums ? storyStartPages[i] : -1, entrySize, colWidth);
+                    cell.add(p);
+                    table.addCell(cell);
+                }
+                if (stories.size() % 2 != 0) {
+                    table.addCell(new com.itextpdf.layout.element.Cell()
+                        .setBorder(com.itextpdf.layout.borders.Border.NO_BORDER));
+                }
+                canvas.add(table);
+            } else {
+                for (int i = 0; i < stories.size(); i++) {
+                    canvas.add(buildTocEntry(stories.get(i).story().name,
+                        showPageNums ? storyStartPages[i] : -1, entrySize, contentWidth));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("TOC-Rendering fehlgeschlagen", e);
+        }
+    }
+
+    private Paragraph buildTocEntry(String storyName, int pageNum, float fontSize, float width) {
+        Paragraph p = new Paragraph().setFontSize(fontSize).setMarginBottom(6);
+        if (pageNum > 0) {
+            p.addTabStops(new com.itextpdf.layout.element.TabStop(
+                width - 20,
+                com.itextpdf.layout.properties.TabAlignment.RIGHT));
+            p.add(storyName);
+            p.add(new com.itextpdf.layout.element.Tab());
+            p.add(String.valueOf(pageNum));
+        } else {
+            p.add(storyName);
+        }
+        return p;
     }
 
     // Pastel palette \u2014 8 colors, one per story (cycling)
