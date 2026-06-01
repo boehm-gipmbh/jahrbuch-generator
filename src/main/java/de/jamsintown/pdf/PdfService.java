@@ -1170,6 +1170,7 @@ public class PdfService {
                             java.io.ByteArrayOutputStream blurOut = new java.io.ByteArrayOutputStream();
                             javax.imageio.ImageIO.write(blurBg, "jpeg", blurOut);
                             com.itextpdf.io.image.ImageData blurData = ImageDataFactory.create(blurOut.toByteArray());
+                            blurData.setInterpolation(true);
                             cv.setExtGState(new PdfExtGState().setFillOpacity(1f));
                             cv.addImageFittedIntoRectangle(blurData,
                                 new com.itextpdf.kernel.geom.Rectangle(0, 0, pageW, pageH), false);
@@ -1207,36 +1208,18 @@ public class PdfService {
         try {
             java.awt.image.BufferedImage orig = javax.imageio.ImageIO.read(new java.io.File(diskPath));
             if (orig == null) return null;
-            int w = 300;
+            // Kleines Thumbnail reicht – PDF-Viewer interpoliert weich dank Interpolate-Flag
+            int w = 80;
             int h = Math.max(1, orig.getHeight() * w / orig.getWidth());
-            java.awt.image.BufferedImage scaled = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
-            java.awt.Graphics2D g = scaled.createGraphics();
+            java.awt.image.BufferedImage small = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = small.createGraphics();
             g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             g.drawImage(orig, 0, 0, w, h, null);
             g.dispose();
-            return gaussianBlur(scaled, 12);
+            return small;
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private static java.awt.image.BufferedImage gaussianBlur(java.awt.image.BufferedImage src, int radius) {
-        int size = 2 * radius + 1;
-        float sigma = radius / 3f;
-        float[] kernel = new float[size * size];
-        float sum = 0;
-        for (int y = -radius; y <= radius; y++) {
-            for (int x = -radius; x <= radius; x++) {
-                float v = (float) Math.exp(-(x * x + y * y) / (2 * sigma * sigma));
-                kernel[(y + radius) * size + (x + radius)] = v;
-                sum += v;
-            }
-        }
-        for (int i = 0; i < kernel.length; i++) kernel[i] /= sum;
-        java.awt.image.ConvolveOp op = new java.awt.image.ConvolveOp(
-            new java.awt.image.Kernel(size, size, kernel),
-            java.awt.image.ConvolveOp.EDGE_NO_OP, null);
-        return op.filter(src, null);
     }
 
     private static DeviceRgb parseTintColor(String hex) {
