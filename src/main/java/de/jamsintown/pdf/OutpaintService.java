@@ -2,7 +2,6 @@ package de.jamsintown.pdf;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import de.jamsintown.bild.Bild;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -52,15 +51,15 @@ public class OutpaintService {
         return replicateApiKey.isPresent() && !replicateApiKey.get().isBlank();
     }
 
-    public Uni<String> outpaint(Bild bild) {
+    public Uni<String> outpaint(String bildPfad) {
         return Uni.createFrom()
-            .item(() -> doOutpaint(bild))
+            .item(() -> doOutpaint(bildPfad))
             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
     }
 
-    private String doOutpaint(Bild bild) {
-        String diskPath = capturesPath + bild.pfad.replaceFirst("^/", "");
-        String baseName = bild.pfad.replaceFirst("^/", "").replaceFirst("\\.[^.]+$", "");
+    private String doOutpaint(String bildPfad) {
+        String diskPath = capturesPath + bildPfad.replaceFirst("^/", "");
+        String baseName = bildPfad.replaceFirst("^/", "").replaceFirst("\\.[^.]+$", "");
         String outpaintedPfad = "/" + baseName + "_outpainted.jpg";
         Path outpaintedDiskPath = Paths.get(capturesPath + baseName + "_outpainted.jpg");
 
@@ -134,7 +133,7 @@ public class OutpaintService {
         }});
 
         HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create("https://api.replicate.com/v1/models/black-forest-labs/flux-fill-pro/predictions"))
+            .uri(URI.create("https://api.replicate.com/v1/models/black-forest-labs/flux-fill-dev/predictions"))
             .header("Authorization", "Bearer " + apiKey)
             .header("Content-Type", "application/json")
             .header("Prefer", "wait=5")
