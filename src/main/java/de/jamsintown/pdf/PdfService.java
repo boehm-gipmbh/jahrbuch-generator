@@ -247,7 +247,7 @@ public class PdfService {
             .map(bild -> {
                 if (bild == null) return null;
                 String diskPath = capturesPath + bild.pfad.replaceFirst("^/", "");
-                return new ResolvedBackground(diskPath, bg.opacity(), bg.tint(), bg.offsetX(), bg.offsetY(), bg.zoom(), bg.fillColor());
+                return new ResolvedBackground(diskPath, bg.opacity(), bg.tint(), bg.offsetX(), bg.offsetY(), bg.zoom());
             });
     }
 
@@ -1116,7 +1116,7 @@ public class PdfService {
 
     record ItemStats(long likes, long votes, List<String[]> comments) {}
 
-    record ResolvedBackground(String diskPath, float opacity, String tint, float offsetX, float offsetY, float zoom, String fillColor) {}
+    record ResolvedBackground(String diskPath, float opacity, String tint, float offsetX, float offsetY, float zoom) {}
 
     record ResolvedGroupBackground(ResolvedBackground coverFront, ResolvedBackground coverBack, ResolvedBackground toc) {
         static ResolvedGroupBackground empty() { return new ResolvedGroupBackground(null, null, null); }
@@ -1157,24 +1157,29 @@ public class PdfService {
 
             try {
                 com.itextpdf.io.image.ImageData imageData = ImageDataFactory.create(bg.diskPath());
+                float pageW = r.getWidth();
+                float pageH = r.getHeight();
+                float zoom = bg.zoom() <= 0f ? 1f : bg.zoom();
                 PdfCanvas cv = new PdfCanvas(page.newContentStreamBefore(), page.getResources(), pdf);
                 cv.saveState();
-                // Füllfarbe hinter dem Bild (sichtbar wenn Bild die Seite nicht vollständig bedeckt)
-                if (bg.fillColor() != null && !bg.fillColor().isBlank()) {
-                    DeviceRgb fill = parseTintColor(bg.fillColor());
-                    if (fill != null) {
-                        cv.setExtGState(new PdfExtGState().setFillOpacity(1f));
-                        cv.setFillColor(fill);
-                        cv.rectangle(0, 0, r.getWidth(), r.getHeight()).fill();
+                // Blur-Extend: bei Zoom < 1 unscharf gestrecktes Bild als Hintergrundfüllung
+                if (zoom < 1f) {
+                    java.awt.image.BufferedImage blurBg = createBlurredCover(bg.diskPath());
+                    if (blurBg != null) {
+                        try {
+                            java.io.ByteArrayOutputStream blurOut = new java.io.ByteArrayOutputStream();
+                            javax.imageio.ImageIO.write(blurBg, "jpeg", blurOut);
+                            com.itextpdf.io.image.ImageData blurData = ImageDataFactory.create(blurOut.toByteArray());
+                            cv.setExtGState(new PdfExtGState().setFillOpacity(1f));
+                            cv.addImageFittedIntoRectangle(blurData,
+                                new com.itextpdf.kernel.geom.Rectangle(0, 0, pageW, pageH), false);
+                        } catch (Exception ignored) {}
                     }
                 }
                 cv.setExtGState(new PdfExtGState().setFillOpacity(bg.opacity()));
                 // Cover-Skalierung mit Zoom und Offset
                 float imgW = imageData.getWidth();
                 float imgH = imageData.getHeight();
-                float pageW = r.getWidth();
-                float pageH = r.getHeight();
-                float zoom = bg.zoom() <= 0f ? 1f : bg.zoom();
                 float scale = Math.max(pageW / imgW, pageH / imgH) * zoom;
                 float drawW = imgW * scale;
                 float drawH = imgH * scale;
@@ -1195,6 +1200,23 @@ public class PdfService {
             } catch (Exception e) {
                 // Silently skip – fehlendes oder ungültiges Bild
             }
+        }
+    }
+
+    private static java.awt.image.BufferedImage createBlurredCover(String diskPath) {
+        try {
+            java.awt.image.BufferedImage orig = javax.imageio.ImageIO.read(new java.io.File(diskPath));
+            if (orig == null) return null;
+            int w = 80;
+            int h = Math.max(1, orig.getHeight() * w / orig.getWidth());
+            java.awt.image.BufferedImage small = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = small.createGraphics();
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(orig, 0, 0, w, h, null);
+            g.dispose();
+            return small;
+        } catch (Exception e) {
+            return null;
         }
     }
 
