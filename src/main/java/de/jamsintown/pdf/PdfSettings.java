@@ -20,12 +20,12 @@ public record PdfSettings(
     BackgroundImage coverFrontBackground,
     BackgroundImage coverBackBackground,
     BackgroundImage tocBackground,
-    boolean tocEnabled,
+    Boolean tocEnabled,
     String tocTitle,
-    float tocTitleSize,
-    float tocEntrySize,
-    boolean tocShowPageNumbers,
-    int tocColumns
+    Float tocTitleSize,
+    Float tocEntrySize,
+    Boolean tocShowPageNumbers,
+    Integer tocColumns
 ) {
     public static PdfSettings defaults() {
         return new PdfSettings(
@@ -49,4 +49,11 @@ public record PdfSettings(
             1                        // tocColumns
         );
     }
+
+    public boolean isTocEnabled()       { return tocEnabled == null || tocEnabled; }
+    public String tocTitleOrDefault()   { return tocTitle != null && !tocTitle.isBlank() ? tocTitle : "Inhaltsverzeichnis"; }
+    public float tocTitleSizeOrDefault(){ return tocTitleSize != null && tocTitleSize > 0 ? tocTitleSize : 24f; }
+    public float tocEntrySizeOrDefault(){ return tocEntrySize != null && tocEntrySize > 0 ? tocEntrySize : 13f; }
+    public boolean isTocShowPageNumbers(){ return tocShowPageNumbers == null || tocShowPageNumbers; }
+    public int tocColumnsOrDefault()    { return tocColumns != null && tocColumns > 0 ? tocColumns : 1; }
 }

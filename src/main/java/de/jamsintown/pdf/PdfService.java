@@ -412,7 +412,7 @@ public class PdfService {
             }
 
             boolean hasCover = options != null && options.coverPage();
-            boolean showToc = hasCover && settings.tocEnabled();
+            boolean showToc = hasCover && settings.isTocEnabled();
             int tocPageIndex = -1;
 
             if (hasCover) {
@@ -479,13 +479,12 @@ public class PdfService {
 
             PdfCanvas pdfCanvas = new PdfCanvas(page.newContentStreamAfter(), page.getResources(), pdfDoc);
 
-            String tocTitle = settings.tocTitle() != null && !settings.tocTitle().isBlank()
-                ? settings.tocTitle() : "Inhaltsverzeichnis";
-            float titleSize = settings.tocTitleSize();
-            float entrySize = settings.tocEntrySize();
+            String tocTitle = settings.tocTitleOrDefault();
+            float titleSize = settings.tocTitleSizeOrDefault();
+            float entrySize = settings.tocEntrySizeOrDefault();
             float lineH = entrySize * 1.6f;
-            boolean showPageNums = settings.tocShowPageNumbers();
-            int cols = Math.max(1, settings.tocColumns());
+            boolean showPageNums = settings.isTocShowPageNumbers();
+            int cols = settings.tocColumnsOrDefault();
 
             float y = pageH - mt - titleSize;
 
