@@ -2,6 +2,8 @@ package de.jamsintown.bild;
 
 import de.jamsintown.capture.CaptureService;
 import de.jamsintown.config.main.ImageSettings;
+import de.jamsintown.user.Gruppe;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -28,6 +30,15 @@ public class BildResource {
     @GET
     public Uni<List<Bild>> get() {
         return bildService.listForUser();
+    }
+
+    @GET
+    @Path("/by-group/{groupId}")
+    @RolesAllowed("group-admin")
+    @WithSession
+    public Uni<List<Bild>> getByGroup(@PathParam("groupId") long groupId) {
+        return Gruppe.<Gruppe>findById(groupId)
+            .chain(g -> Bild.<Bild>find("group = ?1 and deleted = false", g).list());
     }
 
     @GET

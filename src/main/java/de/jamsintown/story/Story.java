@@ -1,12 +1,13 @@
 package de.jamsintown.story;
 
-import de.jamsintown.bild.Bild;
-import de.jamsintown.text.Text;
+import de.jamsintown.pdf.BackgroundImage;
 import de.jamsintown.user.Gruppe;
 import de.jamsintown.user.User;
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.ZonedDateTime;
 
@@ -41,6 +42,10 @@ public class Story extends PanacheEntity {
 
     @Column(name = "order_position")
     public Integer orderPosition = 0;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "background", columnDefinition = "jsonb")
+    public String background;
 
     @Version
     public int version;

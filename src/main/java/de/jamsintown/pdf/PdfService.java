@@ -126,9 +126,10 @@ public class PdfService {
 
     public Uni<byte[]> generateForGroup(Long groupId, PdfOptions options, PdfSettings settings) {
         return loadAllStoryData(groupId, options)
-            .chain(storyDataList -> Uni.createFrom()
-                .item(() -> renderPdf(storyDataList, options, false, settings))
-                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool()));
+            .chain(storyDataList -> resolveGroupBackgrounds(settings)
+                .chain(groupBg -> Uni.createFrom()
+                    .item(() -> renderPdf(storyDataList, options, false, settings, groupBg))
+                    .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())));
     }
 
     /** Generates a PDF without membership check \u2014 for admin use only. Uses compact image quality to stay within email attachment limits. */
@@ -139,13 +140,14 @@ public class PdfService {
 
     public Uni<byte[]> generateForGroupAsAdmin(Long groupId, PdfOptions options, PdfSettings settings) {
         return loadAllStoryDataNoCheck(groupId, options)
-            .chain(storyDataList -> {
-                io.vertx.core.Context eventLoopCtx = vertx.getOrCreateContext();
-                return Uni.createFrom()
-                    .item(() -> renderPdf(storyDataList, options, true, settings))
-                    .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
-                    .emitOn(cmd -> eventLoopCtx.runOnContext(ignored -> cmd.run()));
-            });
+            .chain(storyDataList -> resolveGroupBackgrounds(settings)
+                .chain(groupBg -> {
+                    io.vertx.core.Context eventLoopCtx = vertx.getOrCreateContext();
+                    return Uni.createFrom()
+                        .item(() -> renderPdf(storyDataList, options, true, settings, groupBg))
+                        .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
+                        .emitOn(cmd -> eventLoopCtx.runOnContext(ignored -> cmd.run()));
+                }));
     }
 
     @WithSession
@@ -213,7 +215,7 @@ public class PdfService {
             return texteUni.map(texte -> {
                 if (bilder.isEmpty() && texte.isEmpty()) return storyDataList;
                 List<StoryData> result = new ArrayList<>(storyDataList);
-                result.add(new StoryData(null, bilder, texte, Map.of(), Map.of()));
+                result.add(new StoryData(null, bilder, texte, Map.of(), Map.of(), null));
                 return result;
             });
         });
@@ -235,7 +237,36 @@ public class PdfService {
             story
         ).list()
         .chain(texte -> loadItemStats(bilder, texte, options)
-            .map(stats -> new StoryData(story, bilder, texte, stats[0], stats[1]))));
+            .chain(stats -> resolveStoryBackground(story)
+                .map(bg -> new StoryData(story, bilder, texte, stats[0], stats[1], bg)))));
+    }
+
+    private Uni<ResolvedBackground> resolveBackground(BackgroundImage bg) {
+        if (bg == null || bg.bildId() == null) return Uni.createFrom().item((ResolvedBackground) null);
+        return Bild.<Bild>findById(bg.bildId())
+            .map(bild -> {
+                if (bild == null) return null;
+                String diskPath = capturesPath + bild.pfad.replaceFirst("^/", "");
+                return new ResolvedBackground(diskPath, bg.opacity(), bg.tint(), bg.offsetX(), bg.offsetY(), bg.zoom());
+            });
+    }
+
+    private Uni<ResolvedBackground> resolveStoryBackground(Story story) {
+        if (story == null || story.background == null) return Uni.createFrom().item((ResolvedBackground) null);
+        try {
+            BackgroundImage bg = objectMapper.readValue(story.background, BackgroundImage.class);
+            return resolveBackground(bg);
+        } catch (Exception e) {
+            return Uni.createFrom().item((ResolvedBackground) null);
+        }
+    }
+
+    @WithSession
+    Uni<ResolvedGroupBackground> resolveGroupBackgrounds(PdfSettings settings) {
+        return resolveBackground(settings.coverFrontBackground())
+            .chain(front -> resolveBackground(settings.coverBackBackground())
+                .chain(back -> resolveBackground(settings.tocBackground())
+                    .map(toc -> new ResolvedGroupBackground(front, back, toc))));
     }
 
     /** Returns [bildStats, textStats] */
@@ -332,14 +363,18 @@ public class PdfService {
     }
 
     byte[] renderPdf(List<StoryData> stories, PdfOptions options) {
-        return renderPdf(stories, options, false, PdfSettings.defaults());
+        return renderPdf(stories, options, false, PdfSettings.defaults(), ResolvedGroupBackground.empty());
     }
 
     byte[] renderPdf(List<StoryData> stories, PdfOptions options, boolean compact) {
-        return renderPdf(stories, options, compact, PdfSettings.defaults());
+        return renderPdf(stories, options, compact, PdfSettings.defaults(), ResolvedGroupBackground.empty());
     }
 
     byte[] renderPdf(List<StoryData> stories, PdfOptions options, boolean compact, PdfSettings settings) {
+        return renderPdf(stories, options, compact, settings, ResolvedGroupBackground.empty());
+    }
+
+    byte[] renderPdf(List<StoryData> stories, PdfOptions options, boolean compact, PdfSettings settings, ResolvedGroupBackground groupBg) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
             WriterProperties writerProps = new WriterProperties();
@@ -367,24 +402,38 @@ public class PdfService {
                 pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PassepartoutHandler(passepartoutStyle));
             }
 
+            BackgroundController bgCtrl = new BackgroundController();
+            pdfDoc.addEventHandler(PdfDocumentEvent.START_PAGE, new HintergrundHandler(bgCtrl));
+
             if (stories.isEmpty()) {
                 doc.add(new Paragraph("Keine Stories vorhanden."));
                 doc.close();
                 return out.toByteArray();
             }
 
-            if (options != null && options.coverPage()) {
+            boolean hasCover = options != null && options.coverPage();
+            if (hasCover) {
+                bgCtrl.set(groupBg.coverFront());
                 String title = options.coverTitle() != null && !options.coverTitle().isBlank()
                     ? options.coverTitle() : "Jahrbuch";
                 renderCoverPage(doc, title);
+                bgCtrl.set(stories.isEmpty() ? null : stories.get(0).resolvedBackground());
                 doc.add(new AreaBreak());
+            } else if (!stories.isEmpty()) {
+                bgCtrl.set(stories.get(0).resolvedBackground());
             }
 
             for (int i = 0; i < stories.size(); i++) {
                 renderStory(doc, stories.get(i), i, options, compact, settings);
                 if (i < stories.size() - 1) {
+                    bgCtrl.set(stories.get(i + 1).resolvedBackground());
                     doc.add(new AreaBreak());
                 }
+            }
+
+            if (groupBg.coverBack() != null) {
+                bgCtrl.set(groupBg.coverBack());
+                doc.add(new AreaBreak());
             }
 
             doc.close();
@@ -966,11 +1015,89 @@ public class PdfService {
 
     record ItemStats(long likes, long votes, List<String[]> comments) {}
 
+    record ResolvedBackground(String diskPath, float opacity, String tint, float offsetX, float offsetY, float zoom) {}
+
+    record ResolvedGroupBackground(ResolvedBackground coverFront, ResolvedBackground coverBack, ResolvedBackground toc) {
+        static ResolvedGroupBackground empty() { return new ResolvedGroupBackground(null, null, null); }
+    }
+
     record StoryData(
         Story story,
         List<Bild> bilder,
         List<Text> texte,
         Map<Long, ItemStats> bildStats,
-        Map<Long, ItemStats> textStats
+        Map<Long, ItemStats> textStats,
+        ResolvedBackground resolvedBackground
     ) {}
+
+    private static class BackgroundController {
+        volatile ResolvedBackground current;
+        void set(ResolvedBackground bg) { this.current = bg; }
+        void clear() { this.current = null; }
+        ResolvedBackground get() { return current; }
+    }
+
+    private static class HintergrundHandler implements IEventHandler {
+        private final BackgroundController ctrl;
+
+        HintergrundHandler(BackgroundController ctrl) {
+            this.ctrl = ctrl;
+        }
+
+        @Override
+        public void handleEvent(Event event) {
+            ResolvedBackground bg = ctrl.get();
+            if (bg == null || bg.diskPath() == null) return;
+
+            PdfDocumentEvent docEvent = (PdfDocumentEvent) event;
+            PdfPage page = docEvent.getPage();
+            PdfDocument pdf = docEvent.getDocument();
+            com.itextpdf.kernel.geom.Rectangle r = page.getPageSize();
+
+            try {
+                com.itextpdf.io.image.ImageData imageData = ImageDataFactory.create(bg.diskPath());
+                PdfCanvas cv = new PdfCanvas(page.newContentStreamBefore(), page.getResources(), pdf);
+                cv.saveState();
+                cv.setExtGState(new PdfExtGState().setFillOpacity(bg.opacity()));
+                // Cover-Skalierung mit Zoom und Offset
+                float imgW = imageData.getWidth();
+                float imgH = imageData.getHeight();
+                float pageW = r.getWidth();
+                float pageH = r.getHeight();
+                float zoom = bg.zoom() <= 0f ? 1f : bg.zoom();
+                float scale = Math.max(pageW / imgW, pageH / imgH) * zoom;
+                float drawW = imgW * scale;
+                float drawH = imgH * scale;
+                // offsetX/Y: 0 = zentriert, -1 = links/oben, +1 = rechts/unten
+                float x = r.getLeft() + (pageW - drawW) / 2f * (1f + bg.offsetX());
+                float y = r.getBottom() + (pageH - drawH) / 2f * (1f + bg.offsetY());
+                cv.addImageFittedIntoRectangle(imageData,
+                    new com.itextpdf.kernel.geom.Rectangle(x, y, drawW, drawH), false);
+                if (bg.tint() != null && !bg.tint().isBlank()) {
+                    DeviceRgb tint = parseTintColor(bg.tint());
+                    if (tint != null) {
+                        cv.setExtGState(new PdfExtGState().setFillOpacity(bg.opacity() * 0.4f));
+                        cv.setFillColor(tint);
+                        cv.rectangle(0, 0, r.getWidth(), r.getHeight()).fill();
+                    }
+                }
+                cv.restoreState();
+            } catch (Exception e) {
+                // Silently skip – fehlendes oder ungültiges Bild
+            }
+        }
+    }
+
+    private static DeviceRgb parseTintColor(String hex) {
+        try {
+            String h = hex.startsWith("#") ? hex.substring(1) : hex;
+            if (h.length() == 6) {
+                int r = Integer.parseInt(h.substring(0, 2), 16);
+                int g = Integer.parseInt(h.substring(2, 4), 16);
+                int b = Integer.parseInt(h.substring(4, 6), 16);
+                return new DeviceRgb(r / 255f, g / 255f, b / 255f);
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
 }

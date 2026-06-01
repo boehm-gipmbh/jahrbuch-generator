@@ -16,7 +16,10 @@ public record PdfSettings(
     float commentTopLevelSize,
     float commentReplySize,
     String passepartoutStyle,
-    String pdfPassword
+    String pdfPassword,
+    BackgroundImage coverFrontBackground,
+    BackgroundImage coverBackBackground,
+    BackgroundImage tocBackground
 ) {
     public static PdfSettings defaults() {
         return new PdfSettings(
@@ -28,7 +31,10 @@ public record PdfSettings(
             13f,   // commentTopLevelSize
             11f,   // commentReplySize
             "gold", // passepartoutStyle
-            null   // pdfPassword — kein Schutz
+            null,  // pdfPassword
+            null,  // coverFrontBackground
+            null,  // coverBackBackground
+            null   // tocBackground
         );
     }
 }
