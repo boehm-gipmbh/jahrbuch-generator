@@ -9,13 +9,7 @@ import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import javax.imageio.ImageIO;
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -24,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Base64;
+import java.util.Comparator;
 
 @Slf4j
 @ApplicationScoped
@@ -69,42 +64,40 @@ public class OutpaintService {
         }
 
         String apiKey = replicateApiKey.orElseThrow(() -> new RuntimeException("Replicate API Key nicht konfiguriert"));
+        Path tempDir = null;
         try {
-            BufferedImage orig = ImageIO.read(new File(diskPath));
-            if (orig == null) throw new RuntimeException("Bild konnte nicht geladen werden: " + diskPath);
+            tempDir = Files.createTempDirectory("outpaint");
+            Path scaledPath = tempDir.resolve("scaled.jpg");
+            Path canvasPath = tempDir.resolve("canvas.jpg");
+            Path maskPath  = tempDir.resolve("mask.png");
 
-            // Auf TARGET_WIDTH skalieren
-            int scaledW = TARGET_WIDTH;
-            int scaledH = Math.max(1, orig.getHeight() * scaledW / orig.getWidth());
+            // Auf TARGET_WIDTH skalieren (mit EXIF-Rotation)
+            runProcess("convert", "-auto-orient", diskPath, "-resize", TARGET_WIDTH + "x", scaledPath.toString());
 
-            BufferedImage scaled = new BufferedImage(scaledW, scaledH, BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = scaled.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.drawImage(orig, 0, 0, scaledW, scaledH, null);
-            g.dispose();
+            // Skalierte Dimensionen ermitteln
+            String dims = runProcessOutput("identify", "-format", "%wx%h", scaledPath.toString());
+            String[] parts = dims.trim().split("x");
+            int scaledW = Integer.parseInt(parts[0]);
+            int scaledH = Integer.parseInt(parts[1]);
 
-            // Portrait-Canvas erstellen (A4-Verhältnis)
             int canvasH = TARGET_HEIGHT;
             int offsetY = (canvasH - scaledH) / 2;
 
-            BufferedImage canvas = new BufferedImage(scaledW, canvasH, BufferedImage.TYPE_INT_RGB);
-            Graphics2D cg = canvas.createGraphics();
-            cg.setColor(Color.WHITE);
-            cg.fillRect(0, 0, scaledW, canvasH);
-            cg.drawImage(scaled, 0, offsetY, null);
-            cg.dispose();
+            // Canvas: weißer Hintergrund + skaliertes Bild zentriert
+            runProcess("convert",
+                "-size", scaledW + "x" + canvasH, "xc:white",
+                scaledPath.toString(), "-gravity", "Center", "-composite",
+                canvasPath.toString());
 
-            // Maske: weiß = füllen (Streifen oben/unten), schwarz = behalten (Originalbild)
-            BufferedImage mask = new BufferedImage(scaledW, canvasH, BufferedImage.TYPE_INT_RGB);
-            Graphics2D mg = mask.createGraphics();
-            mg.setColor(Color.WHITE);
-            mg.fillRect(0, 0, scaledW, canvasH);
-            mg.setColor(Color.BLACK);
-            mg.fillRect(0, offsetY, scaledW, scaledH);
-            mg.dispose();
+            // Maske: weiß = KI füllt, schwarz = Original beibehalten
+            runProcess("convert",
+                "-size", scaledW + "x" + canvasH, "xc:white",
+                "-fill", "black",
+                "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
+                maskPath.toString());
 
-            String imageB64 = toBase64Jpeg(canvas);
-            String maskB64 = toBase64Png(mask);
+            String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
+            String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
 
             String predictionId = createPrediction(imageB64, maskB64, scaledW, canvasH, apiKey);
             String resultUrl = pollUntilDone(predictionId, apiKey);
@@ -116,7 +109,29 @@ public class OutpaintService {
         } catch (Exception e) {
             log.error("Outpainting fehlgeschlagen für {}: {}", diskPath, e.getMessage(), e);
             throw new RuntimeException("Outpainting fehlgeschlagen: " + e.getMessage(), e);
+        } finally {
+            if (tempDir != null) deleteTempDir(tempDir);
         }
+    }
+
+    private void runProcess(String... cmd) throws Exception {
+        Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+        String out = new String(p.getInputStream().readAllBytes());
+        int exit = p.waitFor();
+        if (exit != 0) throw new IOException("ImageMagick-Fehler (" + cmd[0] + "): " + out);
+    }
+
+    private String runProcessOutput(String... cmd) throws Exception {
+        Process p = new ProcessBuilder(cmd).redirectErrorStream(false).start();
+        String out = new String(p.getInputStream().readAllBytes());
+        p.waitFor();
+        return out;
+    }
+
+    private void deleteTempDir(Path dir) {
+        try {
+            Files.walk(dir).sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+        } catch (Exception ignored) {}
     }
 
     private String createPrediction(String imageB64, String maskB64, int width, int height, String apiKey) throws Exception {
@@ -146,10 +161,8 @@ public class OutpaintService {
         }
         JsonNode json = objectMapper.readTree(response.body());
 
-        // Wenn Prefer: wait=5 funktioniert hat, ist das Ergebnis direkt da
         if (json.has("output") && !json.get("output").isNull()) {
-            String url = extractOutputUrl(json.get("output"));
-            return "__direct__:" + url;
+            return "__direct__:" + extractOutputUrl(json.get("output"));
         }
         return json.get("id").asText();
     }
@@ -180,10 +193,7 @@ public class OutpaintService {
     }
 
     private void downloadAndSave(String url, Path target) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .GET()
-            .build();
+        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).GET().build();
         HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
         if (response.statusCode() >= 300) {
             throw new RuntimeException("Download fehlgeschlagen: " + response.statusCode());
@@ -192,21 +202,7 @@ public class OutpaintService {
     }
 
     private static String extractOutputUrl(JsonNode output) {
-        if (output.isArray() && output.size() > 0) {
-            return output.get(0).asText();
-        }
+        if (output.isArray() && output.size() > 0) return output.get(0).asText();
         return output.asText();
-    }
-
-    private static String toBase64Jpeg(BufferedImage img) throws Exception {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ImageIO.write(img, "jpeg", out);
-        return Base64.getEncoder().encodeToString(out.toByteArray());
-    }
-
-    private static String toBase64Png(BufferedImage img) throws Exception {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ImageIO.write(img, "png", out);
-        return Base64.getEncoder().encodeToString(out.toByteArray());
     }
 }
