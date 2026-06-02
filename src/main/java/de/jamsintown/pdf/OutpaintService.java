@@ -83,10 +83,14 @@ public class OutpaintService {
             int canvasH = TARGET_HEIGHT;
             int offsetY = (canvasH - scaledH) / 2;
 
-            // Canvas: neutraler RGB-Hintergrund + skaliertes Bild zentriert
-            // #808080 statt xc:gray50 verhindert Graustufen-Farbraum im Output
-            runProcess("convert",
-                "-size", scaledW + "x" + canvasH, "xc:#808080",
+            // Canvas: gestrecktes+verwischtes Original als Hintergrund → gibt FLUX Farbkontext
+            // (Himmel oben, Boden unten) und verhindert Graustufen-Artefakte
+            Path bgPath = tempDir.resolve("bg.jpg");
+            runProcess("convert", scaledPath.toString(),
+                "-resize", scaledW + "x" + canvasH + "!",
+                "-blur", "0x40",
+                bgPath.toString());
+            runProcess("convert", bgPath.toString(),
                 scaledPath.toString(), "-gravity", "Center", "-composite",
                 canvasPath.toString());
 
