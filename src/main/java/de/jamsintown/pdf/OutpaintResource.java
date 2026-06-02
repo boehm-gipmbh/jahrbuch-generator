@@ -43,4 +43,24 @@ public class OutpaintResource {
         .onFailure().recoverWithItem(e ->
             Response.serverError().entity(Map.of("error", e.getMessage())).build());
     }
+
+    @DELETE
+    @Path("/{bildId}")
+    @RolesAllowed("group-admin")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Response> deleteOutpainted(@PathParam("bildId") Long bildId) {
+        return Panache.withSession(() ->
+            Bild.<Bild>findById(bildId)
+                .onItem().ifNull().failWith(() -> new NotFoundException("Bild nicht gefunden: " + bildId))
+                .map(bild -> bild.pfad)
+        )
+        .map(pfad -> {
+            boolean deleted = outpaintService.deleteOutpainted(pfad);
+            return deleted
+                ? Response.ok(Map.of("deleted", true)).build()
+                : Response.status(Response.Status.NOT_FOUND).entity(Map.of("deleted", false, "message", "Kein outpainted-Bild vorhanden")).build();
+        })
+        .onFailure().recoverWithItem(e ->
+            Response.serverError().entity(Map.of("error", e.getMessage())).build());
+    }
 }

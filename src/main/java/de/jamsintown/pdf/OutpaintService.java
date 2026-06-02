@@ -46,6 +46,20 @@ public class OutpaintService {
         return replicateApiKey.isPresent() && !replicateApiKey.get().isBlank();
     }
 
+    public boolean deleteOutpainted(String bildPfad) {
+        String baseName = bildPfad.replaceFirst("^/", "").replaceFirst("\\.[^.]+$", "");
+        Path outpaintedDiskPath = Paths.get(capturesPath + baseName + "_outpainted.jpg");
+        if (!Files.exists(outpaintedDiskPath)) return false;
+        try {
+            Files.delete(outpaintedDiskPath);
+            log.info("Outpainted-Datei gelöscht: {}", outpaintedDiskPath);
+            return true;
+        } catch (Exception e) {
+            log.error("Fehler beim Löschen von {}: {}", outpaintedDiskPath, e.getMessage());
+            throw new RuntimeException("Löschen fehlgeschlagen: " + e.getMessage(), e);
+        }
+    }
+
     public Uni<String> outpaint(String bildPfad) {
         return Uni.createFrom()
             .item(() -> doOutpaint(bildPfad))
