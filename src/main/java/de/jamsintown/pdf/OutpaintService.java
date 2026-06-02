@@ -83,10 +83,10 @@ public class OutpaintService {
             int canvasH = TARGET_HEIGHT;
             int offsetY = (canvasH - scaledH) / 2;
 
-            // Canvas: neutraler Hintergrund (aus Randpixeln des Bilds) + skaliertes Bild zentriert
-            // xc:gray50 vermeidet, dass weißer Hintergrund als Decke interpretiert wird
+            // Canvas: neutraler RGB-Hintergrund + skaliertes Bild zentriert
+            // #808080 statt xc:gray50 verhindert Graustufen-Farbraum im Output
             runProcess("convert",
-                "-size", scaledW + "x" + canvasH, "xc:gray50",
+                "-size", scaledW + "x" + canvasH, "xc:#808080",
                 scaledPath.toString(), "-gravity", "Center", "-composite",
                 canvasPath.toString());
 
