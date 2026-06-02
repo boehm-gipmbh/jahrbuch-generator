@@ -330,7 +330,7 @@ public class BilderUploadResource {
     void generateThumbnail(java.nio.file.Path originalPath) throws Exception {
         java.nio.file.Path thumbPath = originalPath.getParent().resolve(toThumbName(originalPath.getFileName().toString()));
         Process process = new ProcessBuilder(
-                "convert", originalPath.toString(), "-resize", "400x>", thumbPath.toString())
+                "convert", "-auto-orient", originalPath.toString(), "-resize", "400x>", thumbPath.toString())
                 .redirectErrorStream(true)
                 .start();
         String output = new String(process.getInputStream().readAllBytes());
