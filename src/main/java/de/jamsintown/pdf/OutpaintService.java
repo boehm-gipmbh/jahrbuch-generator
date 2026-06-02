@@ -83,17 +83,19 @@ public class OutpaintService {
             int canvasH = TARGET_HEIGHT;
             int offsetY = (canvasH - scaledH) / 2;
 
-            // Canvas: weißer Hintergrund + skaliertes Bild zentriert
+            // Canvas: neutraler Hintergrund (aus Randpixeln des Bilds) + skaliertes Bild zentriert
+            // xc:gray50 vermeidet, dass weißer Hintergrund als Decke interpretiert wird
             runProcess("convert",
-                "-size", scaledW + "x" + canvasH, "xc:white",
+                "-size", scaledW + "x" + canvasH, "xc:gray50",
                 scaledPath.toString(), "-gravity", "Center", "-composite",
                 canvasPath.toString());
 
-            // Maske: weiß = KI füllt, schwarz = Original beibehalten
+            // Maske: weiß = KI füllt, schwarz = Original beibehalten; Blur für weiche Übergänge
             runProcess("convert",
                 "-size", scaledW + "x" + canvasH, "xc:white",
                 "-fill", "black",
                 "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
+                "-blur", "0x20",
                 maskPath.toString());
 
             String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
@@ -139,7 +141,7 @@ public class OutpaintService {
             put("input", new java.util.LinkedHashMap<>() {{
                 put("image", "data:image/jpeg;base64," + imageB64);
                 put("mask", "data:image/png;base64," + maskB64);
-                put("prompt", "seamless background extension, natural continuation of the scene, same lighting and style");
+                put("prompt", "seamless outdoor background extension, natural sky and landscape continuation, same lighting and atmosphere, no ceiling, no indoor elements, no artifacts, photorealistic");
                 put("width", width);
                 put("height", height);
                 put("output_format", "jpg");
