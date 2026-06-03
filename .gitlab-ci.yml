@@ -156,6 +156,7 @@ build-jvm:
   script:
     - export REACT_APP_VERSION="jvm-$(echo $CI_COMMIT_SHA | cut -c1-7) ($(date -u +%Y-%m-%d))"
     - export NODE_OPTIONS="--max-old-space-size=1536"
+    - export GENERATE_SOURCEMAP=false
     - ./mvnw -Pfrontend clean package -DskipTests -B
     - docker build -f Dockerfile.staging -t drdboehm/jahrbuch-generator:staging .
     - docker push drdboehm/jahrbuch-generator:staging
