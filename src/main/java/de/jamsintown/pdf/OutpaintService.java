@@ -160,7 +160,7 @@ public class OutpaintService {
             } else {
                 String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
                 usedCaption = captionImage(scaledB64, apiKey);
-                log.info("Outpaint-Prompt: BLIP generiert: {}", usedCaption);
+                log.info("Outpaint-Prompt: Llama-Vision generiert: {}", usedCaption);
             }
             String effectivePrompt = (usedCaption != null && !usedCaption.isBlank())
                 ? "seamlessly extend this photo: " + usedCaption + ", continue existing colors textures and atmosphere, no new subjects, photorealistic"
@@ -208,53 +208,39 @@ public class OutpaintService {
 
     private String captionImage(String imageB64, String apiKey) {
         try {
-            // BLIP ist ein Community-Modell → /v1/predictions mit Version-ID (nicht /v1/models/.../predictions)
-            HttpResponse<String> versionResp = http.send(
-                HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.replicate.com/v1/models/salesforce/blip/versions"))
-                    .header("Authorization", "Bearer " + apiKey).GET().build(),
-                HttpResponse.BodyHandlers.ofString());
-            JsonNode versions = objectMapper.readTree(versionResp.body());
-            String lookedUp = versions.path("results").path(0).path("id").asText(null);
-            if (lookedUp == null) {
-                log.warn("BLIP: Version-Lookup fehlgeschlagen ({}), nutze Fallback", versionResp.statusCode());
-            }
-            final String blipVersion = lookedUp != null ? lookedUp : "2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746";
-            log.info("BLIP version: {}", blipVersion);
             String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
-                put("version", blipVersion);
                 put("input", new java.util.LinkedHashMap<>() {{
                     put("image", "data:image/jpeg;base64," + imageB64);
-                    put("task", "visual_question_answering");
-                    put("question", "Describe this photo in detail: what is the setting, what objects or people are visible, what are the colors, lighting, and atmosphere?");
+                    put("prompt", "Describe this photo in detail for use as an image generation prompt: what is the setting, what objects or people are visible, what are the colors, lighting, and atmosphere? Write 2-3 sentences.");
+                    put("max_tokens", 200);
                 }});
             }});
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.replicate.com/v1/predictions"))
+                .uri(URI.create("https://api.replicate.com/v1/models/meta/llama-3.2-11b-vision-instruct/predictions"))
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .header("Prefer", "wait=30")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            log.info("BLIP response status={} body={}", response.statusCode(), response.body());
+            log.info("Llama-Vision response status={} body={}", response.statusCode(), response.body());
             if (response.statusCode() >= 300) {
-                log.warn("BLIP API Fehler {}: {}", response.statusCode(), response.body());
+                log.warn("Llama-Vision API Fehler {}: {}", response.statusCode(), response.body());
                 return null;
             }
             JsonNode json = objectMapper.readTree(response.body());
             if (json.has("output") && !json.get("output").isNull()) {
-                String caption = extractCaption(json.get("output"));
-                log.info("BLIP caption (direkt): '{}'", caption);
+                String caption = assembleOutput(json.get("output"));
+                log.info("Llama-Vision caption (direkt): '{}'", caption);
                 return caption.isBlank() ? null : caption;
             }
             // Polling falls nicht sofort fertig
             String id = json.path("id").asText(null);
             if (id == null) {
-                log.warn("BLIP: kein output und keine id in Antwort: {}", response.body());
+                log.warn("Llama-Vision: kein output und keine id in Antwort: {}", response.body());
                 return null;
             }
-            log.info("BLIP polling id={}", id);
+            log.info("Llama-Vision polling id={}", id);
             for (int i = 0; i < 20; i++) {
                 Thread.sleep(3000);
                 HttpResponse<String> poll = http.send(
@@ -263,22 +249,32 @@ public class OutpaintService {
                     HttpResponse.BodyHandlers.ofString());
                 JsonNode p = objectMapper.readTree(poll.body());
                 String status = p.path("status").asText();
-                log.info("BLIP poll {}: status={}", i, status);
+                log.info("Llama-Vision poll {}: status={}", i, status);
                 if ("succeeded".equals(status)) {
-                    String caption = extractCaption(p.get("output"));
-                    log.info("BLIP caption (poll): '{}'", caption);
+                    String caption = assembleOutput(p.get("output"));
+                    log.info("Llama-Vision caption (poll): '{}'", caption);
                     return caption.isBlank() ? null : caption;
                 }
                 if ("failed".equals(status) || "canceled".equals(status)) {
-                    log.warn("BLIP prediction {}: {}", status, p.path("error").asText());
+                    log.warn("Llama-Vision prediction {}: {}", status, p.path("error").asText());
                     return null;
                 }
             }
-            log.warn("BLIP Timeout nach 60s für id={}", id);
+            log.warn("Llama-Vision Timeout nach 60s für id={}", id);
         } catch (Exception e) {
             log.warn("Captioning fehlgeschlagen: {}", e.getMessage(), e);
         }
         return null;
+    }
+
+    private static String assembleOutput(JsonNode output) {
+        if (output == null) return "";
+        if (output.isArray()) {
+            StringBuilder sb = new StringBuilder();
+            output.forEach(t -> sb.append(t.asText()));
+            return sb.toString().trim();
+        }
+        return output.asText("").trim();
     }
 
     private String createPrediction(String imageB64, String maskB64, String apiKey, String customPrompt) throws Exception {
