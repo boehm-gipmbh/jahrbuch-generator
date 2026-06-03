@@ -1166,22 +1166,19 @@ public class PdfService {
                 cv.setExtGState(new PdfExtGState().setFillOpacity(bg.opacity()));
                 float pageW = r.getWidth();
                 float pageH = r.getHeight();
+                float imgW = imageData.getWidth();
+                float imgH = imageData.getHeight();
                 float x, y, drawW, drawH;
-                if (bg.outpaintedDiskPath() != null) {
-                    // Outpainted-Bild vollseitig anzeigen
-                    x = r.getLeft(); y = r.getBottom(); drawW = pageW; drawH = pageH;
-                } else {
-                    // Cover-Skalierung mit Zoom und Offset
-                    float imgW = imageData.getWidth();
-                    float imgH = imageData.getHeight();
-                    float zoom = bg.zoom() <= 0f ? 1f : bg.zoom();
-                    float scale = Math.max(pageW / imgW, pageH / imgH) * zoom;
-                    drawW = imgW * scale;
-                    drawH = imgH * scale;
-                    // offsetX/Y: 0 = zentriert, -1 = links/oben, +1 = rechts/unten
-                    x = r.getLeft() + (pageW - drawW) / 2f * (1f + bg.offsetX());
-                    y = r.getBottom() + (pageH - drawH) / 2f * (1f + bg.offsetY());
-                }
+                // Cover-Skalierung: Bild füllt die Seite vollständig (kein Letterbox)
+                float zoom = bg.outpaintedDiskPath() != null ? 1f : (bg.zoom() <= 0f ? 1f : bg.zoom());
+                float scale = Math.max(pageW / imgW, pageH / imgH) * zoom;
+                drawW = imgW * scale;
+                drawH = imgH * scale;
+                // offsetX/Y: 0 = zentriert, -1 = links/oben, +1 = rechts/unten
+                float offsetX = bg.outpaintedDiskPath() != null ? 0f : bg.offsetX();
+                float offsetY = bg.outpaintedDiskPath() != null ? 0f : bg.offsetY();
+                x = r.getLeft() + (pageW - drawW) / 2f * (1f + offsetX);
+                y = r.getBottom() + (pageH - drawH) / 2f * (1f + offsetY);
                 cv.addImageFittedIntoRectangle(imageData,
                     new com.itextpdf.kernel.geom.Rectangle(x, y, drawW, drawH), false);
                 if (bg.tint() != null && !bg.tint().isBlank()) {
