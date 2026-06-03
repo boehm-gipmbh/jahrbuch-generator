@@ -106,32 +106,18 @@ public class OutpaintService {
                 return outpaintedPfad;
             }
 
-            // Bild zu 65% von oben positionieren → mehr Platz für Himmelerweiterung oben
-            int topFillH = (int) Math.round(emptyVertSpace * 0.65);
-            int bottomFillH = emptyVertSpace - topFillH;
-            int offsetY = topFillH;
-            int stripH = Math.max(5, scaledH / 8); // obere/untere 12,5% als Farbkontext
+            // Bild 65% von oben positionieren → mehr Platz für Himmelerweiterung oben
+            int offsetY = (int) Math.round(emptyVertSpace * 0.65);
 
-            // Top-Fill: oberste Bildpixel gestreckt + verwischt → gibt FLUX Himmelfarbe
-            Path topFillPath = tempDir.resolve("top_fill.jpg");
+            // Canvas: verwischtes gestrecktes Original als Hintergrund → gibt FLUX Farbkontext
+            Path bgPath = tempDir.resolve("bg.jpg");
             runProcess("convert", scaledPath.toString(),
-                "-crop", scaledW + "x" + stripH + "+0+0", "+repage",
-                "-resize", scaledW + "x" + topFillH + "!",
-                "-blur", "0x30",
-                topFillPath.toString());
-
-            // Bottom-Fill: unterste Bildpixel gestreckt + verwischt → gibt Bodenfarbe
-            Path bottomFillPath = tempDir.resolve("bottom_fill.jpg");
-            runProcess("convert", scaledPath.toString(),
-                "-crop", scaledW + "x" + stripH + "+0+" + (scaledH - stripH), "+repage",
-                "-resize", scaledW + "x" + bottomFillH + "!",
-                "-blur", "0x30",
-                bottomFillPath.toString());
-
-            // Canvas: top_fill + Original + bottom_fill gestapelt
-            runProcess("convert",
-                topFillPath.toString(), scaledPath.toString(), bottomFillPath.toString(),
-                "-append", canvasPath.toString());
+                "-resize", scaledW + "x" + canvasH + "!",
+                "-blur", "0x40",
+                bgPath.toString());
+            runProcess("convert", bgPath.toString(),
+                scaledPath.toString(), "-geometry", "+0+" + offsetY, "-composite",
+                canvasPath.toString());
 
             // Maske: weiß = KI füllt, schwarz = Original beibehalten; Blur für weiche Übergänge
             runProcess("convert",
