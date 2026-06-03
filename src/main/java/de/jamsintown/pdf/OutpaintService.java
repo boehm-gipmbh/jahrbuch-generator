@@ -210,14 +210,28 @@ public class OutpaintService {
 
     private String captionImage(String imageB64, String apiKey) {
         try {
+            // BLIP ist ein Community-Modell → /v1/predictions mit Version-ID (nicht /v1/models/.../predictions)
+            HttpResponse<String> versionResp = http.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.replicate.com/v1/models/salesforce/blip/versions"))
+                    .header("Authorization", "Bearer " + apiKey).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+            JsonNode versions = objectMapper.readTree(versionResp.body());
+            String blipVersion = versions.path("results").path(0).path("id").asText(null);
+            if (blipVersion == null) {
+                log.warn("BLIP: keine Version gefunden, Antwort: {}", versionResp.body());
+                return null;
+            }
+            log.info("BLIP version: {}", blipVersion);
             String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
+                put("version", blipVersion);
                 put("input", new java.util.LinkedHashMap<>() {{
                     put("image", "data:image/jpeg;base64," + imageB64);
                     put("task", "image_captioning");
                 }});
             }});
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.replicate.com/v1/models/salesforce/blip/predictions"))
+                .uri(URI.create("https://api.replicate.com/v1/predictions"))
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .header("Prefer", "wait=30")
