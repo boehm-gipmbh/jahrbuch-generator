@@ -82,13 +82,13 @@ public class OutpaintService {
             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
     }
 
-    public Uni<String> outpaint(String bildPfad, String customPrompt) {
+    public Uni<OutpaintResult> outpaint(String bildPfad, String customPrompt, String existingCaption) {
         return Uni.createFrom()
-            .item(() -> doOutpaint(bildPfad, customPrompt))
+            .item(() -> doOutpaint(bildPfad, customPrompt, existingCaption))
             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
     }
 
-    private String doOutpaint(String bildPfad, String customPrompt) {
+    private OutpaintResult doOutpaint(String bildPfad, String customPrompt, String existingCaption) {
         String diskPath = capturesPath + bildPfad.replaceFirst("^/", "");
         String baseName = bildPfad.replaceFirst("^/", "").replaceFirst("\\.[^.]+$", "");
         String outpaintedPfad = "/" + baseName + "_outpainted.jpg";
@@ -96,7 +96,7 @@ public class OutpaintService {
 
         if (Files.exists(outpaintedDiskPath)) {
             log.info("Outpainted-Version bereits vorhanden: {}", outpaintedDiskPath);
-            return outpaintedPfad;
+            return new OutpaintResult(outpaintedPfad, customPrompt != null ? customPrompt : existingCaption);
         }
 
         String apiKey = replicateApiKey.orElseThrow(() -> new RuntimeException("Replicate API Key nicht konfiguriert"));
@@ -125,7 +125,7 @@ public class OutpaintService {
                     "-gravity", "Center", "-crop", scaledW + "x" + canvasH + "+0+0", "+repage",
                     outpaintedDiskPath.toString());
                 log.info("Outpainting übersprungen (Bild füllt Höhe bereits): {}", outpaintedDiskPath);
-                return outpaintedPfad;
+                return new OutpaintResult(outpaintedPfad, null);
             }
 
             // Bild 65% von oben positionieren → mehr Platz für Himmelerweiterung oben
@@ -156,17 +156,22 @@ public class OutpaintService {
                 "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
                 maskPath.toString());
 
-            // Bild captionen für automatischen Prompt (nur wenn kein manueller Prompt)
-            String effectivePrompt = customPrompt;
-            if (effectivePrompt == null || effectivePrompt.isBlank()) {
+            // Prompt-Priorität: customPrompt > existingCaption > BLIP-generiert
+            String usedCaption;
+            if (customPrompt != null && !customPrompt.isBlank()) {
+                usedCaption = customPrompt;
+                log.info("Outpaint-Prompt: User-Eingabe");
+            } else if (existingCaption != null && !existingCaption.isBlank()) {
+                usedCaption = existingCaption;
+                log.info("Outpaint-Prompt: vorhandene Caption");
+            } else {
                 String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
-                String caption = captionImage(scaledB64, apiKey);
-                if (caption != null && !caption.isBlank()) {
-                    effectivePrompt = "seamlessly extend this photo: " + caption
-                        + ", continue existing colors textures and atmosphere, no new subjects, photorealistic";
-                    log.info("Auto-Prompt via Caption: {}", effectivePrompt);
-                }
+                usedCaption = captionImage(scaledB64, apiKey);
+                log.info("Outpaint-Prompt: BLIP generiert: {}", usedCaption);
             }
+            String effectivePrompt = (usedCaption != null && !usedCaption.isBlank())
+                ? "seamlessly extend this photo: " + usedCaption + ", continue existing colors textures and atmosphere, no new subjects, photorealistic"
+                : null;
 
             String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
             String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
@@ -176,7 +181,7 @@ public class OutpaintService {
             downloadAndSave(resultUrl, outpaintedDiskPath);
 
             log.info("Outpainting abgeschlossen: {}", outpaintedDiskPath);
-            return outpaintedPfad;
+            return new OutpaintResult(outpaintedPfad, usedCaption);
 
         } catch (Exception e) {
             log.error("Outpainting fehlgeschlagen für {}: {}", diskPath, e.getMessage(), e);

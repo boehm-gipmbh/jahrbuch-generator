@@ -34,13 +34,27 @@ public class OutpaintResource {
                     .build());
         }
         String customPrompt = body != null ? body.get("prompt") : null;
+
+        // Session 1: Bild laden
         return Panache.withSession(() ->
             Bild.<Bild>findById(bildId)
                 .onItem().ifNull().failWith(() -> new NotFoundException("Bild nicht gefunden: " + bildId))
-                .map(bild -> bild.pfad)
+                .map(bild -> new String[]{bild.pfad, bild.caption})
         )
-        .chain(pfad -> outpaintService.outpaint(pfad, customPrompt))
-        .map(outpaintedPfad -> Response.ok(Map.of("outpaintedPfad", outpaintedPfad)).build())
+        // Outpainting außerhalb Transaktion (dauert lange)
+        .chain(data -> outpaintService.outpaint(data[0], customPrompt, data[1]))
+        // Transaktion 2: Caption speichern wenn neu/geändert
+        .chain(result -> {
+            String newCaption = result.effectivePrompt();
+            if (newCaption == null) {
+                return Uni.createFrom().item(result);
+            }
+            return Panache.withTransaction(() ->
+                Bild.<Bild>findById(bildId)
+                    .map(bild -> { bild.caption = newCaption; return result; })
+            );
+        })
+        .map(result -> Response.ok(Map.of("outpaintedPfad", result.outpaintedPfad())).build())
         .onFailure().recoverWithItem(e ->
             Response.serverError().entity(Map.of("error", e.getMessage())).build());
     }
@@ -55,18 +69,32 @@ public class OutpaintResource {
                     .entity(Map.of("error", "Replicate API Key nicht konfiguriert"))
                     .build());
         }
-        return Panache.withTransaction(() ->
+
+        // Session 1: vorhandene Caption prüfen
+        return Panache.withSession(() ->
             Bild.<Bild>findById(bildId)
                 .onItem().ifNull().failWith(() -> new NotFoundException("Bild nicht gefunden: " + bildId))
-                .call(bild -> {
-                    if (bild.caption != null && !bild.caption.isBlank()) {
-                        return Uni.createFrom().item(bild); // bereits gecaptured
-                    }
-                    return outpaintService.caption(bild.pfad)
-                        .map(cap -> { bild.caption = cap; return bild; });
-                })
-                .map(bild -> Response.ok(Map.of("caption", bild.caption != null ? bild.caption : "")).build())
+                .map(bild -> new String[]{bild.pfad, bild.caption})
         )
+        .chain(data -> {
+            String pfad = data[0];
+            String existing = data[1];
+            if (existing != null && !existing.isBlank()) {
+                // Caption bereits vorhanden — direkt zurückgeben
+                return Uni.createFrom().item(existing);
+            }
+            // BLIP außerhalb Transaktion aufrufen
+            return outpaintService.caption(pfad)
+                .chain(cap -> {
+                    if (cap == null || cap.isBlank()) return Uni.createFrom().item("");
+                    // Transaktion 2: Caption speichern
+                    return Panache.withTransaction(() ->
+                        Bild.<Bild>findById(bildId)
+                            .map(bild -> { bild.caption = cap; return cap; })
+                    );
+                });
+        })
+        .map(cap -> Response.ok(Map.of("caption", cap)).build())
         .onFailure().recoverWithItem(e ->
             Response.serverError().entity(Map.of("error", e.getMessage())).build());
     }
