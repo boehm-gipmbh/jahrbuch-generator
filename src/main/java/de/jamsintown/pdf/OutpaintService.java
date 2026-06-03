@@ -109,22 +109,17 @@ public class OutpaintService {
             // Bild 65% von oben positionieren → mehr Platz für Himmelerweiterung oben
             int offsetY = (int) Math.round(emptyVertSpace * 0.65);
 
-            // Canvas: verwischtes gestrecktes Original als Hintergrund → gibt FLUX Farbkontext
-            Path bgPath = tempDir.resolve("bg.jpg");
-            runProcess("convert", scaledPath.toString(),
-                "-resize", scaledW + "x" + canvasH + "!",
-                "-blur", "0x40",
-                bgPath.toString());
-            runProcess("convert", bgPath.toString(),
+            // Canvas: schwarzer Hintergrund + Original an Position — keine widersprüchlichen Pixel
+            runProcess("convert",
+                "-size", scaledW + "x" + canvasH, "xc:black",
                 scaledPath.toString(), "-geometry", "+0+" + offsetY, "-composite",
                 canvasPath.toString());
 
-            // Maske: weiß = KI füllt, schwarz = Original beibehalten; Blur für weiche Übergänge
+            // Maske: harte Kante — Modell binarisiert intern bei 0.5, Blur wäre kontraproduktiv
             runProcess("convert",
                 "-size", scaledW + "x" + canvasH, "xc:white",
                 "-fill", "black",
                 "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
-                "-blur", "0x20",
                 maskPath.toString());
 
             String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
