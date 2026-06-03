@@ -228,7 +228,7 @@ public class OutpaintService {
                 put("input", new java.util.LinkedHashMap<>() {{
                     put("image", "data:image/jpeg;base64," + imageB64);
                     put("prompt", "Describe this photo in detail for use as an image generation prompt: what is the setting, what objects or people are visible, what are the colors, lighting, and atmosphere? Write 2-3 sentences.");
-                    put("max_tokens", 200);
+                    put("max_new_tokens", 200);
                 }});
             }});
             HttpRequest request = HttpRequest.newBuilder()
