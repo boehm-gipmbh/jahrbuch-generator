@@ -172,6 +172,7 @@ public class OutpaintService {
             String predictionId = createPrediction(imageB64, maskB64, apiKey, effectivePrompt);
             String resultUrl = pollUntilDone(predictionId, apiKey);
             downloadAndSave(resultUrl, outpaintedDiskPath);
+            addWatermark(outpaintedDiskPath, "KI: FLUX Fill");
 
             log.info("Outpainting abgeschlossen: {}", outpaintedDiskPath);
             return new OutpaintResult(outpaintedPfad, usedCaption);
@@ -196,6 +197,21 @@ public class OutpaintService {
         String out = new String(p.getInputStream().readAllBytes());
         p.waitFor();
         return out;
+    }
+
+    private void addWatermark(Path imagePath, String text) {
+        try {
+            runProcess("convert", imagePath.toString(),
+                "-gravity", "SouthEast",
+                "-font", "DejaVu-Sans",
+                "-pointsize", "18",
+                "-fill", "rgba(255,255,255,0.55)",
+                "-annotate", "+12+10", text,
+                imagePath.toString());
+            log.info("Watermark hinzugefügt: '{}'", text);
+        } catch (Exception e) {
+            log.warn("Watermark fehlgeschlagen (nicht kritisch): {}", e.getMessage());
+        }
     }
 
     private void deleteTempDir(Path dir) {
