@@ -24,21 +24,22 @@ public class OutpaintResource {
 
     @POST
     @Path("/{bildId}")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Uni<Response> outpaint(@PathParam("bildId") Long bildId) {
+    public Uni<Response> outpaint(@PathParam("bildId") Long bildId, Map<String, String> body) {
         if (!outpaintService.isConfigured()) {
             return Uni.createFrom().item(
                 Response.status(Response.Status.SERVICE_UNAVAILABLE)
                     .entity(Map.of("error", "Replicate API Key nicht konfiguriert"))
                     .build());
         }
-        // DB-Lookup in eigener Session abschließen, erst dann Worker-Thread starten
+        String customPrompt = body != null ? body.get("prompt") : null;
         return Panache.withSession(() ->
             Bild.<Bild>findById(bildId)
                 .onItem().ifNull().failWith(() -> new NotFoundException("Bild nicht gefunden: " + bildId))
                 .map(bild -> bild.pfad)
         )
-        .chain(pfad -> outpaintService.outpaint(pfad))
+        .chain(pfad -> outpaintService.outpaint(pfad, customPrompt))
         .map(outpaintedPfad -> Response.ok(Map.of("outpaintedPfad", outpaintedPfad)).build())
         .onFailure().recoverWithItem(e ->
             Response.serverError().entity(Map.of("error", e.getMessage())).build());

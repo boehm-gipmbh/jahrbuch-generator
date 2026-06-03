@@ -60,13 +60,13 @@ public class OutpaintService {
         }
     }
 
-    public Uni<String> outpaint(String bildPfad) {
+    public Uni<String> outpaint(String bildPfad, String customPrompt) {
         return Uni.createFrom()
-            .item(() -> doOutpaint(bildPfad))
+            .item(() -> doOutpaint(bildPfad, customPrompt))
             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
     }
 
-    private String doOutpaint(String bildPfad) {
+    private String doOutpaint(String bildPfad, String customPrompt) {
         String diskPath = capturesPath + bildPfad.replaceFirst("^/", "");
         String baseName = bildPfad.replaceFirst("^/", "").replaceFirst("\\.[^.]+$", "");
         String outpaintedPfad = "/" + baseName + "_outpainted.jpg";
@@ -137,7 +137,7 @@ public class OutpaintService {
             String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
             String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
 
-            String predictionId = createPrediction(imageB64, maskB64, apiKey);
+            String predictionId = createPrediction(imageB64, maskB64, apiKey, customPrompt);
             String resultUrl = pollUntilDone(predictionId, apiKey);
             downloadAndSave(resultUrl, outpaintedDiskPath);
 
@@ -172,12 +172,15 @@ public class OutpaintService {
         } catch (Exception ignored) {}
     }
 
-    private String createPrediction(String imageB64, String maskB64, String apiKey) throws Exception {
+    private static final String DEFAULT_PROMPT = "seamlessly extend photo background, continue existing colors textures and atmosphere, no new subjects, photorealistic";
+
+    private String createPrediction(String imageB64, String maskB64, String apiKey, String customPrompt) throws Exception {
+        String prompt = (customPrompt != null && !customPrompt.isBlank()) ? customPrompt : DEFAULT_PROMPT;
         String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
             put("input", new java.util.LinkedHashMap<>() {{
                 put("image", "data:image/jpeg;base64," + imageB64);
                 put("mask", "data:image/png;base64," + maskB64);
-                put("prompt", "seamlessly extend photo background, continue existing colors textures and atmosphere, no new subjects, photorealistic");
+                put("prompt", prompt);
                 put("negative_prompt", "new faces, new people, new persons, new bodies, duplicate people, ceiling, text, watermark, blurry, artifacts, distorted, border, frame");
                 put("num_inference_steps", 50);
                 put("guidance", 30);
