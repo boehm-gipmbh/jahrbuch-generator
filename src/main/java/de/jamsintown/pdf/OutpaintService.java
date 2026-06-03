@@ -226,7 +226,7 @@ public class OutpaintService {
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             JsonNode json = objectMapper.readTree(response.body());
             if (json.has("output") && !json.get("output").isNull()) {
-                return json.get("output").asText().replace("Caption: ", "").trim();
+                return extractCaption(json.get("output"));
             }
             // Polling falls nicht sofort fertig
             String id = json.path("id").asText(null);
@@ -239,7 +239,7 @@ public class OutpaintService {
                     HttpResponse.BodyHandlers.ofString());
                 JsonNode p = objectMapper.readTree(poll.body());
                 if ("succeeded".equals(p.path("status").asText())) {
-                    return p.get("output").asText().replace("Caption: ", "").trim();
+                    return extractCaption(p.get("output"));
                 }
                 if ("failed".equals(p.path("status").asText())) return null;
             }
@@ -330,5 +330,12 @@ public class OutpaintService {
     private static String extractOutputUrl(JsonNode output) {
         if (output.isArray() && output.size() > 0) return output.get(0).asText();
         return output.asText();
+    }
+
+    private static String extractCaption(JsonNode output) {
+        String raw = (output != null && output.isArray() && output.size() > 0)
+            ? output.get(0).asText()
+            : (output != null ? output.asText() : "");
+        return raw.replace("Caption: ", "").trim();
     }
 }
