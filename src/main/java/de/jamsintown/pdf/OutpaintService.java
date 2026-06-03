@@ -225,7 +225,8 @@ public class OutpaintService {
                 put("version", blipVersion);
                 put("input", new java.util.LinkedHashMap<>() {{
                     put("image", "data:image/jpeg;base64," + imageB64);
-                    put("task", "image_captioning");
+                    put("task", "visual_question_answering");
+                    put("question", "Describe this photo in detail: what is the setting, what objects or people are visible, what are the colors, lighting, and atmosphere?");
                 }});
             }});
             HttpRequest request = HttpRequest.newBuilder()
@@ -367,6 +368,6 @@ public class OutpaintService {
         String raw = (output != null && output.isArray() && output.size() > 0)
             ? output.get(0).asText()
             : (output != null ? output.asText() : "");
-        return raw.replace("Caption: ", "").trim();
+        return raw.replaceFirst("^(Caption|Answer): ?", "").trim();
     }
 }
