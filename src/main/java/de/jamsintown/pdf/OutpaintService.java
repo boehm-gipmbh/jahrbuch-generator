@@ -250,16 +250,25 @@ public class OutpaintService {
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build();
 
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() >= 300) {
-            throw new RuntimeException("Replicate API Fehler " + response.statusCode() + ": " + response.body());
+        for (int attempt = 0; attempt < 4; attempt++) {
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 429) {
+                JsonNode err = objectMapper.readTree(response.body());
+                int retryAfter = err.path("retry_after").asInt(15);
+                log.warn("Replicate Rate-Limit, warte {}s (Versuch {}/4)", retryAfter, attempt + 1);
+                Thread.sleep((retryAfter + 1) * 1000L);
+                continue;
+            }
+            if (response.statusCode() >= 300) {
+                throw new RuntimeException("Replicate API Fehler " + response.statusCode() + ": " + response.body());
+            }
+            JsonNode json = objectMapper.readTree(response.body());
+            if (json.has("output") && !json.get("output").isNull()) {
+                return "__direct__:" + extractOutputUrl(json.get("output"));
+            }
+            return json.get("id").asText();
         }
-        JsonNode json = objectMapper.readTree(response.body());
-
-        if (json.has("output") && !json.get("output").isNull()) {
-            return "__direct__:" + extractOutputUrl(json.get("output"));
-        }
-        return json.get("id").asText();
+        throw new RuntimeException("Replicate Rate-Limit nach 4 Versuchen nicht überwunden");
     }
 
     private String pollUntilDone(String predictionId, String apiKey) throws Exception {
