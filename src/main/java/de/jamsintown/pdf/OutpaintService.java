@@ -134,10 +134,22 @@ public class OutpaintService {
                 "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
                 maskPath.toString());
 
+            // Bild captionen für automatischen Prompt (nur wenn kein manueller Prompt)
+            String effectivePrompt = customPrompt;
+            if (effectivePrompt == null || effectivePrompt.isBlank()) {
+                String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
+                String caption = captionImage(scaledB64, apiKey);
+                if (caption != null && !caption.isBlank()) {
+                    effectivePrompt = "seamlessly extend this photo: " + caption
+                        + ", continue existing colors textures and atmosphere, no new subjects, photorealistic";
+                    log.info("Auto-Prompt via Caption: {}", effectivePrompt);
+                }
+            }
+
             String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
             String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
 
-            String predictionId = createPrediction(imageB64, maskB64, apiKey, customPrompt);
+            String predictionId = createPrediction(imageB64, maskB64, apiKey, effectivePrompt);
             String resultUrl = pollUntilDone(predictionId, apiKey);
             downloadAndSave(resultUrl, outpaintedDiskPath);
 
@@ -173,6 +185,47 @@ public class OutpaintService {
     }
 
     private static final String DEFAULT_PROMPT = "seamlessly extend photo background, continue existing colors textures and atmosphere, no new subjects, photorealistic";
+
+    private String captionImage(String imageB64, String apiKey) {
+        try {
+            String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
+                put("input", new java.util.LinkedHashMap<>() {{
+                    put("image", "data:image/jpeg;base64," + imageB64);
+                    put("task", "image_captioning");
+                }});
+            }});
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.replicate.com/v1/models/salesforce/blip/predictions"))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .header("Prefer", "wait=30")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            JsonNode json = objectMapper.readTree(response.body());
+            if (json.has("output") && !json.get("output").isNull()) {
+                return json.get("output").asText().replace("Caption: ", "").trim();
+            }
+            // Polling falls nicht sofort fertig
+            String id = json.path("id").asText(null);
+            if (id == null) return null;
+            for (int i = 0; i < 10; i++) {
+                Thread.sleep(2000);
+                HttpResponse<String> poll = http.send(
+                    HttpRequest.newBuilder().uri(URI.create("https://api.replicate.com/v1/predictions/" + id))
+                        .header("Authorization", "Bearer " + apiKey).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+                JsonNode p = objectMapper.readTree(poll.body());
+                if ("succeeded".equals(p.path("status").asText())) {
+                    return p.get("output").asText().replace("Caption: ", "").trim();
+                }
+                if ("failed".equals(p.path("status").asText())) return null;
+            }
+        } catch (Exception e) {
+            log.warn("Captioning fehlgeschlagen, nutze Default-Prompt: {}", e.getMessage());
+        }
+        return null;
+    }
 
     private String createPrediction(String imageB64, String maskB64, String apiKey, String customPrompt) throws Exception {
         String prompt = (customPrompt != null && !customPrompt.isBlank()) ? customPrompt : DEFAULT_PROMPT;
