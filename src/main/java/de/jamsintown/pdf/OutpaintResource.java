@@ -45,6 +45,27 @@ public class OutpaintResource {
             Response.serverError().entity(Map.of("error", e.getMessage())).build());
     }
 
+    @POST
+    @Path("/{bildId}/caption")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Response> caption(@PathParam("bildId") Long bildId) {
+        if (!outpaintService.isConfigured()) {
+            return Uni.createFrom().item(
+                Response.status(Response.Status.SERVICE_UNAVAILABLE)
+                    .entity(Map.of("error", "Replicate API Key nicht konfiguriert"))
+                    .build());
+        }
+        return Panache.withSession(() ->
+            Bild.<Bild>findById(bildId)
+                .onItem().ifNull().failWith(() -> new NotFoundException("Bild nicht gefunden: " + bildId))
+                .map(bild -> bild.pfad)
+        )
+        .chain(pfad -> outpaintService.caption(pfad))
+        .map(cap -> Response.ok(Map.of("caption", cap)).build())
+        .onFailure().recoverWithItem(e ->
+            Response.serverError().entity(Map.of("error", e.getMessage())).build());
+    }
+
     @DELETE
     @Path("/{bildId}")
     @RolesAllowed("group-admin")

@@ -60,6 +60,28 @@ public class OutpaintService {
         }
     }
 
+    public Uni<String> caption(String bildPfad) {
+        return Uni.createFrom()
+            .item(() -> {
+                String diskPath = capturesPath + bildPfad.replaceFirst("^/", "");
+                String apiKey = replicateApiKey.orElseThrow(() -> new RuntimeException("Replicate API Key nicht konfiguriert"));
+                Path tempDir = null;
+                try {
+                    tempDir = Files.createTempDirectory("outpaint-caption");
+                    Path scaledPath = tempDir.resolve("scaled.jpg");
+                    runProcess("convert", "-auto-orient", diskPath, "-resize", TARGET_WIDTH + "x", scaledPath.toString());
+                    String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
+                    String cap = captionImage(scaledB64, apiKey);
+                    return cap != null ? cap : "";
+                } catch (Exception e) {
+                    throw new RuntimeException("Captioning fehlgeschlagen: " + e.getMessage(), e);
+                } finally {
+                    if (tempDir != null) deleteTempDir(tempDir);
+                }
+            })
+            .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+    }
+
     public Uni<String> outpaint(String bildPfad, String customPrompt) {
         return Uni.createFrom()
             .item(() -> doOutpaint(bildPfad, customPrompt))
