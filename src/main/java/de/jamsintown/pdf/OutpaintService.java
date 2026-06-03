@@ -224,27 +224,46 @@ public class OutpaintService {
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            log.info("BLIP response status={} body={}", response.statusCode(), response.body());
+            if (response.statusCode() >= 300) {
+                log.warn("BLIP API Fehler {}: {}", response.statusCode(), response.body());
+                return null;
+            }
             JsonNode json = objectMapper.readTree(response.body());
             if (json.has("output") && !json.get("output").isNull()) {
-                return extractCaption(json.get("output"));
+                String caption = extractCaption(json.get("output"));
+                log.info("BLIP caption (direkt): '{}'", caption);
+                return caption.isBlank() ? null : caption;
             }
             // Polling falls nicht sofort fertig
             String id = json.path("id").asText(null);
-            if (id == null) return null;
-            for (int i = 0; i < 10; i++) {
-                Thread.sleep(2000);
+            if (id == null) {
+                log.warn("BLIP: kein output und keine id in Antwort: {}", response.body());
+                return null;
+            }
+            log.info("BLIP polling id={}", id);
+            for (int i = 0; i < 20; i++) {
+                Thread.sleep(3000);
                 HttpResponse<String> poll = http.send(
                     HttpRequest.newBuilder().uri(URI.create("https://api.replicate.com/v1/predictions/" + id))
                         .header("Authorization", "Bearer " + apiKey).GET().build(),
                     HttpResponse.BodyHandlers.ofString());
                 JsonNode p = objectMapper.readTree(poll.body());
-                if ("succeeded".equals(p.path("status").asText())) {
-                    return extractCaption(p.get("output"));
+                String status = p.path("status").asText();
+                log.info("BLIP poll {}: status={}", i, status);
+                if ("succeeded".equals(status)) {
+                    String caption = extractCaption(p.get("output"));
+                    log.info("BLIP caption (poll): '{}'", caption);
+                    return caption.isBlank() ? null : caption;
                 }
-                if ("failed".equals(p.path("status").asText())) return null;
+                if ("failed".equals(status) || "canceled".equals(status)) {
+                    log.warn("BLIP prediction {}: {}", status, p.path("error").asText());
+                    return null;
+                }
             }
+            log.warn("BLIP Timeout nach 60s für id={}", id);
         } catch (Exception e) {
-            log.warn("Captioning fehlgeschlagen, nutze Default-Prompt: {}", e.getMessage());
+            log.warn("Captioning fehlgeschlagen: {}", e.getMessage(), e);
         }
         return null;
     }
