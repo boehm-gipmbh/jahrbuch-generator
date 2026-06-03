@@ -219,8 +219,9 @@ public class OutpaintService {
             JsonNode versions = objectMapper.readTree(versionResp.body());
             String blipVersion = versions.path("results").path(0).path("id").asText(null);
             if (blipVersion == null) {
-                log.warn("BLIP: keine Version gefunden, Antwort: {}", versionResp.body());
-                return null;
+                // Fallback auf bekannte stabile Version
+                blipVersion = "2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746";
+                log.warn("BLIP: Version-Lookup fehlgeschlagen ({}), nutze Fallback {}", versionResp.statusCode(), blipVersion);
             }
             log.info("BLIP version: {}", blipVersion);
             String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
