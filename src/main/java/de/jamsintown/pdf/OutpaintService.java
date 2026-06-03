@@ -95,18 +95,43 @@ public class OutpaintService {
             int scaledH = Integer.parseInt(parts[1]);
 
             int canvasH = TARGET_HEIGHT;
-            int offsetY = (canvasH - scaledH) / 2;
+            int emptyVertSpace = canvasH - scaledH;
 
-            // Canvas: gestrecktes+verwischtes Original als Hintergrund → gibt FLUX Farbkontext
-            // (Himmel oben, Boden unten) und verhindert Graustufen-Artefakte
-            Path bgPath = tempDir.resolve("bg.jpg");
+            if (emptyVertSpace <= 0) {
+                // Bild füllt die Höhe bereits — mittig zuschneiden, kein KI-Fill nötig
+                runProcess("convert", scaledPath.toString(),
+                    "-gravity", "Center", "-crop", scaledW + "x" + canvasH + "+0+0", "+repage",
+                    outpaintedDiskPath.toString());
+                log.info("Outpainting übersprungen (Bild füllt Höhe bereits): {}", outpaintedDiskPath);
+                return outpaintedPfad;
+            }
+
+            // Bild zu 65% von oben positionieren → mehr Platz für Himmelerweiterung oben
+            int topFillH = (int) Math.round(emptyVertSpace * 0.65);
+            int bottomFillH = emptyVertSpace - topFillH;
+            int offsetY = topFillH;
+            int stripH = Math.max(5, scaledH / 8); // obere/untere 12,5% als Farbkontext
+
+            // Top-Fill: oberste Bildpixel gestreckt + verwischt → gibt FLUX Himmelfarbe
+            Path topFillPath = tempDir.resolve("top_fill.jpg");
             runProcess("convert", scaledPath.toString(),
-                "-resize", scaledW + "x" + canvasH + "!",
-                "-blur", "0x40",
-                bgPath.toString());
-            runProcess("convert", bgPath.toString(),
-                scaledPath.toString(), "-gravity", "Center", "-composite",
-                canvasPath.toString());
+                "-crop", scaledW + "x" + stripH + "+0+0", "+repage",
+                "-resize", scaledW + "x" + topFillH + "!",
+                "-blur", "0x30",
+                topFillPath.toString());
+
+            // Bottom-Fill: unterste Bildpixel gestreckt + verwischt → gibt Bodenfarbe
+            Path bottomFillPath = tempDir.resolve("bottom_fill.jpg");
+            runProcess("convert", scaledPath.toString(),
+                "-crop", scaledW + "x" + stripH + "+0+" + (scaledH - stripH), "+repage",
+                "-resize", scaledW + "x" + bottomFillH + "!",
+                "-blur", "0x30",
+                bottomFillPath.toString());
+
+            // Canvas: top_fill + Original + bottom_fill gestapelt
+            runProcess("convert",
+                topFillPath.toString(), scaledPath.toString(), bottomFillPath.toString(),
+                "-append", canvasPath.toString());
 
             // Maske: weiß = KI füllt, schwarz = Original beibehalten; Blur für weiche Übergänge
             runProcess("convert",
@@ -159,8 +184,8 @@ public class OutpaintService {
             put("input", new java.util.LinkedHashMap<>() {{
                 put("image", "data:image/jpeg;base64," + imageB64);
                 put("mask", "data:image/png;base64," + maskB64);
-                put("prompt", "seamless outdoor background extension, natural sky and landscape continuation, same lighting and atmosphere, photorealistic");
-                put("negative_prompt", "ceiling, indoor room, people, faces, bodies, blurry, artifacts, distorted");
+                put("prompt", "extend photo background seamlessly, natural sky above with clouds and light, matching colors and lighting from original photo, photorealistic, high quality landscape");
+                put("negative_prompt", "ceiling, indoor, artificial light, new people, faces, text, watermark, blurry, artifacts, distorted, border, frame");
                 put("num_inference_steps", 50);
                 put("guidance", 30);
                 put("width", width);
