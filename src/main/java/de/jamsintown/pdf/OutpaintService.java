@@ -244,7 +244,7 @@ public class OutpaintService {
                 put("version", llavVersion);
                 put("input", new java.util.LinkedHashMap<>() {{
                     put("image", "data:image/jpeg;base64," + imageB64);
-                    put("prompt", "Describe this photo in detail for use as an image generation prompt: what is the setting, what objects or people are visible, what are the colors, lighting, and atmosphere? Write 2-3 sentences.");
+                    put("prompt", "Describe only the background environment of this photo in 1-2 short sentences: the sky, ground, landscape, colors, lighting and atmosphere. Do not mention people or objects in the foreground.");
                     put("max_tokens", 300);
                 }});
             }});
