@@ -1158,8 +1158,10 @@ public class PdfService {
             com.itextpdf.kernel.geom.Rectangle r = page.getPageSize();
 
             try {
-                // Outpainted-Version nutzen wenn vorhanden (füllt bereits A4-Format)
-                String sourcePath = bg.outpaintedDiskPath() != null ? bg.outpaintedDiskPath() : bg.diskPath();
+                // Outpainted-Version nutzen wenn vorhanden und Datei existiert
+                boolean useOutpainted = bg.outpaintedDiskPath() != null
+                    && new java.io.File(bg.outpaintedDiskPath()).exists();
+                String sourcePath = useOutpainted ? bg.outpaintedDiskPath() : bg.diskPath();
                 com.itextpdf.io.image.ImageData imageData = ImageDataFactory.create(sourcePath);
                 PdfCanvas cv = new PdfCanvas(page.newContentStreamBefore(), page.getResources(), pdf);
                 cv.saveState();
@@ -1170,13 +1172,13 @@ public class PdfService {
                 float imgH = imageData.getHeight();
                 float x, y, drawW, drawH;
                 // Cover-Skalierung: Bild füllt die Seite vollständig (kein Letterbox)
-                float zoom = bg.outpaintedDiskPath() != null ? 1f : (bg.zoom() <= 0f ? 1f : bg.zoom());
+                float zoom = useOutpainted ? 1f : (bg.zoom() <= 0f ? 1f : bg.zoom());
                 float scale = Math.max(pageW / imgW, pageH / imgH) * zoom;
                 drawW = imgW * scale;
                 drawH = imgH * scale;
                 // offsetX/Y: 0 = zentriert, -1 = links/oben, +1 = rechts/unten
-                float offsetX = bg.outpaintedDiskPath() != null ? 0f : bg.offsetX();
-                float offsetY = bg.outpaintedDiskPath() != null ? 0f : bg.offsetY();
+                float offsetX = useOutpainted ? 0f : bg.offsetX();
+                float offsetY = useOutpainted ? 0f : bg.offsetY();
                 x = r.getLeft() + (pageW - drawW) / 2f * (1f + offsetX);
                 y = r.getBottom() + (pageH - drawH) / 2f * (1f + offsetY);
                 cv.addImageFittedIntoRectangle(imageData,
