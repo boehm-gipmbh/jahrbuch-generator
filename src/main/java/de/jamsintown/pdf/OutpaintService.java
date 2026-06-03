@@ -159,7 +159,10 @@ public class OutpaintService {
             put("input", new java.util.LinkedHashMap<>() {{
                 put("image", "data:image/jpeg;base64," + imageB64);
                 put("mask", "data:image/png;base64," + maskB64);
-                put("prompt", "seamless outdoor background extension, natural sky and landscape continuation, same lighting and atmosphere, no ceiling, no indoor elements, no artifacts, photorealistic");
+                put("prompt", "seamless outdoor background extension, natural sky and landscape continuation, same lighting and atmosphere, photorealistic");
+                put("negative_prompt", "ceiling, indoor room, people, faces, bodies, blurry, artifacts, distorted");
+                put("num_inference_steps", 50);
+                put("guidance", 30);
                 put("width", width);
                 put("height", height);
                 put("output_format", "jpg");
