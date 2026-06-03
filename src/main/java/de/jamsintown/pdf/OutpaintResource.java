@@ -3,7 +3,7 @@ package de.jamsintown.pdf;
 import de.jamsintown.bild.Bild;
 import io.quarkus.hibernate.reactive.panache.Panache;
 import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.infrastructure.Infrastructure;
+import io.vertx.mutiny.core.Vertx;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -17,10 +17,12 @@ import java.util.Map;
 public class OutpaintResource {
 
     private final OutpaintService outpaintService;
+    private final Vertx vertx;
 
     @Inject
-    public OutpaintResource(OutpaintService outpaintService) {
+    public OutpaintResource(OutpaintService outpaintService, Vertx vertx) {
         this.outpaintService = outpaintService;
+        this.vertx = vertx;
     }
 
     @POST
@@ -36,17 +38,17 @@ public class OutpaintResource {
         }
         String customPrompt = body != null ? body.get("prompt") : null;
 
-        // Session 1: Bild laden
+        // Session 1 (Event-Loop): Bild laden
         return Panache.withSession(() ->
             Bild.<Bild>findById(bildId)
                 .onItem().ifNull().failWith(() -> new NotFoundException("Bild nicht gefunden: " + bildId))
                 .map(bild -> new String[]{bild.pfad, bild.caption})
         )
-        // Outpainting außerhalb Transaktion (dauert lange)
-        .chain(data -> outpaintService.outpaint(data[0], customPrompt, data[1]))
-        // Zurück auf Vert.x Event-Loop für Panache
-        .emitOn(Infrastructure.getDefaultExecutor())
-        // Transaktion 2: Caption speichern wenn neu/geändert
+        // Outpainting auf Vert.x Worker-Thread (hat Vert.x-Context, emittiert zurück auf Event-Loop)
+        .chain(data -> vertx.executeBlocking(
+            () -> outpaintService.outpaintBlocking(data[0], customPrompt, data[1])
+        ))
+        // Transaktion 2 (Event-Loop): Caption speichern wenn neu/geändert
         .chain(result -> {
             String newCaption = result.effectivePrompt();
             if (newCaption == null) {
@@ -73,25 +75,22 @@ public class OutpaintResource {
                     .build());
         }
 
-        // Session 1: vorhandene Caption prüfen
+        // Session 1 (Event-Loop): vorhandene Caption prüfen
         return Panache.withSession(() ->
             Bild.<Bild>findById(bildId)
                 .onItem().ifNull().failWith(() -> new NotFoundException("Bild nicht gefunden: " + bildId))
                 .map(bild -> new String[]{bild.pfad, bild.caption})
         )
         .chain(data -> {
-            String pfad = data[0];
             String existing = data[1];
             if (existing != null && !existing.isBlank()) {
-                // Caption bereits vorhanden — direkt zurückgeben
                 return Uni.createFrom().item(existing);
             }
-            // BLIP außerhalb Transaktion aufrufen, dann zurück auf Event-Loop
-            return outpaintService.caption(pfad)
-                .emitOn(Infrastructure.getDefaultExecutor())
+            // BLIP auf Vert.x Worker-Thread, Ergebnis kommt zurück auf Event-Loop
+            return vertx.executeBlocking(() -> outpaintService.captionBlocking(data[0]))
                 .chain(cap -> {
                     if (cap == null || cap.isBlank()) return Uni.createFrom().item("");
-                    // Transaktion 2: Caption speichern
+                    // Transaktion 2 (Event-Loop): Caption speichern
                     return Panache.withTransaction(() ->
                         Bild.<Bild>findById(bildId)
                             .map(bild -> { bild.caption = cap; return cap; })

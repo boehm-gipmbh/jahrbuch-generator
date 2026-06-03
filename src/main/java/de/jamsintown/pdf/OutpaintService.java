@@ -3,7 +3,6 @@ package de.jamsintown.pdf;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -60,32 +59,26 @@ public class OutpaintService {
         }
     }
 
-    public Uni<String> caption(String bildPfad) {
-        return Uni.createFrom()
-            .item(() -> {
-                String diskPath = capturesPath + bildPfad.replaceFirst("^/", "");
-                String apiKey = replicateApiKey.orElseThrow(() -> new RuntimeException("Replicate API Key nicht konfiguriert"));
-                Path tempDir = null;
-                try {
-                    tempDir = Files.createTempDirectory("outpaint-caption");
-                    Path scaledPath = tempDir.resolve("scaled.jpg");
-                    runProcess("convert", "-auto-orient", diskPath, "-resize", TARGET_WIDTH + "x", scaledPath.toString());
-                    String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
-                    String cap = captionImage(scaledB64, apiKey);
-                    return cap != null ? cap : "";
-                } catch (Exception e) {
-                    throw new RuntimeException("Captioning fehlgeschlagen: " + e.getMessage(), e);
-                } finally {
-                    if (tempDir != null) deleteTempDir(tempDir);
-                }
-            })
-            .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+    public String captionBlocking(String bildPfad) {
+        String diskPath = capturesPath + bildPfad.replaceFirst("^/", "");
+        String apiKey = replicateApiKey.orElseThrow(() -> new RuntimeException("Replicate API Key nicht konfiguriert"));
+        Path tempDir = null;
+        try {
+            tempDir = Files.createTempDirectory("outpaint-caption");
+            Path scaledPath = tempDir.resolve("scaled.jpg");
+            runProcess("convert", "-auto-orient", diskPath, "-resize", TARGET_WIDTH + "x", scaledPath.toString());
+            String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
+            String cap = captionImage(scaledB64, apiKey);
+            return cap != null ? cap : "";
+        } catch (Exception e) {
+            throw new RuntimeException("Captioning fehlgeschlagen: " + e.getMessage(), e);
+        } finally {
+            if (tempDir != null) deleteTempDir(tempDir);
+        }
     }
 
-    public Uni<OutpaintResult> outpaint(String bildPfad, String customPrompt, String existingCaption) {
-        return Uni.createFrom()
-            .item(() -> doOutpaint(bildPfad, customPrompt, existingCaption))
-            .runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
+    public OutpaintResult outpaintBlocking(String bildPfad, String customPrompt, String existingCaption) {
+        return doOutpaint(bildPfad, customPrompt, existingCaption);
     }
 
     private OutpaintResult doOutpaint(String bildPfad, String customPrompt, String existingCaption) {
