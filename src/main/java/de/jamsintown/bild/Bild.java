@@ -77,4 +77,7 @@ public class Bild extends PanacheEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "exif_data", columnDefinition = "jsonb")
     public String exifData;
+
+    @Column(name = "caption", columnDefinition = "text")
+    public String caption;
 }

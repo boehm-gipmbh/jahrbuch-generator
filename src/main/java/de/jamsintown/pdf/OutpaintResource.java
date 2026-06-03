@@ -55,13 +55,18 @@ public class OutpaintResource {
                     .entity(Map.of("error", "Replicate API Key nicht konfiguriert"))
                     .build());
         }
-        return Panache.withSession(() ->
+        return Panache.withTransaction(() ->
             Bild.<Bild>findById(bildId)
                 .onItem().ifNull().failWith(() -> new NotFoundException("Bild nicht gefunden: " + bildId))
-                .map(bild -> bild.pfad)
+                .call(bild -> {
+                    if (bild.caption != null && !bild.caption.isBlank()) {
+                        return Uni.createFrom().item(bild); // bereits gecaptured
+                    }
+                    return outpaintService.caption(bild.pfad)
+                        .map(cap -> { bild.caption = cap; return bild; });
+                })
+                .map(bild -> Response.ok(Map.of("caption", bild.caption != null ? bild.caption : "")).build())
         )
-        .chain(pfad -> outpaintService.caption(pfad))
-        .map(cap -> Response.ok(Map.of("caption", cap)).build())
         .onFailure().recoverWithItem(e ->
             Response.serverError().entity(Map.of("error", e.getMessage())).build());
     }
