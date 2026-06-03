@@ -109,11 +109,23 @@ public class OutpaintService {
             // Bild 65% von oben positionieren → mehr Platz für Himmelerweiterung oben
             int offsetY = (int) Math.round(emptyVertSpace * 0.65);
 
-            // Canvas: schwarzer Hintergrund + Original an Position — keine widersprüchlichen Pixel
+            // Canvas: Randpixel gestreckt als Farbkontext → verhindert FLUX-Halluzinationen bei schwarzem Fill
+            int bottomFillH = emptyVertSpace - offsetY;
+            Path topFillPath = tempDir.resolve("top_fill.jpg");
+            runProcess("convert", scaledPath.toString(),
+                "-crop", scaledW + "x2+0+0", "+repage",
+                "-resize", scaledW + "x" + offsetY + "!",
+                "-blur", "0x5",
+                topFillPath.toString());
+            Path bottomFillPath = tempDir.resolve("bottom_fill.jpg");
+            runProcess("convert", scaledPath.toString(),
+                "-crop", scaledW + "x2+0+" + (scaledH - 2), "+repage",
+                "-resize", scaledW + "x" + bottomFillH + "!",
+                "-blur", "0x5",
+                bottomFillPath.toString());
             runProcess("convert",
-                "-size", scaledW + "x" + canvasH, "xc:black",
-                scaledPath.toString(), "-geometry", "+0+" + offsetY, "-composite",
-                canvasPath.toString());
+                topFillPath.toString(), scaledPath.toString(), bottomFillPath.toString(),
+                "-append", canvasPath.toString());
 
             // Maske: harte Kante — Modell binarisiert intern bei 0.5, Blur wäre kontraproduktiv
             runProcess("convert",
