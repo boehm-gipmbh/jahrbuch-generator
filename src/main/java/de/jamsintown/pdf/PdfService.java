@@ -247,7 +247,9 @@ public class PdfService {
             .map(bild -> {
                 if (bild == null) return null;
                 String diskPath = capturesPath + bild.pfad.replaceFirst("^/", "");
-                return new ResolvedBackground(diskPath, bg.opacity(), bg.tint(), bg.offsetX(), bg.offsetY(), bg.zoom());
+                String outpaintedDiskPath = bg.outpaintedPfad() != null
+                    ? capturesPath + bg.outpaintedPfad().replaceFirst("^/", "") : null;
+                return new ResolvedBackground(diskPath, bg.opacity(), bg.tint(), bg.offsetX(), bg.offsetY(), bg.zoom(), outpaintedDiskPath);
             });
     }
 
@@ -1116,7 +1118,7 @@ public class PdfService {
 
     record ItemStats(long likes, long votes, List<String[]> comments) {}
 
-    record ResolvedBackground(String diskPath, float opacity, String tint, float offsetX, float offsetY, float zoom) {}
+    record ResolvedBackground(String diskPath, float opacity, String tint, float offsetX, float offsetY, float zoom, String outpaintedDiskPath) {}
 
     record ResolvedGroupBackground(ResolvedBackground coverFront, ResolvedBackground coverBack, ResolvedBackground toc) {
         static ResolvedGroupBackground empty() { return new ResolvedGroupBackground(null, null, null); }
@@ -1156,22 +1158,29 @@ public class PdfService {
             com.itextpdf.kernel.geom.Rectangle r = page.getPageSize();
 
             try {
-                com.itextpdf.io.image.ImageData imageData = ImageDataFactory.create(bg.diskPath());
+                // Outpainted-Version nutzen wenn vorhanden und Datei existiert
+                boolean useOutpainted = bg.outpaintedDiskPath() != null
+                    && new java.io.File(bg.outpaintedDiskPath()).exists();
+                String sourcePath = useOutpainted ? bg.outpaintedDiskPath() : bg.diskPath();
+                com.itextpdf.io.image.ImageData imageData = ImageDataFactory.create(sourcePath);
                 PdfCanvas cv = new PdfCanvas(page.newContentStreamBefore(), page.getResources(), pdf);
                 cv.saveState();
                 cv.setExtGState(new PdfExtGState().setFillOpacity(bg.opacity()));
-                // Cover-Skalierung mit Zoom und Offset
-                float imgW = imageData.getWidth();
-                float imgH = imageData.getHeight();
                 float pageW = r.getWidth();
                 float pageH = r.getHeight();
-                float zoom = bg.zoom() <= 0f ? 1f : bg.zoom();
+                float imgW = imageData.getWidth();
+                float imgH = imageData.getHeight();
+                float x, y, drawW, drawH;
+                // Cover-Skalierung: Bild füllt die Seite vollständig (kein Letterbox)
+                float zoom = useOutpainted ? 1f : (bg.zoom() <= 0f ? 1f : bg.zoom());
                 float scale = Math.max(pageW / imgW, pageH / imgH) * zoom;
-                float drawW = imgW * scale;
-                float drawH = imgH * scale;
+                drawW = imgW * scale;
+                drawH = imgH * scale;
                 // offsetX/Y: 0 = zentriert, -1 = links/oben, +1 = rechts/unten
-                float x = r.getLeft() + (pageW - drawW) / 2f * (1f + bg.offsetX());
-                float y = r.getBottom() + (pageH - drawH) / 2f * (1f + bg.offsetY());
+                float offsetX = useOutpainted ? 0f : bg.offsetX();
+                float offsetY = useOutpainted ? 0f : bg.offsetY();
+                x = r.getLeft() + (pageW - drawW) / 2f * (1f + offsetX);
+                y = r.getBottom() + (pageH - drawH) / 2f * (1f + offsetY);
                 cv.addImageFittedIntoRectangle(imageData,
                     new com.itextpdf.kernel.geom.Rectangle(x, y, drawW, drawH), false);
                 if (bg.tint() != null && !bg.tint().isBlank()) {

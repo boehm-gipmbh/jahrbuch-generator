@@ -155,10 +155,11 @@ build-jvm:
         -Dversion=1.5-SNAPSHOT -Dpackaging=jar -B
   script:
     - export REACT_APP_VERSION="jvm-$(echo $CI_COMMIT_SHA | cut -c1-7) ($(date -u +%Y-%m-%d))"
-    - export NODE_OPTIONS="--max-old-space-size=3072"
+    - export NODE_OPTIONS="--max-old-space-size=1536"
+    - export GENERATE_SOURCEMAP=false
     - ./mvnw -Pfrontend clean package -DskipTests -B
     - docker build -f Dockerfile.staging -t drdboehm/jahrbuch-generator:staging .
-    - docker push drdboehm/jahrbuch-generator:staging
+    - for i in 1 2 3; do docker push drdboehm/jahrbuch-generator:staging && break || (echo "Push-Versuch $i fehlgeschlagen, retry..." && sleep 10); done
   <<: *mvn_cache
 
 # ─── DEPLOY STAGING (JVM, Feature-Branches) ──────────────────────────────────
@@ -196,9 +197,9 @@ build:
     - ./mvnw -Pnative,frontend,fly clean package k8s:build k8s:push -B -Dquarkus.native.container-build=true -Dquarkus.native.container-runtime-options="--pull=missing" -Dquarkus.native.native-image-xmx=8g "-Dquarkus.native.additional-build-args=-J-XX:ActiveProcessorCount=2,--initialize-at-run-time=com.itextpdf.kernel.font.FontUtil,--initialize-at-build-time=org.bouncycastle" -DskipTests
     - SHA=$(echo "$CI_COMMIT_SHA" | cut -c1-7)
     - docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:fly-$SHA
-    - docker push drdboehm/jahrbuch-generator:fly-$SHA
+    - for i in 1 2 3; do docker push drdboehm/jahrbuch-generator:fly-$SHA && break || (echo "Push-Versuch $i fehlgeschlagen, retry..." && sleep 10); done
     - docker tag drdboehm/jahrbuch-generator:fly drdboehm/jahrbuch-generator:staging
-    - docker push drdboehm/jahrbuch-generator:staging
+    - for i in 1 2 3; do docker push drdboehm/jahrbuch-generator:staging && break || (echo "Push-Versuch $i fehlgeschlagen, retry..." && sleep 10); done
   <<: *mvn_cache
 
 # ─── DEPLOY STAGING ──────────────────────────────────────────────────────────

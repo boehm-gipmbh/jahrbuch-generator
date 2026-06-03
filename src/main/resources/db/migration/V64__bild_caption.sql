@@ -1,0 +1,1 @@
+ALTER TABLE bilder ADD COLUMN caption TEXT;
