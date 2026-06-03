@@ -184,8 +184,8 @@ public class OutpaintService {
             put("input", new java.util.LinkedHashMap<>() {{
                 put("image", "data:image/jpeg;base64," + imageB64);
                 put("mask", "data:image/png;base64," + maskB64);
-                put("prompt", "extend photo background seamlessly, natural sky above with clouds and light, matching colors and lighting from original photo, photorealistic, high quality landscape");
-                put("negative_prompt", "ceiling, indoor, artificial light, new people, faces, text, watermark, blurry, artifacts, distorted, border, frame");
+                put("prompt", "seamlessly extend photo background, continue existing scene naturally, matching colors lighting and atmosphere, photorealistic");
+                put("negative_prompt", "ceiling, indoor room, artificial lighting, text, watermark, blurry, artifacts, distorted, border, frame");
                 put("num_inference_steps", 50);
                 put("guidance", 30);
                 put("width", width);
