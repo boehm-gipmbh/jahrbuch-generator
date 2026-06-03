@@ -130,7 +130,7 @@ public class OutpaintService {
             String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
             String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
 
-            String predictionId = createPrediction(imageB64, maskB64, scaledW, canvasH, apiKey);
+            String predictionId = createPrediction(imageB64, maskB64, apiKey);
             String resultUrl = pollUntilDone(predictionId, apiKey);
             downloadAndSave(resultUrl, outpaintedDiskPath);
 
@@ -165,7 +165,7 @@ public class OutpaintService {
         } catch (Exception ignored) {}
     }
 
-    private String createPrediction(String imageB64, String maskB64, int width, int height, String apiKey) throws Exception {
+    private String createPrediction(String imageB64, String maskB64, String apiKey) throws Exception {
         String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
             put("input", new java.util.LinkedHashMap<>() {{
                 put("image", "data:image/jpeg;base64," + imageB64);
@@ -174,8 +174,6 @@ public class OutpaintService {
                 put("negative_prompt", "ceiling, indoor room, artificial lighting, text, watermark, blurry, artifacts, distorted, border, frame");
                 put("num_inference_steps", 50);
                 put("guidance", 30);
-                put("width", width);
-                put("height", height);
                 put("output_format", "jpg");
                 put("output_quality", 90);
             }});
