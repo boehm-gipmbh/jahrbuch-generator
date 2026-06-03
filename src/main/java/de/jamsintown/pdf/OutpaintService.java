@@ -160,7 +160,7 @@ public class OutpaintService {
             } else {
                 String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
                 usedCaption = captionImage(scaledB64, apiKey);
-                log.info("Outpaint-Prompt: Llama-Vision generiert: {}", usedCaption);
+                log.info("Outpaint-Prompt: LLaVA generiert: {}", usedCaption);
             }
             String effectivePrompt = (usedCaption != null && !usedCaption.isBlank())
                 ? "seamlessly extend this photo: " + usedCaption + ", continue existing colors textures and atmosphere, no new subjects, photorealistic"
@@ -222,41 +222,57 @@ public class OutpaintService {
 
     private static final String DEFAULT_PROMPT = "seamlessly extend photo background, continue existing colors textures and atmosphere, no new subjects, photorealistic";
 
+    // LLaVA-13B: bekannte Fallback-Version falls Lookup fehlschlägt
+    private static final String LLAVA_FALLBACK_VERSION = "e272157381e2a3bf12df3a8edd1f38d1dbd736bbb7437277c8b34175f8fce358";
+
     private String captionImage(String imageB64, String apiKey) {
         try {
+            HttpResponse<String> versionResp = http.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.replicate.com/v1/models/yorickvp/llava-13b/versions"))
+                    .header("Authorization", "Bearer " + apiKey).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+            JsonNode versions = objectMapper.readTree(versionResp.body());
+            String lookedUp = versions.path("results").path(0).path("id").asText(null);
+            if (lookedUp == null) {
+                log.warn("LLaVA: Version-Lookup fehlgeschlagen ({}), nutze Fallback", versionResp.statusCode());
+            }
+            final String llavVersion = lookedUp != null ? lookedUp : LLAVA_FALLBACK_VERSION;
+            log.info("LLaVA version: {}", llavVersion);
+
             String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
+                put("version", llavVersion);
                 put("input", new java.util.LinkedHashMap<>() {{
                     put("image", "data:image/jpeg;base64," + imageB64);
                     put("prompt", "Describe this photo in detail for use as an image generation prompt: what is the setting, what objects or people are visible, what are the colors, lighting, and atmosphere? Write 2-3 sentences.");
-                    put("max_new_tokens", 200);
+                    put("max_tokens", 300);
                 }});
             }});
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.replicate.com/v1/models/meta/llama-3.2-11b-vision-instruct/predictions"))
+                .uri(URI.create("https://api.replicate.com/v1/predictions"))
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
                 .header("Prefer", "wait=30")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            log.info("Llama-Vision response status={} body={}", response.statusCode(), response.body());
+            log.info("LLaVA response status={} body={}", response.statusCode(), response.body());
             if (response.statusCode() >= 300) {
-                log.warn("Llama-Vision API Fehler {}: {}", response.statusCode(), response.body());
+                log.warn("LLaVA API Fehler {}: {}", response.statusCode(), response.body());
                 return null;
             }
             JsonNode json = objectMapper.readTree(response.body());
             if (json.has("output") && !json.get("output").isNull()) {
                 String caption = assembleOutput(json.get("output"));
-                log.info("Llama-Vision caption (direkt): '{}'", caption);
+                log.info("LLaVA caption (direkt): '{}'", caption);
                 return caption.isBlank() ? null : caption;
             }
-            // Polling falls nicht sofort fertig
             String id = json.path("id").asText(null);
             if (id == null) {
-                log.warn("Llama-Vision: kein output und keine id in Antwort: {}", response.body());
+                log.warn("LLaVA: kein output und keine id in Antwort: {}", response.body());
                 return null;
             }
-            log.info("Llama-Vision polling id={}", id);
+            log.info("LLaVA polling id={}", id);
             for (int i = 0; i < 20; i++) {
                 Thread.sleep(3000);
                 HttpResponse<String> poll = http.send(
@@ -265,18 +281,18 @@ public class OutpaintService {
                     HttpResponse.BodyHandlers.ofString());
                 JsonNode p = objectMapper.readTree(poll.body());
                 String status = p.path("status").asText();
-                log.info("Llama-Vision poll {}: status={}", i, status);
+                log.info("LLaVA poll {}: status={}", i, status);
                 if ("succeeded".equals(status)) {
                     String caption = assembleOutput(p.get("output"));
-                    log.info("Llama-Vision caption (poll): '{}'", caption);
+                    log.info("LLaVA caption (poll): '{}'", caption);
                     return caption.isBlank() ? null : caption;
                 }
                 if ("failed".equals(status) || "canceled".equals(status)) {
-                    log.warn("Llama-Vision prediction {}: {}", status, p.path("error").asText());
+                    log.warn("LLaVA prediction {}: {}", status, p.path("error").asText());
                     return null;
                 }
             }
-            log.warn("Llama-Vision Timeout nach 60s für id={}", id);
+            log.warn("LLaVA Timeout nach 60s für id={}", id);
         } catch (Exception e) {
             log.warn("Captioning fehlgeschlagen: {}", e.getMessage(), e);
         }
