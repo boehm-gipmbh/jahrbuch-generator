@@ -100,14 +100,14 @@ public class BildResource {
 
     @DELETE
     @Path("/{id}/caption")
-    @RolesAllowed("system-admin")
+    @RolesAllowed("admin")
     public Uni<Void> clearCaption(@PathParam("id") long id) {
         return bildService.clearCaption(id);
     }
 
     @DELETE
     @Path("/captions")
-    @RolesAllowed("system-admin")
+    @RolesAllowed("admin")
     public Uni<Integer> clearAllCaptions() {
         return bildService.clearAllCaptions();
     }
