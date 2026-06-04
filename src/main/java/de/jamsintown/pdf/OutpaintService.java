@@ -153,25 +153,33 @@ public class OutpaintService {
             int bottomFillH = emptyVertSpace - offsetY;
 
             if (indoor) {
-                // Indoor: kein KI-Fill — stark geblurrter Randstreifen als Erweiterung
-                // Verhindert Personen-Halluzinationen bei Gruppenfotos
-                int stripH = Math.max(scaledH / 8, 10);
-                Path topFillPath = tempDir.resolve("top_fill.jpg");
-                runProcess("convert", scaledPath.toString(),
-                    "-crop", scaledW + "x" + stripH + "+0+0", "+repage",
-                    "-resize", scaledW + "x" + offsetY + "!",
-                    "-blur", "0x20",
+                // Indoor: Wandfarbe aus Ecken sampeln → saubere Farbfläche statt verschmierter Köpfe
+                // Ecken eines Gruppenfotos sind typischerweise Wand/Hintergrund
+                String topColor = sampleCornerColor(scaledPath, scaledW, scaledH, true);
+                String bottomColor = sampleCornerColor(scaledPath, scaledW, scaledH, false);
+                log.info("Indoor-Wandfarben: oben={} unten={}", topColor, bottomColor);
+
+                // Farbflächen erzeugen + 30px Übergangsbereich zum Originalbild
+                int blend = Math.min(30, offsetY);
+                Path topFillPath = tempDir.resolve("top_fill.png");
+                runProcess("convert",
+                    "-size", scaledW + "x" + offsetY, "xc:" + topColor,
+                    "-gravity", "South",
+                    "-region", scaledW + "x" + blend + "+0+0",
+                    "-blur", "0x10",
                     topFillPath.toString());
-                Path bottomFillPath = tempDir.resolve("bottom_fill.jpg");
-                runProcess("convert", scaledPath.toString(),
-                    "-crop", scaledW + "x" + stripH + "+0+" + (scaledH - stripH), "+repage",
-                    "-resize", scaledW + "x" + bottomFillH + "!",
-                    "-blur", "0x20",
+                int blendB = Math.min(30, bottomFillH);
+                Path bottomFillPath = tempDir.resolve("bottom_fill.png");
+                runProcess("convert",
+                    "-size", scaledW + "x" + bottomFillH, "xc:" + bottomColor,
+                    "-gravity", "North",
+                    "-region", scaledW + "x" + blendB + "+0+0",
+                    "-blur", "0x10",
                     bottomFillPath.toString());
                 runProcess("convert",
                     topFillPath.toString(), scaledPath.toString(), bottomFillPath.toString(),
                     "-append", outpaintedDiskPath.toString());
-                log.info("Indoor-Outpainting ohne KI (Blur-Extend): {}", outpaintedDiskPath);
+                log.info("Indoor-Outpainting ohne KI (Farb-Extend): {}", outpaintedDiskPath);
                 addWatermark(outpaintedDiskPath, "KI: FLUX Fill");
                 return new OutpaintResult(outpaintedPfad, usedCaption);
             }
@@ -349,6 +357,27 @@ public class OutpaintService {
         "furniture", "table", "chair", "desk", "lamp", "lighting is bright",
         "lighting is soft", "indoor lighting"
     );
+
+    // Sampelt die Durchschnittsfarbe aus beiden oberen oder unteren Ecken (je 10x10px)
+    private String sampleCornerColor(Path image, int w, int h, boolean top) throws Exception {
+        int y = top ? 0 : h - 10;
+        int size = 10;
+        // Linke Ecke
+        String leftColor = runProcessOutput("convert", image.toString(),
+            "-crop", size + "x" + size + "+0+" + y, "+repage",
+            "-scale", "1x1!",
+            "-format", "%[hex:u]", "info:").trim();
+        // Rechte Ecke
+        String rightColor = runProcessOutput("convert", image.toString(),
+            "-crop", size + "x" + size + "+" + (w - size) + "+" + y, "+repage",
+            "-scale", "1x1!",
+            "-format", "%[hex:u]", "info:").trim();
+        // Durchschnitt: einfach linke Ecke nehmen wenn beide leer
+        String color = !leftColor.isEmpty() ? "#" + leftColor.substring(0, 6)
+                     : !rightColor.isEmpty() ? "#" + rightColor.substring(0, 6)
+                     : "gray";
+        return color;
+    }
 
     private static boolean isIndoorCaption(String caption) {
         if (caption == null || caption.isBlank()) return false;
