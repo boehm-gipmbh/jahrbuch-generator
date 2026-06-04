@@ -334,9 +334,11 @@ public class OutpaintService {
     private String createPrediction(String imageB64, String maskB64, String apiKey, String customPrompt, boolean indoor) throws Exception {
         String prompt = (customPrompt != null && !customPrompt.isBlank()) ? customPrompt : DEFAULT_PROMPT;
         // Bei Innenräumen "ceiling" nicht unterdrücken — Decke soll erweitert werden
+        // Bei Innenräumen: stärkere Unterdrückung zusätzlicher Personen + höhere guidance
         String negativePrompt = indoor
-            ? "new faces, new people, new persons, new bodies, duplicate people, text, watermark, blurry, artifacts, distorted, border, frame"
+            ? "new faces, new people, new persons, new bodies, duplicate people, additional people, extra persons, more people, crowd extension, rows of people, text, watermark, blurry, artifacts, distorted, border, frame"
             : "new faces, new people, new persons, new bodies, duplicate people, ceiling, text, watermark, blurry, artifacts, distorted, border, frame";
+        int guidance = indoor ? 50 : 30;
         String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
             put("input", new java.util.LinkedHashMap<>() {{
                 put("image", "data:image/jpeg;base64," + imageB64);
@@ -344,7 +346,7 @@ public class OutpaintService {
                 put("prompt", prompt);
                 put("negative_prompt", negativePrompt);
                 put("num_inference_steps", 50);
-                put("guidance", 30);
+                put("guidance", guidance);
                 put("output_format", "jpg");
                 put("output_quality", 90);
             }});
