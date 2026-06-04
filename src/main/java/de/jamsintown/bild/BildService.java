@@ -101,6 +101,21 @@ public class BildService {
     }
 
     @WithTransaction
+    public Uni<Void> clearCaption(long id) {
+        return findById(id)
+                .chain(bild -> {
+                    bild.caption = null;
+                    return Bild.getSession().chain(s -> s.merge(bild));
+                })
+                .replaceWithVoid();
+    }
+
+    @WithTransaction
+    public Uni<Integer> clearAllCaptions() {
+        return Bild.update("caption = null where caption is not null");
+    }
+
+    @WithTransaction
     public Uni<Integer> backfillCapturedAt(List<Bild> bilder) {
         if (bilder.isEmpty()) return Uni.createFrom().item(0);
         return Bild.getSession()

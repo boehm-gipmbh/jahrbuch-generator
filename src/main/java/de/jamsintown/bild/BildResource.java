@@ -98,6 +98,20 @@ public class BildResource {
         return bildService.setHauptbild(id, hauptbild);
     }
 
+    @DELETE
+    @Path("/{id}/caption")
+    @RolesAllowed("admin")
+    public Uni<Void> clearCaption(@PathParam("id") long id) {
+        return bildService.clearCaption(id);
+    }
+
+    @DELETE
+    @Path("/captions")
+    @RolesAllowed("admin")
+    public Uni<Integer> clearAllCaptions() {
+        return bildService.clearAllCaptions();
+    }
+
     @PUT
     @Path("/reorder/{storyId}")
     @Consumes(MediaType.APPLICATION_JSON)

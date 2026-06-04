@@ -68,8 +68,8 @@ public class OutpaintService {
             Path scaledPath = tempDir.resolve("scaled.jpg");
             runProcess("convert", "-auto-orient", diskPath, "-resize", TARGET_WIDTH + "x", scaledPath.toString());
             String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
-            String cap = captionImage(scaledB64, apiKey);
-            return cap != null ? cap : "";
+            SceneCaption sc = captionImage(scaledB64, apiKey);
+            return sc != null ? sc.caption() : "";
         } catch (Exception e) {
             throw new RuntimeException("Captioning fehlgeschlagen: " + e.getMessage(), e);
         } finally {
@@ -121,11 +121,102 @@ public class OutpaintService {
                 return new OutpaintResult(outpaintedPfad, null);
             }
 
-            // Bild 65% von oben positionieren → mehr Platz für Himmelerweiterung oben
+            // Prompt-Priorität: customPrompt > existingCaption > LLaVA-generiert
+            // LLaVA früh aufrufen, um indoor-Flag für offsetY zu kennen
+            boolean indoor;
+            String usedCaption;
+            if (customPrompt != null && !customPrompt.isBlank()) {
+                usedCaption = customPrompt;
+                // Gespeicherte Caption hat INDOOR:/OUTDOOR:-Prefix → parseSceneCaption ist zuverlässiger als Keyword-Matching
+                indoor = parseSceneCaption(existingCaption).indoor();
+                log.info("Outpaint-Prompt: User-Eingabe (indoor={} aus Caption)", indoor);
+            } else if (existingCaption != null && !existingCaption.isBlank()) {
+                // Caption wurde mit INDOOR:/OUTDOOR:-Prefix gespeichert → direkt parsen statt Keyword-Matching
+                SceneCaption sc = parseSceneCaption(existingCaption);
+                indoor = sc.indoor();
+                usedCaption = sc.caption();
+                log.info("Outpaint-Prompt: vorhandene Caption (indoor={}): {}", indoor, usedCaption);
+            } else {
+                String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
+                SceneCaption sc = captionImage(scaledB64, apiKey);
+                if (sc != null) {
+                    indoor = sc.indoor();
+                    // Prefix mitspeichern damit zweiter Durchlauf nicht auf Keyword-Matching angewiesen ist
+                    usedCaption = (indoor ? "INDOOR:" : "OUTDOOR:") + sc.caption();
+                } else {
+                    indoor = false;
+                    usedCaption = null;
+                }
+                log.info("Outpaint-Prompt: LLaVA generiert (indoor={}): {}", indoor, usedCaption);
+            }
+
+            // Indoor: 65% wie Outdoor (mehr Platz über Köpfen für Decken-Erweiterung durch FLUX)
+            // Outdoor: 65% → mehr Himmel oben
             int offsetY = (int) Math.round(emptyVertSpace * 0.65);
 
-            // Canvas: Randpixel gestreckt als Farbkontext → verhindert FLUX-Halluzinationen bei schwarzem Fill
             int bottomFillH = emptyVertSpace - offsetY;
+
+            if (indoor) {
+                // Wandfarbe aus je zwei Ecken sampeln (oben-links + oben-rechts).
+                // Ecken eines Gruppenfotos enthalten meistens Wand, nicht Personen.
+                String topColor = sampleCornerColor(scaledPath, scaledW, scaledH, true);
+                String bottomColor = sampleCornerColor(scaledPath, scaledW, scaledH, false);
+                log.info("Indoor-Wandfarben: oben={} unten={}", topColor, bottomColor);
+
+                // Content-aware safe zone:
+                // Misst wie weit die Wandfarbe von oben/unten ins Originalbild reicht.
+                // buffer=20px Sicherheitsabstand damit die Maske nicht in Haare/Köpfe schneidet.
+                int buffer = 20;
+                int topSafe = Math.max(0, detectBackgroundHeight(scaledPath, topColor) - buffer);
+                // Für unten: Bild flippen → detectBackgroundHeight misst wieder von oben
+                Path scaledFlipped = tempDir.resolve("scaled_flipped.jpg");
+                runProcess("convert", scaledPath.toString(), "-flip", scaledFlipped.toString());
+                int bottomSafe = Math.max(0, detectBackgroundHeight(scaledFlipped, bottomColor) - buffer);
+                log.info("Indoor safe zones: top={}px bottom={}px (Puffer={}px)", topSafe, bottomSafe, buffer);
+
+                // Canvas mit Wandfarbe füllen statt mit gestreckten Bildpixeln.
+                // Gibt FLUX einen klaren "dies ist Wand"-Kontext, damit kein Personenmuster fortgesetzt wird.
+                Path topFillPath = tempDir.resolve("top_fill.png");
+                runProcess("convert", "-size", scaledW + "x" + offsetY, "xc:" + topColor, topFillPath.toString());
+                Path bottomFillPath = tempDir.resolve("bottom_fill.png");
+                runProcess("convert", "-size", scaledW + "x" + bottomFillH, "xc:" + bottomColor, bottomFillPath.toString());
+                runProcess("convert",
+                    topFillPath.toString(), scaledPath.toString(), bottomFillPath.toString(),
+                    "-append", canvasPath.toString());
+
+                // Maske (weiß = FLUX füllt, schwarz = FLUX bewahrt):
+                // - Gesamte Canvas-Füllfläche oben (0..offsetY) → immer weiß
+                // - Zusätzlich: sichere Wandzone im Originalbild (offsetY..offsetY+topSafe) → weiß
+                // - Personenbereich in der Mitte → schwarz (unberührt)
+                // - Unten: Maske beginnt erst am unteren Rand des Originalbilds (offsetY + scaledH).
+                //   FLUX füllt nur den kleinen Canvas-Fill-Bereich, nicht das Originalbild selbst.
+                //   Je kleiner die freie Fläche, desto weniger erfindet FLUX (verhindert Pseudotext).
+                int maskTopEnd = offsetY + topSafe;
+                int maskBottomStart = offsetY + scaledH; // nie in Originalbild hinein
+                runProcess("convert",
+                    "-size", scaledW + "x" + canvasH, "xc:black",
+                    "-fill", "white",
+                    "-draw", "rectangle 0,0 " + (scaledW - 1) + "," + (maskTopEnd - 1),
+                    "-draw", "rectangle 0," + maskBottomStart + " " + (scaledW - 1) + "," + (canvasH - 1),
+                    maskPath.toString());
+
+                // Wandspezifischer Prompt statt allgemeiner Szenenbeschreibung.
+                // Raumtyp aus LLaVA-Caption extrahieren (z.B. "classroom") für präziseres Ergebnis.
+                String roomType = extractRoomType(usedCaption);
+                String wallPrompt = roomType + " empty wall and ceiling, plain painted wall, no people, no faces, background only, photorealistic";
+                log.info("Indoor FLUX-Prompt: '{}' (maskTop={}px maskBottom={}px)", wallPrompt, maskTopEnd, maskBottomStart);
+
+                String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
+                String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
+                String predictionId = createPrediction(imageB64, maskB64, apiKey, wallPrompt, true);
+                String resultUrl = pollUntilDone(predictionId, apiKey);
+                downloadAndSave(resultUrl, outpaintedDiskPath);
+                addWatermark(outpaintedDiskPath, "KI: FLUX Fill");
+                log.info("Indoor-Outpainting mit KI (content-aware mask): {}", outpaintedDiskPath);
+                return new OutpaintResult(outpaintedPfad, usedCaption);
+            }
+
+            // Outdoor: Randpixel gestreckt als Farbkontext → verhindert FLUX-Halluzinationen bei schwarzem Fill
             Path topFillPath = tempDir.resolve("top_fill.jpg");
             runProcess("convert", scaledPath.toString(),
                 "-crop", scaledW + "x2+0+0", "+repage",
@@ -142,34 +233,21 @@ public class OutpaintService {
                 topFillPath.toString(), scaledPath.toString(), bottomFillPath.toString(),
                 "-append", canvasPath.toString());
 
-            // Maske: harte Kante — Modell binarisiert intern bei 0.5, Blur wäre kontraproduktiv
+            // Maske: harte Kante für Outdoor
             runProcess("convert",
                 "-size", scaledW + "x" + canvasH, "xc:white",
                 "-fill", "black",
                 "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
                 maskPath.toString());
 
-            // Prompt-Priorität: customPrompt > existingCaption > BLIP-generiert
-            String usedCaption;
-            if (customPrompt != null && !customPrompt.isBlank()) {
-                usedCaption = customPrompt;
-                log.info("Outpaint-Prompt: User-Eingabe");
-            } else if (existingCaption != null && !existingCaption.isBlank()) {
-                usedCaption = existingCaption;
-                log.info("Outpaint-Prompt: vorhandene Caption");
-            } else {
-                String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
-                usedCaption = captionImage(scaledB64, apiKey);
-                log.info("Outpaint-Prompt: LLaVA generiert: {}", usedCaption);
-            }
-            String effectivePrompt = (usedCaption != null && !usedCaption.isBlank())
-                ? "seamlessly extend this photo: " + usedCaption + ", continue existing colors textures and atmosphere, no new subjects, photorealistic"
-                : null;
+            // Outdoor: DEFAULT_PROMPT reicht — enthält keine Personen-Beschreibung.
+            // LLaVA-Caption NICHT in den FLUX-Prompt einbauen: würde FLUX anweisen die Menge zu verlängern.
+            String effectivePrompt = null;
 
             String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
             String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
 
-            String predictionId = createPrediction(imageB64, maskB64, apiKey, effectivePrompt);
+            String predictionId = createPrediction(imageB64, maskB64, apiKey, effectivePrompt, indoor);
             String resultUrl = pollUntilDone(predictionId, apiKey);
             downloadAndSave(resultUrl, outpaintedDiskPath);
             addWatermark(outpaintedDiskPath, "KI: FLUX Fill");
@@ -224,8 +302,14 @@ public class OutpaintService {
 
     // LLaVA-13B: bekannte Fallback-Version falls Lookup fehlschlägt
     private static final String LLAVA_FALLBACK_VERSION = "e272157381e2a3bf12df3a8edd1f38d1dbd736bbb7437277c8b34175f8fce358";
+    private static final String LLAVA_PROMPT =
+        "Start your response with 'INDOOR:' if this photo was taken indoors, or 'OUTDOOR:' if outdoors. " +
+        "Then describe the background environment in 1-2 short sentences. " +
+        "For outdoor: sky, ground, landscape, colors, lighting. " +
+        "For indoor: room type, walls, ceiling, floor, furniture, lighting. " +
+        "Do not mention people or objects in the foreground.";
 
-    private String captionImage(String imageB64, String apiKey) {
+    private SceneCaption captionImage(String imageB64, String apiKey) {
         try {
             HttpResponse<String> versionResp = http.send(
                 HttpRequest.newBuilder()
@@ -244,7 +328,7 @@ public class OutpaintService {
                 put("version", llavVersion);
                 put("input", new java.util.LinkedHashMap<>() {{
                     put("image", "data:image/jpeg;base64," + imageB64);
-                    put("prompt", "Describe only the background environment of this photo in 1-2 short sentences: the sky, ground, landscape, colors, lighting and atmosphere. Do not mention people or objects in the foreground.");
+                    put("prompt", LLAVA_PROMPT);
                     put("max_tokens", 300);
                 }});
             }});
@@ -263,9 +347,9 @@ public class OutpaintService {
             }
             JsonNode json = objectMapper.readTree(response.body());
             if (json.has("output") && !json.get("output").isNull()) {
-                String caption = assembleOutput(json.get("output"));
-                log.info("LLaVA caption (direkt): '{}'", caption);
-                return caption.isBlank() ? null : caption;
+                SceneCaption sc = parseSceneCaption(assembleOutput(json.get("output")));
+                log.info("LLaVA caption (direkt): indoor={} '{}'", sc.indoor(), sc.caption());
+                return sc.caption().isBlank() ? null : sc;
             }
             String id = json.path("id").asText(null);
             if (id == null) {
@@ -283,9 +367,9 @@ public class OutpaintService {
                 String status = p.path("status").asText();
                 log.info("LLaVA poll {}: status={}", i, status);
                 if ("succeeded".equals(status)) {
-                    String caption = assembleOutput(p.get("output"));
-                    log.info("LLaVA caption (poll): '{}'", caption);
-                    return caption.isBlank() ? null : caption;
+                    SceneCaption sc = parseSceneCaption(assembleOutput(p.get("output")));
+                    log.info("LLaVA caption (poll): indoor={} '{}'", sc.indoor(), sc.caption());
+                    return sc.caption().isBlank() ? null : sc;
                 }
                 if ("failed".equals(status) || "canceled".equals(status)) {
                     log.warn("LLaVA prediction {}: {}", status, p.path("error").asText());
@@ -299,6 +383,76 @@ public class OutpaintService {
         return null;
     }
 
+    // Sampelt die Durchschnittsfarbe aus beiden oberen oder unteren Ecken (je 10x10px)
+    private String sampleCornerColor(Path image, int w, int h, boolean top) throws Exception {
+        int y = top ? 0 : h - 10;
+        int size = 10;
+        // Linke Ecke
+        String leftColor = runProcessOutput("convert", image.toString(),
+            "-crop", size + "x" + size + "+0+" + y, "+repage",
+            "-scale", "1x1!",
+            "-format", "%[hex:u]", "info:").trim();
+        // Rechte Ecke
+        String rightColor = runProcessOutput("convert", image.toString(),
+            "-crop", size + "x" + size + "+" + (w - size) + "+" + y, "+repage",
+            "-scale", "1x1!",
+            "-format", "%[hex:u]", "info:").trim();
+        // Durchschnitt: einfach linke Ecke nehmen wenn beide leer
+        String color = !leftColor.isEmpty() ? "#" + leftColor.substring(0, 6)
+                     : !rightColor.isEmpty() ? "#" + rightColor.substring(0, 6)
+                     : "gray";
+        return color;
+    }
+
+    /**
+     * Misst wie viele Pixel vom oberen Rand einer Wandfarbe gehören (Hintergrund).
+     * Strategie: ImageMagick -fuzz 15% -trim erkennt den Bereich der der Wandfarbe ähnelt.
+     * page.y-1 gibt an wie weit von oben die erste Nicht-Wand-Zeile liegt.
+     * Der Aufrufer flippt das Bild für die Unterseite und ruft diese Methode erneut auf.
+     *
+     * @param image     Pfad zum (skalierten) Bild
+     * @param wallColor Hex-Farbe der Wand z.B. "#c8b89a"
+     * @return Anzahl sicherer Hintergrundpixel vom oberen Rand
+     */
+    private int detectBackgroundHeight(Path image, String wallColor) throws Exception {
+        // Border in Wandfarbe → trim entfernt alles was nicht dem Rand ähnelt → page.y gibt Versatz
+        String result = runProcessOutput("convert",
+            image.toString(),
+            "-bordercolor", wallColor,
+            "-border", "1",            // 1px Rand in Wandfarbe hinzufügen
+            "-fuzz", "15%",            // 15% Toleranz: leichte Farbvariationen der Wand erlauben
+            "-trim",                   // Alles trimmen was sich vom Rand unterscheidet
+            "-format", "%[fx:page.y-1]",  // Versatz minus der hinzugefügten Border = echte Tiefe
+            "info:").trim();
+        try {
+            return Math.max(0, Integer.parseInt(result));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Extrahiert den Raumtyp aus der LLaVA-Caption für einen präziseren FLUX-Prompt.
+     * Fallback: generisches "room" wenn kein spezifischer Typ erkannt wird.
+     */
+    private static String extractRoomType(String caption) {
+        if (caption == null) return "room,";
+        String lower = caption.toLowerCase();
+        if (lower.contains("classroom") || lower.contains("class room")) return "classroom,";
+        if (lower.contains("gymnasium") || lower.contains("gym")) return "gymnasium,";
+        if (lower.contains("auditorium") || lower.contains("hall")) return "hall,";
+        if (lower.contains("office")) return "office,";
+        if (lower.contains("corridor") || lower.contains("hallway")) return "corridor,";
+        return "room,";
+    }
+
+    private static SceneCaption parseSceneCaption(String raw) {
+        if (raw == null || raw.isBlank()) return new SceneCaption(false, "");
+        if (raw.startsWith("INDOOR:")) return new SceneCaption(true, raw.substring(7).trim());
+        if (raw.startsWith("OUTDOOR:")) return new SceneCaption(false, raw.substring(8).trim());
+        return new SceneCaption(false, raw.trim());
+    }
+
     private static String assembleOutput(JsonNode output) {
         if (output == null) return "";
         if (output.isArray()) {
@@ -309,16 +463,22 @@ public class OutpaintService {
         return output.asText("").trim();
     }
 
-    private String createPrediction(String imageB64, String maskB64, String apiKey, String customPrompt) throws Exception {
+    private String createPrediction(String imageB64, String maskB64, String apiKey, String customPrompt, boolean indoor) throws Exception {
         String prompt = (customPrompt != null && !customPrompt.isBlank()) ? customPrompt : DEFAULT_PROMPT;
+        // Bei Innenräumen "ceiling" nicht unterdrücken — Decke soll erweitert werden
+        // Bei Innenräumen: stärkere Unterdrückung zusätzlicher Personen + höhere guidance
+        String negativePrompt = indoor
+            ? "new faces, new people, new persons, new bodies, duplicate people, additional people, extra persons, more people, crowd extension, rows of people, text, watermark, blurry, artifacts, distorted, border, frame"
+            : "new faces, new people, new persons, new bodies, duplicate people, ceiling, text, watermark, blurry, artifacts, distorted, border, frame";
+        int guidance = indoor ? 50 : 30;
         String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
             put("input", new java.util.LinkedHashMap<>() {{
                 put("image", "data:image/jpeg;base64," + imageB64);
                 put("mask", "data:image/png;base64," + maskB64);
                 put("prompt", prompt);
-                put("negative_prompt", "new faces, new people, new persons, new bodies, duplicate people, ceiling, text, watermark, blurry, artifacts, distorted, border, frame");
+                put("negative_prompt", negativePrompt);
                 put("num_inference_steps", 50);
-                put("guidance", 30);
+                put("guidance", guidance);
                 put("output_format", "jpg");
                 put("output_quality", 90);
             }});
