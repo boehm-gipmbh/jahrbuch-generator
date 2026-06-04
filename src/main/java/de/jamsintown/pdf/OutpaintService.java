@@ -68,8 +68,8 @@ public class OutpaintService {
             Path scaledPath = tempDir.resolve("scaled.jpg");
             runProcess("convert", "-auto-orient", diskPath, "-resize", TARGET_WIDTH + "x", scaledPath.toString());
             String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
-            String cap = captionImage(scaledB64, apiKey);
-            return cap != null ? cap : "";
+            SceneCaption sc = captionImage(scaledB64, apiKey);
+            return sc != null ? sc.caption() : "";
         } catch (Exception e) {
             throw new RuntimeException("Captioning fehlgeschlagen: " + e.getMessage(), e);
         } finally {
@@ -121,8 +121,30 @@ public class OutpaintService {
                 return new OutpaintResult(outpaintedPfad, null);
             }
 
-            // Bild 65% von oben positionieren → mehr Platz für Himmelerweiterung oben
-            int offsetY = (int) Math.round(emptyVertSpace * 0.65);
+            // Prompt-Priorität: customPrompt > existingCaption > LLaVA-generiert
+            // LLaVA früh aufrufen, um indoor-Flag für offsetY zu kennen
+            boolean indoor = false;
+            String usedCaption;
+            if (customPrompt != null && !customPrompt.isBlank()) {
+                usedCaption = customPrompt;
+                log.info("Outpaint-Prompt: User-Eingabe");
+            } else if (existingCaption != null && !existingCaption.isBlank()) {
+                usedCaption = existingCaption;
+                log.info("Outpaint-Prompt: vorhandene Caption");
+            } else {
+                String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
+                SceneCaption sc = captionImage(scaledB64, apiKey);
+                if (sc != null) {
+                    indoor = sc.indoor();
+                    usedCaption = sc.caption();
+                } else {
+                    usedCaption = null;
+                }
+                log.info("Outpaint-Prompt: LLaVA generiert (indoor={}): {}", indoor, usedCaption);
+            }
+
+            // offsetY: Innenraum mittig (50%), Außen oben (65% → mehr Himmel)
+            int offsetY = (int) Math.round(emptyVertSpace * (indoor ? 0.5 : 0.65));
 
             // Canvas: Randpixel gestreckt als Farbkontext → verhindert FLUX-Halluzinationen bei schwarzem Fill
             int bottomFillH = emptyVertSpace - offsetY;
@@ -149,19 +171,6 @@ public class OutpaintService {
                 "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
                 maskPath.toString());
 
-            // Prompt-Priorität: customPrompt > existingCaption > BLIP-generiert
-            String usedCaption;
-            if (customPrompt != null && !customPrompt.isBlank()) {
-                usedCaption = customPrompt;
-                log.info("Outpaint-Prompt: User-Eingabe");
-            } else if (existingCaption != null && !existingCaption.isBlank()) {
-                usedCaption = existingCaption;
-                log.info("Outpaint-Prompt: vorhandene Caption");
-            } else {
-                String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
-                usedCaption = captionImage(scaledB64, apiKey);
-                log.info("Outpaint-Prompt: LLaVA generiert: {}", usedCaption);
-            }
             String effectivePrompt = (usedCaption != null && !usedCaption.isBlank())
                 ? "seamlessly extend this photo: " + usedCaption + ", continue existing colors textures and atmosphere, no new subjects, photorealistic"
                 : null;
@@ -169,7 +178,7 @@ public class OutpaintService {
             String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
             String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
 
-            String predictionId = createPrediction(imageB64, maskB64, apiKey, effectivePrompt);
+            String predictionId = createPrediction(imageB64, maskB64, apiKey, effectivePrompt, indoor);
             String resultUrl = pollUntilDone(predictionId, apiKey);
             downloadAndSave(resultUrl, outpaintedDiskPath);
             addWatermark(outpaintedDiskPath, "KI: FLUX Fill");
@@ -224,8 +233,14 @@ public class OutpaintService {
 
     // LLaVA-13B: bekannte Fallback-Version falls Lookup fehlschlägt
     private static final String LLAVA_FALLBACK_VERSION = "e272157381e2a3bf12df3a8edd1f38d1dbd736bbb7437277c8b34175f8fce358";
+    private static final String LLAVA_PROMPT =
+        "Start your response with 'INDOOR:' if this photo was taken indoors, or 'OUTDOOR:' if outdoors. " +
+        "Then describe the background environment in 1-2 short sentences. " +
+        "For outdoor: sky, ground, landscape, colors, lighting. " +
+        "For indoor: room type, walls, ceiling, floor, furniture, lighting. " +
+        "Do not mention people or objects in the foreground.";
 
-    private String captionImage(String imageB64, String apiKey) {
+    private SceneCaption captionImage(String imageB64, String apiKey) {
         try {
             HttpResponse<String> versionResp = http.send(
                 HttpRequest.newBuilder()
@@ -244,7 +259,7 @@ public class OutpaintService {
                 put("version", llavVersion);
                 put("input", new java.util.LinkedHashMap<>() {{
                     put("image", "data:image/jpeg;base64," + imageB64);
-                    put("prompt", "Describe only the background environment of this photo in 1-2 short sentences: the sky, ground, landscape, colors, lighting and atmosphere. Do not mention people or objects in the foreground.");
+                    put("prompt", LLAVA_PROMPT);
                     put("max_tokens", 300);
                 }});
             }});
@@ -263,9 +278,9 @@ public class OutpaintService {
             }
             JsonNode json = objectMapper.readTree(response.body());
             if (json.has("output") && !json.get("output").isNull()) {
-                String caption = assembleOutput(json.get("output"));
-                log.info("LLaVA caption (direkt): '{}'", caption);
-                return caption.isBlank() ? null : caption;
+                SceneCaption sc = parseSceneCaption(assembleOutput(json.get("output")));
+                log.info("LLaVA caption (direkt): indoor={} '{}'", sc.indoor(), sc.caption());
+                return sc.caption().isBlank() ? null : sc;
             }
             String id = json.path("id").asText(null);
             if (id == null) {
@@ -283,9 +298,9 @@ public class OutpaintService {
                 String status = p.path("status").asText();
                 log.info("LLaVA poll {}: status={}", i, status);
                 if ("succeeded".equals(status)) {
-                    String caption = assembleOutput(p.get("output"));
-                    log.info("LLaVA caption (poll): '{}'", caption);
-                    return caption.isBlank() ? null : caption;
+                    SceneCaption sc = parseSceneCaption(assembleOutput(p.get("output")));
+                    log.info("LLaVA caption (poll): indoor={} '{}'", sc.indoor(), sc.caption());
+                    return sc.caption().isBlank() ? null : sc;
                 }
                 if ("failed".equals(status) || "canceled".equals(status)) {
                     log.warn("LLaVA prediction {}: {}", status, p.path("error").asText());
@@ -299,6 +314,13 @@ public class OutpaintService {
         return null;
     }
 
+    private static SceneCaption parseSceneCaption(String raw) {
+        if (raw == null || raw.isBlank()) return new SceneCaption(false, "");
+        if (raw.startsWith("INDOOR:")) return new SceneCaption(true, raw.substring(7).trim());
+        if (raw.startsWith("OUTDOOR:")) return new SceneCaption(false, raw.substring(8).trim());
+        return new SceneCaption(false, raw.trim());
+    }
+
     private static String assembleOutput(JsonNode output) {
         if (output == null) return "";
         if (output.isArray()) {
@@ -309,14 +331,18 @@ public class OutpaintService {
         return output.asText("").trim();
     }
 
-    private String createPrediction(String imageB64, String maskB64, String apiKey, String customPrompt) throws Exception {
+    private String createPrediction(String imageB64, String maskB64, String apiKey, String customPrompt, boolean indoor) throws Exception {
         String prompt = (customPrompt != null && !customPrompt.isBlank()) ? customPrompt : DEFAULT_PROMPT;
+        // Bei Innenräumen "ceiling" nicht unterdrücken — Decke soll erweitert werden
+        String negativePrompt = indoor
+            ? "new faces, new people, new persons, new bodies, duplicate people, text, watermark, blurry, artifacts, distorted, border, frame"
+            : "new faces, new people, new persons, new bodies, duplicate people, ceiling, text, watermark, blurry, artifacts, distorted, border, frame";
         String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
             put("input", new java.util.LinkedHashMap<>() {{
                 put("image", "data:image/jpeg;base64," + imageB64);
                 put("mask", "data:image/png;base64," + maskB64);
                 put("prompt", prompt);
-                put("negative_prompt", "new faces, new people, new persons, new bodies, duplicate people, ceiling, text, watermark, blurry, artifacts, distorted, border, frame");
+                put("negative_prompt", negativePrompt);
                 put("num_inference_steps", 50);
                 put("guidance", 30);
                 put("output_format", "jpg");
