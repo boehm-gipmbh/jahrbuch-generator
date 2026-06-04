@@ -127,19 +127,22 @@ public class OutpaintService {
             String usedCaption;
             if (customPrompt != null && !customPrompt.isBlank()) {
                 usedCaption = customPrompt;
-                // Indoor aus gespeicherter Caption ableiten (kein extra API-Call)
-                indoor = isIndoorCaption(existingCaption);
+                // Gespeicherte Caption hat INDOOR:/OUTDOOR:-Prefix → parseSceneCaption ist zuverlässiger als Keyword-Matching
+                indoor = parseSceneCaption(existingCaption).indoor();
                 log.info("Outpaint-Prompt: User-Eingabe (indoor={} aus Caption)", indoor);
             } else if (existingCaption != null && !existingCaption.isBlank()) {
-                usedCaption = existingCaption;
-                indoor = isIndoorCaption(existingCaption);
-                log.info("Outpaint-Prompt: vorhandene Caption (indoor={})", indoor);
+                // Caption wurde mit INDOOR:/OUTDOOR:-Prefix gespeichert → direkt parsen statt Keyword-Matching
+                SceneCaption sc = parseSceneCaption(existingCaption);
+                indoor = sc.indoor();
+                usedCaption = sc.caption();
+                log.info("Outpaint-Prompt: vorhandene Caption (indoor={}): {}", indoor, usedCaption);
             } else {
                 String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
                 SceneCaption sc = captionImage(scaledB64, apiKey);
                 if (sc != null) {
                     indoor = sc.indoor();
-                    usedCaption = sc.caption();
+                    // Prefix mitspeichern damit zweiter Durchlauf nicht auf Keyword-Matching angewiesen ist
+                    usedCaption = (indoor ? "INDOOR:" : "OUTDOOR:") + sc.caption();
                 } else {
                     indoor = false;
                     usedCaption = null;
@@ -380,13 +383,6 @@ public class OutpaintService {
         return null;
     }
 
-    private static final java.util.List<String> INDOOR_KEYWORDS = java.util.List.of(
-        "indoor", "classroom", "room", "wall", "ceiling", "carpet", "floor",
-        "gym", "hall", "gymnasium", "auditorium", "office", "corridor", "window",
-        "furniture", "table", "chair", "desk", "lamp", "lighting is bright",
-        "lighting is soft", "indoor lighting"
-    );
-
     // Sampelt die Durchschnittsfarbe aus beiden oberen oder unteren Ecken (je 10x10px)
     private String sampleCornerColor(Path image, int w, int h, boolean top) throws Exception {
         int y = top ? 0 : h - 10;
@@ -448,12 +444,6 @@ public class OutpaintService {
         if (lower.contains("office")) return "office,";
         if (lower.contains("corridor") || lower.contains("hallway")) return "corridor,";
         return "room,";
-    }
-
-    private static boolean isIndoorCaption(String caption) {
-        if (caption == null || caption.isBlank()) return false;
-        String lower = caption.toLowerCase();
-        return INDOOR_KEYWORDS.stream().anyMatch(lower::contains);
     }
 
     private static SceneCaption parseSceneCaption(String raw) {
