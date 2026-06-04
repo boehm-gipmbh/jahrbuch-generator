@@ -123,14 +123,17 @@ public class OutpaintService {
 
             // Prompt-Priorität: customPrompt > existingCaption > LLaVA-generiert
             // LLaVA früh aufrufen, um indoor-Flag für offsetY zu kennen
-            boolean indoor = false;
+            boolean indoor;
             String usedCaption;
             if (customPrompt != null && !customPrompt.isBlank()) {
                 usedCaption = customPrompt;
-                log.info("Outpaint-Prompt: User-Eingabe");
+                // Indoor aus gespeicherter Caption ableiten (kein extra API-Call)
+                indoor = isIndoorCaption(existingCaption);
+                log.info("Outpaint-Prompt: User-Eingabe (indoor={} aus Caption)", indoor);
             } else if (existingCaption != null && !existingCaption.isBlank()) {
                 usedCaption = existingCaption;
-                log.info("Outpaint-Prompt: vorhandene Caption");
+                indoor = isIndoorCaption(existingCaption);
+                log.info("Outpaint-Prompt: vorhandene Caption (indoor={})", indoor);
             } else {
                 String scaledB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(scaledPath));
                 SceneCaption sc = captionImage(scaledB64, apiKey);
@@ -138,6 +141,7 @@ public class OutpaintService {
                     indoor = sc.indoor();
                     usedCaption = sc.caption();
                 } else {
+                    indoor = false;
                     usedCaption = null;
                 }
                 log.info("Outpaint-Prompt: LLaVA generiert (indoor={}): {}", indoor, usedCaption);
@@ -312,6 +316,19 @@ public class OutpaintService {
             log.warn("Captioning fehlgeschlagen: {}", e.getMessage(), e);
         }
         return null;
+    }
+
+    private static final java.util.List<String> INDOOR_KEYWORDS = java.util.List.of(
+        "indoor", "classroom", "room", "wall", "ceiling", "carpet", "floor",
+        "gym", "hall", "gymnasium", "auditorium", "office", "corridor", "window",
+        "furniture", "table", "chair", "desk", "lamp", "lighting is bright",
+        "lighting is soft", "indoor lighting"
+    );
+
+    private static boolean isIndoorCaption(String caption) {
+        if (caption == null || caption.isBlank()) return false;
+        String lower = caption.toLowerCase();
+        return INDOOR_KEYWORDS.stream().anyMatch(lower::contains);
     }
 
     private static SceneCaption parseSceneCaption(String raw) {
