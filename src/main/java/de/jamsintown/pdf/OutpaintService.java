@@ -147,72 +147,69 @@ public class OutpaintService {
                 log.info("Outpaint-Prompt: LLaVA generiert (indoor={}): {}", indoor, usedCaption);
             }
 
-            // offsetY: Innenraum mittig (50%), Außen oben (65% → mehr Himmel)
-            int offsetY = (int) Math.round(emptyVertSpace * (indoor ? 0.5 : 0.65));
+            // Indoor: 65% wie Outdoor (mehr Platz über Köpfen für Decken-Erweiterung durch FLUX)
+            // Outdoor: 65% → mehr Himmel oben
+            int offsetY = (int) Math.round(emptyVertSpace * 0.65);
 
             int bottomFillH = emptyVertSpace - offsetY;
 
             if (indoor) {
-                // Indoor: Wandfarbe aus Ecken sampeln → saubere Farbfläche statt verschmierter Köpfe
-                // Ecken eines Gruppenfotos sind typischerweise Wand/Hintergrund
+                // Wandfarbe aus je zwei Ecken sampeln (oben-links + oben-rechts).
+                // Ecken eines Gruppenfotos enthalten meistens Wand, nicht Personen.
                 String topColor = sampleCornerColor(scaledPath, scaledW, scaledH, true);
                 String bottomColor = sampleCornerColor(scaledPath, scaledW, scaledH, false);
                 log.info("Indoor-Wandfarben: oben={} unten={}", topColor, bottomColor);
 
-                // Farbflächen mit Gradient-Übergang zum Originalbild (60px Blend-Zone)
-                int blend = Math.min(120, offsetY);
-                Path topFillPath = tempDir.resolve("top_fill.png");
-                // Solid-Fill + Gradient-Maske über echte Bildpixel legen
-                Path topEdge = tempDir.resolve("top_edge.png");
-                runProcess("convert", scaledPath.toString(),
-                    "-crop", scaledW + "x" + blend + "+0+0", "+repage",
-                    topEdge.toString());
-                Path topGrad = tempDir.resolve("top_grad.png");
-                runProcess("convert",
-                    "-size", scaledW + "x" + blend,
-                    "gradient:white-black",
-                    topGrad.toString());
-                Path topSolid = tempDir.resolve("top_solid.png");
-                runProcess("convert", "-size", scaledW + "x" + offsetY, "xc:" + topColor, topSolid.toString());
-                // Blend-Zone: Gradient-Composite von Farbe → Original
-                Path topBlend = tempDir.resolve("top_blend.png");
-                runProcess("convert", topEdge.toString(), topSolid.toString(),
-                    "-gravity", "South", "-geometry", "+0+0",
-                    topGrad.toString(), "-composite",
-                    topBlend.toString());
-                // Solid-Bereich + Blend-Zone zusammensetzen
-                runProcess("convert",
-                    "-size", scaledW + "x" + (offsetY - blend), "xc:" + topColor,
-                    topBlend.toString(),
-                    "-append", topFillPath.toString());
+                // Content-aware safe zone:
+                // Misst wie weit die Wandfarbe von oben/unten ins Originalbild reicht.
+                // buffer=20px Sicherheitsabstand damit die Maske nicht in Haare/Köpfe schneidet.
+                int buffer = 20;
+                int topSafe = Math.max(0, detectBackgroundHeight(scaledPath, topColor) - buffer);
+                // Für unten: Bild flippen → detectBackgroundHeight misst wieder von oben
+                Path scaledFlipped = tempDir.resolve("scaled_flipped.jpg");
+                runProcess("convert", scaledPath.toString(), "-flip", scaledFlipped.toString());
+                int bottomSafe = Math.max(0, detectBackgroundHeight(scaledFlipped, bottomColor) - buffer);
+                log.info("Indoor safe zones: top={}px bottom={}px (Puffer={}px)", topSafe, bottomSafe, buffer);
 
-                int blendB = Math.min(120, bottomFillH);
+                // Canvas mit Wandfarbe füllen statt mit gestreckten Bildpixeln.
+                // Gibt FLUX einen klaren "dies ist Wand"-Kontext, damit kein Personenmuster fortgesetzt wird.
+                Path topFillPath = tempDir.resolve("top_fill.png");
+                runProcess("convert", "-size", scaledW + "x" + offsetY, "xc:" + topColor, topFillPath.toString());
                 Path bottomFillPath = tempDir.resolve("bottom_fill.png");
-                Path bottomEdge = tempDir.resolve("bottom_edge.png");
-                runProcess("convert", scaledPath.toString(),
-                    "-crop", scaledW + "x" + blendB + "+0+" + (scaledH - blendB), "+repage",
-                    bottomEdge.toString());
-                Path bottomGrad = tempDir.resolve("bottom_grad.png");
-                runProcess("convert",
-                    "-size", scaledW + "x" + blendB,
-                    "gradient:black-white",
-                    bottomGrad.toString());
-                Path bottomSolid = tempDir.resolve("bottom_solid.png");
-                runProcess("convert", "-size", scaledW + "x" + bottomFillH, "xc:" + bottomColor, bottomSolid.toString());
-                Path bottomBlend = tempDir.resolve("bottom_blend.png");
-                runProcess("convert", bottomEdge.toString(), bottomSolid.toString(),
-                    "-gravity", "North", "-geometry", "+0+0",
-                    bottomGrad.toString(), "-composite",
-                    bottomBlend.toString());
-                runProcess("convert",
-                    bottomBlend.toString(),
-                    "-size", scaledW + "x" + (bottomFillH - blendB), "xc:" + bottomColor,
-                    "-append", bottomFillPath.toString());
+                runProcess("convert", "-size", scaledW + "x" + bottomFillH, "xc:" + bottomColor, bottomFillPath.toString());
                 runProcess("convert",
                     topFillPath.toString(), scaledPath.toString(), bottomFillPath.toString(),
-                    "-append", outpaintedDiskPath.toString());
-                log.info("Indoor-Outpainting ohne KI (Farb-Extend): {}", outpaintedDiskPath);
+                    "-append", canvasPath.toString());
+
+                // Maske (weiß = FLUX füllt, schwarz = FLUX bewahrt):
+                // - Gesamte Canvas-Füllfläche oben (0..offsetY) → immer weiß
+                // - Zusätzlich: sichere Wandzone im Originalbild (offsetY..offsetY+topSafe) → weiß
+                // - Personenbereich in der Mitte → schwarz (unberührt)
+                // - Unten: Maske beginnt erst am unteren Rand des Originalbilds (offsetY + scaledH).
+                //   FLUX füllt nur den kleinen Canvas-Fill-Bereich, nicht das Originalbild selbst.
+                //   Je kleiner die freie Fläche, desto weniger erfindet FLUX (verhindert Pseudotext).
+                int maskTopEnd = offsetY + topSafe;
+                int maskBottomStart = offsetY + scaledH; // nie in Originalbild hinein
+                runProcess("convert",
+                    "-size", scaledW + "x" + canvasH, "xc:black",
+                    "-fill", "white",
+                    "-draw", "rectangle 0,0 " + (scaledW - 1) + "," + (maskTopEnd - 1),
+                    "-draw", "rectangle 0," + maskBottomStart + " " + (scaledW - 1) + "," + (canvasH - 1),
+                    maskPath.toString());
+
+                // Wandspezifischer Prompt statt allgemeiner Szenenbeschreibung.
+                // Raumtyp aus LLaVA-Caption extrahieren (z.B. "classroom") für präziseres Ergebnis.
+                String roomType = extractRoomType(usedCaption);
+                String wallPrompt = roomType + " empty wall and ceiling, plain painted wall, no people, no faces, background only, photorealistic";
+                log.info("Indoor FLUX-Prompt: '{}' (maskTop={}px maskBottom={}px)", wallPrompt, maskTopEnd, maskBottomStart);
+
+                String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
+                String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
+                String predictionId = createPrediction(imageB64, maskB64, apiKey, wallPrompt, true);
+                String resultUrl = pollUntilDone(predictionId, apiKey);
+                downloadAndSave(resultUrl, outpaintedDiskPath);
                 addWatermark(outpaintedDiskPath, "KI: FLUX Fill");
+                log.info("Indoor-Outpainting mit KI (content-aware mask): {}", outpaintedDiskPath);
                 return new OutpaintResult(outpaintedPfad, usedCaption);
             }
 
@@ -409,6 +406,48 @@ public class OutpaintService {
                      : !rightColor.isEmpty() ? "#" + rightColor.substring(0, 6)
                      : "gray";
         return color;
+    }
+
+    /**
+     * Misst wie viele Pixel vom oberen Rand einer Wandfarbe gehören (Hintergrund).
+     * Strategie: ImageMagick -fuzz 15% -trim erkennt den Bereich der der Wandfarbe ähnelt.
+     * page.y-1 gibt an wie weit von oben die erste Nicht-Wand-Zeile liegt.
+     * Der Aufrufer flippt das Bild für die Unterseite und ruft diese Methode erneut auf.
+     *
+     * @param image     Pfad zum (skalierten) Bild
+     * @param wallColor Hex-Farbe der Wand z.B. "#c8b89a"
+     * @return Anzahl sicherer Hintergrundpixel vom oberen Rand
+     */
+    private int detectBackgroundHeight(Path image, String wallColor) throws Exception {
+        // Border in Wandfarbe → trim entfernt alles was nicht dem Rand ähnelt → page.y gibt Versatz
+        String result = runProcessOutput("convert",
+            image.toString(),
+            "-bordercolor", wallColor,
+            "-border", "1",            // 1px Rand in Wandfarbe hinzufügen
+            "-fuzz", "15%",            // 15% Toleranz: leichte Farbvariationen der Wand erlauben
+            "-trim",                   // Alles trimmen was sich vom Rand unterscheidet
+            "-format", "%[fx:page.y-1]",  // Versatz minus der hinzugefügten Border = echte Tiefe
+            "info:").trim();
+        try {
+            return Math.max(0, Integer.parseInt(result));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Extrahiert den Raumtyp aus der LLaVA-Caption für einen präziseren FLUX-Prompt.
+     * Fallback: generisches "room" wenn kein spezifischer Typ erkannt wird.
+     */
+    private static String extractRoomType(String caption) {
+        if (caption == null) return "room,";
+        String lower = caption.toLowerCase();
+        if (lower.contains("classroom") || lower.contains("class room")) return "classroom,";
+        if (lower.contains("gymnasium") || lower.contains("gym")) return "gymnasium,";
+        if (lower.contains("auditorium") || lower.contains("hall")) return "hall,";
+        if (lower.contains("office")) return "office,";
+        if (lower.contains("corridor") || lower.contains("hallway")) return "corridor,";
+        return "room,";
     }
 
     private static boolean isIndoorCaption(String caption) {
