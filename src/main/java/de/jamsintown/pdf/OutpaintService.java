@@ -160,7 +160,7 @@ public class OutpaintService {
                 log.info("Indoor-Wandfarben: oben={} unten={}", topColor, bottomColor);
 
                 // Farbflächen mit Gradient-Übergang zum Originalbild (60px Blend-Zone)
-                int blend = Math.min(60, offsetY);
+                int blend = Math.min(120, offsetY);
                 Path topFillPath = tempDir.resolve("top_fill.png");
                 // Solid-Fill + Gradient-Maske über echte Bildpixel legen
                 Path topEdge = tempDir.resolve("top_edge.png");
@@ -186,7 +186,7 @@ public class OutpaintService {
                     topBlend.toString(),
                     "-append", topFillPath.toString());
 
-                int blendB = Math.min(60, bottomFillH);
+                int blendB = Math.min(120, bottomFillH);
                 Path bottomFillPath = tempDir.resolve("bottom_fill.png");
                 Path bottomEdge = tempDir.resolve("bottom_edge.png");
                 runProcess("convert", scaledPath.toString(),
