@@ -150,42 +150,55 @@ public class OutpaintService {
             // offsetY: Innenraum mittig (50%), Außen oben (65% → mehr Himmel)
             int offsetY = (int) Math.round(emptyVertSpace * (indoor ? 0.5 : 0.65));
 
-            // Canvas-Füllung: Indoor → 10% des Bilds (mehr Wand/Decke-Kontext), Outdoor → 2px Randstreifen
             int bottomFillH = emptyVertSpace - offsetY;
-            int stripH = indoor ? Math.max(2, scaledH / 10) : 2;
+
+            if (indoor) {
+                // Indoor: kein KI-Fill — stark geblurrter Randstreifen als Erweiterung
+                // Verhindert Personen-Halluzinationen bei Gruppenfotos
+                int stripH = Math.max(scaledH / 8, 10);
+                Path topFillPath = tempDir.resolve("top_fill.jpg");
+                runProcess("convert", scaledPath.toString(),
+                    "-crop", scaledW + "x" + stripH + "+0+0", "+repage",
+                    "-resize", scaledW + "x" + offsetY + "!",
+                    "-blur", "0x20",
+                    topFillPath.toString());
+                Path bottomFillPath = tempDir.resolve("bottom_fill.jpg");
+                runProcess("convert", scaledPath.toString(),
+                    "-crop", scaledW + "x" + stripH + "+0+" + (scaledH - stripH), "+repage",
+                    "-resize", scaledW + "x" + bottomFillH + "!",
+                    "-blur", "0x20",
+                    bottomFillPath.toString());
+                runProcess("convert",
+                    topFillPath.toString(), scaledPath.toString(), bottomFillPath.toString(),
+                    "-append", outpaintedDiskPath.toString());
+                log.info("Indoor-Outpainting ohne KI (Blur-Extend): {}", outpaintedDiskPath);
+                addWatermark(outpaintedDiskPath, "KI: FLUX Fill");
+                return new OutpaintResult(outpaintedPfad, usedCaption);
+            }
+
+            // Outdoor: Randpixel gestreckt als Farbkontext → verhindert FLUX-Halluzinationen bei schwarzem Fill
             Path topFillPath = tempDir.resolve("top_fill.jpg");
             runProcess("convert", scaledPath.toString(),
-                "-crop", scaledW + "x" + stripH + "+0+0", "+repage",
+                "-crop", scaledW + "x2+0+0", "+repage",
                 "-resize", scaledW + "x" + offsetY + "!",
-                "-blur", "0x8",
+                "-blur", "0x5",
                 topFillPath.toString());
             Path bottomFillPath = tempDir.resolve("bottom_fill.jpg");
             runProcess("convert", scaledPath.toString(),
-                "-crop", scaledW + "x" + stripH + "+0+" + (scaledH - stripH), "+repage",
+                "-crop", scaledW + "x2+0+" + (scaledH - 2), "+repage",
                 "-resize", scaledW + "x" + bottomFillH + "!",
-                "-blur", "0x8",
+                "-blur", "0x5",
                 bottomFillPath.toString());
             runProcess("convert",
                 topFillPath.toString(), scaledPath.toString(), bottomFillPath.toString(),
                 "-append", canvasPath.toString());
 
-            // Maske: Indoor → weiche Kante (30px Gradient), Outdoor → harte Kante
-            if (indoor) {
-                int feather = 30;
-                runProcess("convert",
-                    "-size", scaledW + "x" + canvasH, "xc:white",
-                    "-fill", "black",
-                    "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
-                    "-blur", "0x" + feather,
-                    "-level", "20%,80%",
-                    maskPath.toString());
-            } else {
-                runProcess("convert",
-                    "-size", scaledW + "x" + canvasH, "xc:white",
-                    "-fill", "black",
-                    "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
-                    maskPath.toString());
-            }
+            // Maske: harte Kante für Outdoor
+            runProcess("convert",
+                "-size", scaledW + "x" + canvasH, "xc:white",
+                "-fill", "black",
+                "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
+                maskPath.toString());
 
             String effectivePrompt = (usedCaption != null && !usedCaption.isBlank())
                 ? "seamlessly extend this photo: " + usedCaption + ", continue existing colors textures and atmosphere, no new subjects, photorealistic"
