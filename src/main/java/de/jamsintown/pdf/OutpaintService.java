@@ -159,23 +159,55 @@ public class OutpaintService {
                 String bottomColor = sampleCornerColor(scaledPath, scaledW, scaledH, false);
                 log.info("Indoor-Wandfarben: oben={} unten={}", topColor, bottomColor);
 
-                // Farbflächen erzeugen + 30px Übergangsbereich zum Originalbild
-                int blend = Math.min(30, offsetY);
+                // Farbflächen mit Gradient-Übergang zum Originalbild (60px Blend-Zone)
+                int blend = Math.min(60, offsetY);
                 Path topFillPath = tempDir.resolve("top_fill.png");
+                // Solid-Fill + Gradient-Maske über echte Bildpixel legen
+                Path topEdge = tempDir.resolve("top_edge.png");
+                runProcess("convert", scaledPath.toString(),
+                    "-crop", scaledW + "x" + blend + "+0+0", "+repage",
+                    topEdge.toString());
+                Path topGrad = tempDir.resolve("top_grad.png");
                 runProcess("convert",
-                    "-size", scaledW + "x" + offsetY, "xc:" + topColor,
-                    "-gravity", "South",
-                    "-region", scaledW + "x" + blend + "+0+0",
-                    "-blur", "0x10",
-                    topFillPath.toString());
-                int blendB = Math.min(30, bottomFillH);
+                    "-size", scaledW + "x" + blend,
+                    "gradient:white-black",
+                    topGrad.toString());
+                Path topSolid = tempDir.resolve("top_solid.png");
+                runProcess("convert", "-size", scaledW + "x" + offsetY, "xc:" + topColor, topSolid.toString());
+                // Blend-Zone: Gradient-Composite von Farbe → Original
+                Path topBlend = tempDir.resolve("top_blend.png");
+                runProcess("convert", topEdge.toString(), topSolid.toString(),
+                    "-gravity", "South", "-geometry", "+0+0",
+                    topGrad.toString(), "-composite",
+                    topBlend.toString());
+                // Solid-Bereich + Blend-Zone zusammensetzen
+                runProcess("convert",
+                    "-size", scaledW + "x" + (offsetY - blend), "xc:" + topColor,
+                    topBlend.toString(),
+                    "-append", topFillPath.toString());
+
+                int blendB = Math.min(60, bottomFillH);
                 Path bottomFillPath = tempDir.resolve("bottom_fill.png");
+                Path bottomEdge = tempDir.resolve("bottom_edge.png");
+                runProcess("convert", scaledPath.toString(),
+                    "-crop", scaledW + "x" + blendB + "+0+" + (scaledH - blendB), "+repage",
+                    bottomEdge.toString());
+                Path bottomGrad = tempDir.resolve("bottom_grad.png");
                 runProcess("convert",
-                    "-size", scaledW + "x" + bottomFillH, "xc:" + bottomColor,
-                    "-gravity", "North",
-                    "-region", scaledW + "x" + blendB + "+0+0",
-                    "-blur", "0x10",
-                    bottomFillPath.toString());
+                    "-size", scaledW + "x" + blendB,
+                    "gradient:black-white",
+                    bottomGrad.toString());
+                Path bottomSolid = tempDir.resolve("bottom_solid.png");
+                runProcess("convert", "-size", scaledW + "x" + bottomFillH, "xc:" + bottomColor, bottomSolid.toString());
+                Path bottomBlend = tempDir.resolve("bottom_blend.png");
+                runProcess("convert", bottomEdge.toString(), bottomSolid.toString(),
+                    "-gravity", "North", "-geometry", "+0+0",
+                    bottomGrad.toString(), "-composite",
+                    bottomBlend.toString());
+                runProcess("convert",
+                    bottomBlend.toString(),
+                    "-size", scaledW + "x" + (bottomFillH - blendB), "xc:" + bottomColor,
+                    "-append", bottomFillPath.toString());
                 runProcess("convert",
                     topFillPath.toString(), scaledPath.toString(), bottomFillPath.toString(),
                     "-append", outpaintedDiskPath.toString());
