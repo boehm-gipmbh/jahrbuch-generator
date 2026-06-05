@@ -396,11 +396,13 @@ public class PdfService {
                 doc.setFont(unicodeFont);
             }
 
-            if (options != null && options.pageNumbers()) {
-                pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PageNumberHandler());
-            }
             String passepartoutStyle = settings.passepartoutStyle();
-            if (passepartoutStyle != null && !passepartoutStyle.isBlank() && !"none".equals(passepartoutStyle)) {
+            boolean hasPassepartout = passepartoutStyle != null && !passepartoutStyle.isBlank() && !"none".equals(passepartoutStyle);
+            if (options != null && options.pageNumbers()) {
+                float pageNumY = hasPassepartout ? passepartoutBorderWidth(passepartoutStyle) / 2f : 20f;
+                pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PageNumberHandler(pageNumY));
+            }
+            if (hasPassepartout) {
                 pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PassepartoutHandler(passepartoutStyle));
             }
 
@@ -968,7 +970,18 @@ public class PdfService {
         return s.length() <= max ? s : s.substring(0, max - 1) + "…";
     }
 
+    private static float passepartoutBorderWidth(String style) {
+        return switch (style) {
+            case "vintage" -> 34f;
+            case "festlich" -> 38f;
+            default -> 26f; // gold, silber
+        };
+    }
+
     private static class PageNumberHandler implements IEventHandler {
+        private final float y;
+        PageNumberHandler(float y) { this.y = y; }
+
         @Override
         public void handleEvent(Event event) {
             PdfDocumentEvent docEvent = (PdfDocumentEvent) event;
@@ -980,7 +993,7 @@ public class PdfService {
                 canvas.showTextAligned(
                     new Paragraph(String.valueOf(pageNum)).setFontSize(9),
                     rect.getWidth() / 2,
-                    20,
+                    y,
                     TextAlignment.CENTER
                 );
             }
