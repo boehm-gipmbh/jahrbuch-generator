@@ -640,15 +640,8 @@ public class PdfService {
 
         if (bilder.isEmpty() && texte.isEmpty()) return;
 
-        // Hauptbilder as full-width heroes; fall back to first image if none marked
         List<Bild> heroes = bilder.stream().filter(b -> b.hauptbild).toList();
-        List<Bild> restBilder;
-        if (heroes.isEmpty() && !bilder.isEmpty()) {
-            heroes = List.of(bilder.get(0));
-            restBilder = bilder.subList(1, bilder.size());
-        } else {
-            restBilder = bilder.stream().filter(b -> !b.hauptbild).toList();
-        }
+        List<Bild> restBilder = bilder.stream().filter(b -> !b.hauptbild).toList();
 
         for (int i = 0; i < heroes.size(); i++) {
             doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact,
