@@ -683,7 +683,7 @@ public class PdfService {
             Item item = flow.get(i);
             Cell target = (i % 2 == 0) ? left : right;
             if (item.isBild()) {
-                target.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(88), heroes.size() + i, false, compact,
+                target.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(82), heroes.size() + i, false, compact,
                     stats(sd.bildStats(), item.bild().id), settings));
             } else {
                 target.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id), settings).setMarginTop(4).setMarginBottom(8));
