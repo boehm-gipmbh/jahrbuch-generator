@@ -127,11 +127,9 @@ public class OutpaintService {
             String usedCaption;
             if (customPrompt != null && !customPrompt.isBlank()) {
                 usedCaption = customPrompt;
-                // Gespeicherte Caption hat INDOOR:/OUTDOOR:-Prefix → parseSceneCaption ist zuverlässiger als Keyword-Matching
-                indoor = parseSceneCaption(existingCaption).indoor();
+                indoor = resolveIndoor(existingCaption);
                 log.info("Outpaint-Prompt: User-Eingabe (indoor={} aus Caption)", indoor);
             } else if (existingCaption != null && !existingCaption.isBlank()) {
-                // Caption wurde mit INDOOR:/OUTDOOR:-Prefix gespeichert → direkt parsen statt Keyword-Matching
                 SceneCaption sc = parseSceneCaption(existingCaption);
                 indoor = sc.indoor();
                 usedCaption = sc.caption();
@@ -449,11 +447,32 @@ public class OutpaintService {
         return "room,";
     }
 
+    private static final java.util.List<String> INDOOR_KEYWORDS = java.util.List.of(
+        "indoor", "classroom", "room", "wall", "ceiling", "carpet", "floor",
+        "gym", "hall", "gymnasium", "auditorium", "office", "corridor", "window",
+        "furniture", "table", "chair", "desk", "lamp"
+    );
+
+    // Bestimmt indoor-Flag aus Caption: Prefix > Keyword-Matching (für alte Captions ohne Prefix)
+    private static boolean resolveIndoor(String caption) {
+        if (caption == null || caption.isBlank()) return false;
+        if (caption.startsWith("INDOOR:")) return true;
+        if (caption.startsWith("OUTDOOR:")) return false;
+        return isIndoorCaption(caption);
+    }
+
+    private static boolean isIndoorCaption(String caption) {
+        if (caption == null || caption.isBlank()) return false;
+        String lower = caption.toLowerCase();
+        return INDOOR_KEYWORDS.stream().anyMatch(lower::contains);
+    }
+
     private static SceneCaption parseSceneCaption(String raw) {
         if (raw == null || raw.isBlank()) return new SceneCaption(false, "");
         if (raw.startsWith("INDOOR:")) return new SceneCaption(true, raw.substring(7).trim());
         if (raw.startsWith("OUTDOOR:")) return new SceneCaption(false, raw.substring(8).trim());
-        return new SceneCaption(false, raw.trim());
+        // Alte Caption ohne Prefix: Keyword-Matching als Fallback
+        return new SceneCaption(isIndoorCaption(raw), raw.trim());
     }
 
     private static String assembleOutput(JsonNode output) {
