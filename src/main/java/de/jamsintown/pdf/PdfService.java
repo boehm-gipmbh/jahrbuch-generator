@@ -677,7 +677,7 @@ public class PdfService {
         Table grid = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
             .useAllAvailableWidth().setMarginTop(8);
         Cell left = new Cell().setBorder(null).setPaddingRight(8).setVerticalAlignment(VerticalAlignment.TOP);
-        Cell right = new Cell().setBorder(null).setPaddingLeft(8).setVerticalAlignment(VerticalAlignment.TOP);
+        Cell right = new Cell().setBorder(null).setPaddingLeft(8).setPaddingRight(8).setVerticalAlignment(VerticalAlignment.TOP);
 
         for (int i = 0; i < flow.size(); i++) {
             Item item = flow.get(i);
@@ -854,7 +854,7 @@ public class PdfService {
     }
 
     private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero, boolean compact, ItemStats stats, PdfSettings settings) {
-        double maxDeg = hero ? 2.5 : 4.0;
+        double maxDeg = hero ? 2.5 : 2.0;
         double angle = ((new Random((bild.id != null ? bild.id : 0L) + seed).nextDouble() * 2 - 1) * maxDeg) * Math.PI / 180.0;
 
         // Outer wrapper absorbs the rotation's extra visual spread
