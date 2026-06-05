@@ -238,9 +238,10 @@ public class OutpaintService {
                 "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
                 maskPath.toString());
 
-            // Outdoor: DEFAULT_PROMPT reicht — enthält keine Personen-Beschreibung.
-            // LLaVA-Caption NICHT in den FLUX-Prompt einbauen: würde FLUX anweisen die Menge zu verlängern.
-            String effectivePrompt = null;
+            // Outdoor: Caption als Kontext für FLUX – Negativprompt verhindert Personen-Erweiterung.
+            String effectivePrompt = (usedCaption != null && !usedCaption.isBlank())
+                ? "seamlessly extend this photo: " + usedCaption + ", continue existing colors textures and atmosphere, no new subjects, photorealistic"
+                : null;
 
             String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
             String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
