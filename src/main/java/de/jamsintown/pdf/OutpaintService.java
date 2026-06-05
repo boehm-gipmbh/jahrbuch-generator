@@ -127,11 +127,9 @@ public class OutpaintService {
             String usedCaption;
             if (customPrompt != null && !customPrompt.isBlank()) {
                 usedCaption = customPrompt;
-                // Gespeicherte Caption hat INDOOR:/OUTDOOR:-Prefix → parseSceneCaption ist zuverlässiger als Keyword-Matching
-                indoor = parseSceneCaption(existingCaption).indoor();
+                indoor = resolveIndoor(existingCaption);
                 log.info("Outpaint-Prompt: User-Eingabe (indoor={} aus Caption)", indoor);
             } else if (existingCaption != null && !existingCaption.isBlank()) {
-                // Caption wurde mit INDOOR:/OUTDOOR:-Prefix gespeichert → direkt parsen statt Keyword-Matching
                 SceneCaption sc = parseSceneCaption(existingCaption);
                 indoor = sc.indoor();
                 usedCaption = sc.caption();
@@ -240,9 +238,10 @@ public class OutpaintService {
                 "-draw", "rectangle 0," + offsetY + " " + (scaledW - 1) + "," + (offsetY + scaledH - 1),
                 maskPath.toString());
 
-            // Outdoor: DEFAULT_PROMPT reicht — enthält keine Personen-Beschreibung.
-            // LLaVA-Caption NICHT in den FLUX-Prompt einbauen: würde FLUX anweisen die Menge zu verlängern.
-            String effectivePrompt = null;
+            // Outdoor: Caption als Kontext für FLUX – Negativprompt verhindert Personen-Erweiterung.
+            String effectivePrompt = (usedCaption != null && !usedCaption.isBlank())
+                ? "seamlessly extend this photo: " + usedCaption + ", continue existing colors textures and atmosphere, no new subjects, photorealistic"
+                : null;
 
             String imageB64 = Base64.getEncoder().encodeToString(Files.readAllBytes(canvasPath));
             String maskB64  = Base64.getEncoder().encodeToString(Files.readAllBytes(maskPath));
@@ -425,8 +424,11 @@ public class OutpaintService {
             "-format", "%[fx:page.y-1]",  // Versatz minus der hinzugefügten Border = echte Tiefe
             "info:").trim();
         try {
-            return Math.max(0, Integer.parseInt(result));
-        } catch (NumberFormatException e) {
+            // ImageMagick gibt manchmal "0\n0" o.ä. zurück – nur erste Zahl nehmen
+            String first = result.split("[\\s,]+")[0];
+            return Math.max(0, (int) Double.parseDouble(first));
+        } catch (Exception e) {
+            log.warn("detectBackgroundHeight fehlgeschlagen für {}: '{}'", image.getFileName(), result);
             return 0;
         }
     }
@@ -446,11 +448,32 @@ public class OutpaintService {
         return "room,";
     }
 
+    private static final java.util.List<String> INDOOR_KEYWORDS = java.util.List.of(
+        "indoor", "classroom", "room", "wall", "ceiling", "carpet", "floor",
+        "gym", "hall", "gymnasium", "auditorium", "office", "corridor", "window",
+        "furniture", "table", "chair", "desk", "lamp"
+    );
+
+    // Bestimmt indoor-Flag aus Caption: Prefix > Keyword-Matching (für alte Captions ohne Prefix)
+    private static boolean resolveIndoor(String caption) {
+        if (caption == null || caption.isBlank()) return false;
+        if (caption.startsWith("INDOOR:")) return true;
+        if (caption.startsWith("OUTDOOR:")) return false;
+        return isIndoorCaption(caption);
+    }
+
+    private static boolean isIndoorCaption(String caption) {
+        if (caption == null || caption.isBlank()) return false;
+        String lower = caption.toLowerCase();
+        return INDOOR_KEYWORDS.stream().anyMatch(lower::contains);
+    }
+
     private static SceneCaption parseSceneCaption(String raw) {
         if (raw == null || raw.isBlank()) return new SceneCaption(false, "");
         if (raw.startsWith("INDOOR:")) return new SceneCaption(true, raw.substring(7).trim());
         if (raw.startsWith("OUTDOOR:")) return new SceneCaption(false, raw.substring(8).trim());
-        return new SceneCaption(false, raw.trim());
+        // Alte Caption ohne Prefix: Keyword-Matching als Fallback
+        return new SceneCaption(isIndoorCaption(raw), raw.trim());
     }
 
     private static String assembleOutput(JsonNode output) {
@@ -467,9 +490,11 @@ public class OutpaintService {
         String prompt = (customPrompt != null && !customPrompt.isBlank()) ? customPrompt : DEFAULT_PROMPT;
         // Bei Innenräumen "ceiling" nicht unterdrücken — Decke soll erweitert werden
         // Bei Innenräumen: stärkere Unterdrückung zusätzlicher Personen + höhere guidance
+        // "handwriting, signature, caption, writing, letters": FLUX neigt dazu freie Flächen mit Pseudotext zu füllen
+        // wenn das Bild an ein Jahrbuch/Fotoalbum erinnert → explizit unterdrücken.
         String negativePrompt = indoor
-            ? "new faces, new people, new persons, new bodies, duplicate people, additional people, extra persons, more people, crowd extension, rows of people, text, watermark, blurry, artifacts, distorted, border, frame"
-            : "new faces, new people, new persons, new bodies, duplicate people, ceiling, text, watermark, blurry, artifacts, distorted, border, frame";
+            ? "new faces, new people, new persons, new bodies, duplicate people, additional people, extra persons, more people, crowd extension, rows of people, handwriting, signature, caption, text, watermark, writing, letters, blurry, artifacts, distorted, border, frame"
+            : "new faces, new people, new persons, new bodies, duplicate people, ceiling, handwriting, signature, caption, text, watermark, writing, letters, blurry, artifacts, distorted, border, frame";
         int guidance = indoor ? 50 : 30;
         String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
             put("input", new java.util.LinkedHashMap<>() {{
