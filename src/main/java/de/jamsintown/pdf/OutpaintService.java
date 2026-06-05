@@ -425,8 +425,11 @@ public class OutpaintService {
             "-format", "%[fx:page.y-1]",  // Versatz minus der hinzugefügten Border = echte Tiefe
             "info:").trim();
         try {
-            return Math.max(0, Integer.parseInt(result));
-        } catch (NumberFormatException e) {
+            // ImageMagick gibt manchmal "0\n0" o.ä. zurück – nur erste Zahl nehmen
+            String first = result.split("[\\s,]+")[0];
+            return Math.max(0, (int) Double.parseDouble(first));
+        } catch (Exception e) {
+            log.warn("detectBackgroundHeight fehlgeschlagen für {}: '{}'", image.getFileName(), result);
             return 0;
         }
     }
@@ -467,9 +470,11 @@ public class OutpaintService {
         String prompt = (customPrompt != null && !customPrompt.isBlank()) ? customPrompt : DEFAULT_PROMPT;
         // Bei Innenräumen "ceiling" nicht unterdrücken — Decke soll erweitert werden
         // Bei Innenräumen: stärkere Unterdrückung zusätzlicher Personen + höhere guidance
+        // "handwriting, signature, caption, writing, letters": FLUX neigt dazu freie Flächen mit Pseudotext zu füllen
+        // wenn das Bild an ein Jahrbuch/Fotoalbum erinnert → explizit unterdrücken.
         String negativePrompt = indoor
-            ? "new faces, new people, new persons, new bodies, duplicate people, additional people, extra persons, more people, crowd extension, rows of people, text, watermark, blurry, artifacts, distorted, border, frame"
-            : "new faces, new people, new persons, new bodies, duplicate people, ceiling, text, watermark, blurry, artifacts, distorted, border, frame";
+            ? "new faces, new people, new persons, new bodies, duplicate people, additional people, extra persons, more people, crowd extension, rows of people, handwriting, signature, caption, text, watermark, writing, letters, blurry, artifacts, distorted, border, frame"
+            : "new faces, new people, new persons, new bodies, duplicate people, ceiling, handwriting, signature, caption, text, watermark, writing, letters, blurry, artifacts, distorted, border, frame";
         int guidance = indoor ? 50 : 30;
         String body = objectMapper.writeValueAsString(new java.util.LinkedHashMap<>() {{
             put("input", new java.util.LinkedHashMap<>() {{
