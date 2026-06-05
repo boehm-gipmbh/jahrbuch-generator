@@ -663,6 +663,17 @@ public class PdfService {
 
         if (flow.isEmpty()) return;
 
+        if (flow.size() == 1) {
+            Item item = flow.get(0);
+            if (item.isBild()) {
+                doc.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(60), heroes.size(), false, compact,
+                    stats(sd.bildStats(), item.bild().id), settings).setHorizontalAlignment(com.itextpdf.layout.properties.HorizontalAlignment.CENTER));
+            } else {
+                doc.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id), settings).setMarginTop(4).setMarginBottom(8));
+            }
+            return;
+        }
+
         Table grid = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
             .useAllAvailableWidth().setMarginTop(8);
         Cell left = new Cell().setBorder(null).setPaddingRight(8).setVerticalAlignment(VerticalAlignment.TOP);
