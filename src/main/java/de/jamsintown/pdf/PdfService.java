@@ -878,7 +878,7 @@ public class PdfService {
             Image img = imageBytes != null
                 ? new Image(ImageDataFactory.create(imageBytes)).setWidth(UnitValue.createPercentValue(100))
                 : new Image(ImageDataFactory.create(path)).setWidth(UnitValue.createPercentValue(100));
-            img.setMaxHeight(hero ? 320 : 180);
+            if (!hero) img.setMaxHeight(180);
             frame.add(img);
         } catch (Exception e) {
             log.warn("Bild nicht gefunden: {}", path);
