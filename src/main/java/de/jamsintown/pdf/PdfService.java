@@ -955,7 +955,7 @@ public class PdfService {
         }
         for (String[] line : stats.comments()) {
             boolean isReply = "1".equals(line[2]);
-            String text = "\u201E" + truncate(line[1], 80) + "\u201C \u2014 " + line[0];
+            String text = "\u201E" + truncate(line[1], 300) + "\u201C \u2014 " + line[0];
             div.add(new Paragraph(text)
                 .setFontSize(isReply ? settings.commentReplySize() : settings.commentTopLevelSize())
                 .setItalic()
