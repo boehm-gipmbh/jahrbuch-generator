@@ -396,11 +396,13 @@ public class PdfService {
                 doc.setFont(unicodeFont);
             }
 
-            if (options != null && options.pageNumbers()) {
-                pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PageNumberHandler());
-            }
             String passepartoutStyle = settings.passepartoutStyle();
-            if (passepartoutStyle != null && !passepartoutStyle.isBlank() && !"none".equals(passepartoutStyle)) {
+            boolean hasPassepartout = passepartoutStyle != null && !passepartoutStyle.isBlank() && !"none".equals(passepartoutStyle);
+            if (options != null && options.pageNumbers()) {
+                float pageNumY = hasPassepartout ? passepartoutBorderWidth(passepartoutStyle) / 2f : 20f;
+                pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PageNumberHandler(pageNumY));
+            }
+            if (hasPassepartout) {
                 pdfDoc.addEventHandler(PdfDocumentEvent.END_PAGE, new PassepartoutHandler(passepartoutStyle));
             }
 
@@ -640,15 +642,8 @@ public class PdfService {
 
         if (bilder.isEmpty() && texte.isEmpty()) return;
 
-        // Hauptbilder as full-width heroes; fall back to first image if none marked
         List<Bild> heroes = bilder.stream().filter(b -> b.hauptbild).toList();
-        List<Bild> restBilder;
-        if (heroes.isEmpty() && !bilder.isEmpty()) {
-            heroes = List.of(bilder.get(0));
-            restBilder = bilder.subList(1, bilder.size());
-        } else {
-            restBilder = bilder.stream().filter(b -> !b.hauptbild).toList();
-        }
+        List<Bild> restBilder = bilder.stream().filter(b -> !b.hauptbild).toList();
 
         for (int i = 0; i < heroes.size(); i++) {
             doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact,
@@ -677,13 +672,13 @@ public class PdfService {
         Table grid = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
             .useAllAvailableWidth().setMarginTop(8);
         Cell left = new Cell().setBorder(null).setPaddingRight(8).setVerticalAlignment(VerticalAlignment.TOP);
-        Cell right = new Cell().setBorder(null).setPaddingLeft(8).setVerticalAlignment(VerticalAlignment.TOP);
+        Cell right = new Cell().setBorder(null).setPaddingLeft(8).setPaddingRight(8).setVerticalAlignment(VerticalAlignment.TOP);
 
         for (int i = 0; i < flow.size(); i++) {
             Item item = flow.get(i);
             Cell target = (i % 2 == 0) ? left : right;
             if (item.isBild()) {
-                target.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(88), heroes.size() + i, false, compact,
+                target.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(82), heroes.size() + i, false, compact,
                     stats(sd.bildStats(), item.bild().id), settings));
             } else {
                 target.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id), settings).setMarginTop(4).setMarginBottom(8));
@@ -854,7 +849,7 @@ public class PdfService {
     }
 
     private Div buildPolaroidDiv(Bild bild, UnitValue width, int seed, boolean hero, boolean compact, ItemStats stats, PdfSettings settings) {
-        double maxDeg = hero ? 2.5 : 4.0;
+        double maxDeg = hero ? 2.5 : 2.0;
         double angle = ((new Random((bild.id != null ? bild.id : 0L) + seed).nextDouble() * 2 - 1) * maxDeg) * Math.PI / 180.0;
 
         // Outer wrapper absorbs the rotation's extra visual spread
@@ -878,7 +873,6 @@ public class PdfService {
             Image img = imageBytes != null
                 ? new Image(ImageDataFactory.create(imageBytes)).setWidth(UnitValue.createPercentValue(100))
                 : new Image(ImageDataFactory.create(path)).setWidth(UnitValue.createPercentValue(100));
-            img.setMaxHeight(hero ? 320 : 180);
             frame.add(img);
         } catch (Exception e) {
             log.warn("Bild nicht gefunden: {}", path);
@@ -961,7 +955,7 @@ public class PdfService {
         }
         for (String[] line : stats.comments()) {
             boolean isReply = "1".equals(line[2]);
-            String text = "\u201E" + truncate(line[1], 80) + "\u201C \u2014 " + line[0];
+            String text = "\u201E" + truncate(line[1], 300) + "\u201C \u2014 " + line[0];
             div.add(new Paragraph(text)
                 .setFontSize(isReply ? settings.commentReplySize() : settings.commentTopLevelSize())
                 .setItalic()
@@ -976,7 +970,18 @@ public class PdfService {
         return s.length() <= max ? s : s.substring(0, max - 1) + "…";
     }
 
+    private static float passepartoutBorderWidth(String style) {
+        return switch (style) {
+            case "vintage" -> 34f;
+            case "festlich" -> 38f;
+            default -> 26f; // gold, silber
+        };
+    }
+
     private static class PageNumberHandler implements IEventHandler {
+        private final float y;
+        PageNumberHandler(float y) { this.y = y; }
+
         @Override
         public void handleEvent(Event event) {
             PdfDocumentEvent docEvent = (PdfDocumentEvent) event;
@@ -988,7 +993,7 @@ public class PdfService {
                 canvas.showTextAligned(
                     new Paragraph(String.valueOf(pageNum)).setFontSize(9),
                     rect.getWidth() / 2,
-                    20,
+                    y,
                     TextAlignment.CENTER
                 );
             }
