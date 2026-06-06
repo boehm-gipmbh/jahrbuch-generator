@@ -585,8 +585,8 @@ public class PdfService {
             DeviceRgb color = STORY_COLORS[storyIndex % STORY_COLORS.length];
             String title = story != null ? story.name : "Sonstige";
             String subtitle = story != null ? story.description : null;
-            renderStoryHeader(doc, title, subtitle, color, settings);
-            renderScrapbook(doc, sd, color, compact, settings);
+            Table headerTable = buildStoryHeader(title, subtitle, color, settings);
+            renderScrapbook(doc, sd, color, compact, settings, headerTable);
         } else if ("grid".equals(layout)) {
             String title = story != null ? story.name : "Sonstige";
             doc.add(new Paragraph(title).setFontSize(settings.storyHeaderTitleSize()).setBold().setMarginBottom(4));
@@ -612,7 +612,7 @@ public class PdfService {
         }
     }
 
-    private void renderStoryHeader(Document doc, String title, String subtitle, DeviceRgb color, PdfSettings settings) {
+    private Table buildStoryHeader(String title, String subtitle, DeviceRgb color, PdfSettings settings) {
         Table header = new Table(UnitValue.createPercentArray(new float[]{1})).useAllAvailableWidth();
         Cell titleCell = new Cell().setBorder(null)
             .setBackgroundColor(color)
@@ -628,27 +628,47 @@ public class PdfService {
                 .setMarginTop(3).setMarginBottom(0));
         }
         header.addCell(titleCell);
-        header.setKeepWithNext(true);
-        doc.add(header);
-        doc.add(new Paragraph("").setMarginBottom(10).setKeepWithNext(true));
+        return header;
     }
 
     private void renderScrapbook(Document doc, StoryData sd, DeviceRgb accentColor) {
-        renderScrapbook(doc, sd, accentColor, false, PdfSettings.defaults());
+        renderScrapbook(doc, sd, accentColor, false, PdfSettings.defaults(), null);
     }
 
     private void renderScrapbook(Document doc, StoryData sd, DeviceRgb accentColor, boolean compact, PdfSettings settings) {
+        renderScrapbook(doc, sd, accentColor, compact, settings, null);
+    }
+
+    private void renderScrapbook(Document doc, StoryData sd, DeviceRgb accentColor, boolean compact, PdfSettings settings, Table headerTable) {
         List<Bild> bilder = sd.bilder();
         List<Text> texte = sd.texte();
 
-        if (bilder.isEmpty() && texte.isEmpty()) return;
+        if (bilder.isEmpty() && texte.isEmpty()) {
+            if (headerTable != null) doc.add(headerTable);
+            return;
+        }
 
         List<Bild> heroes = bilder.stream().filter(b -> b.hauptbild).toList();
         List<Bild> restBilder = bilder.stream().filter(b -> !b.hauptbild).toList();
 
-        for (int i = 0; i < heroes.size(); i++) {
-            doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact,
-                stats(sd.bildStats(), heroes.get(i).id), settings));
+        // Erstes Hero mit Header zusammen in keepTogether-Div – verhindert Seitenumbruch dazwischen
+        if (headerTable != null && !heroes.isEmpty()) {
+            Div headerAndHero = new Div().setKeepTogether(true);
+            headerAndHero.add(headerTable);
+            headerAndHero.add(new Paragraph("").setMarginBottom(10));
+            headerAndHero.add(buildPolaroidDiv(heroes.get(0), UnitValue.createPercentValue(94), 0, true, compact,
+                stats(sd.bildStats(), heroes.get(0).id), settings));
+            doc.add(headerAndHero);
+            for (int i = 1; i < heroes.size(); i++) {
+                doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact,
+                    stats(sd.bildStats(), heroes.get(i).id), settings));
+            }
+        } else {
+            if (headerTable != null) doc.add(headerTable);
+            for (int i = 0; i < heroes.size(); i++) {
+                doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact,
+                    stats(sd.bildStats(), heroes.get(i).id), settings));
+            }
         }
 
         record Item(int pos, boolean isBild, Bild bild, Text text) {}
