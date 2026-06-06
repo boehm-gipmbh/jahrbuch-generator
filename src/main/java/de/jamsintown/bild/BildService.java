@@ -111,6 +111,17 @@ public class BildService {
     }
 
     @WithTransaction
+    public Uni<Void> clearCaptionAdmin(long id) {
+        return Bild.<Bild>findById(id)
+                .onItem().ifNull().failWith(() -> new jakarta.ws.rs.NotFoundException("Bild nicht gefunden: " + id))
+                .chain(bild -> {
+                    bild.caption = null;
+                    return Bild.getSession().chain(s -> s.merge(bild));
+                })
+                .replaceWithVoid();
+    }
+
+    @WithTransaction
     public Uni<Integer> clearAllCaptions() {
         return Bild.update("caption = null where caption is not null");
     }

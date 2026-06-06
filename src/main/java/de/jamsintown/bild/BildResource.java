@@ -102,7 +102,7 @@ public class BildResource {
     @Path("/{id}/caption")
     @RolesAllowed("admin")
     public Uni<Void> clearCaption(@PathParam("id") long id) {
-        return bildService.clearCaption(id);
+        return bildService.clearCaptionAdmin(id);
     }
 
     @DELETE
