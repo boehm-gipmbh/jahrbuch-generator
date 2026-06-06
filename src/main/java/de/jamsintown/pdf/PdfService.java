@@ -626,8 +626,9 @@ public class PdfService {
                 .setMarginTop(3).setMarginBottom(0));
         }
         header.addCell(titleCell);
+        header.setKeepWithNext(true);
         doc.add(header);
-        doc.add(new Paragraph("").setMarginBottom(10));
+        doc.add(new Paragraph("").setMarginBottom(10).setKeepWithNext(true));
     }
 
     private void renderScrapbook(Document doc, StoryData sd, DeviceRgb accentColor) {
