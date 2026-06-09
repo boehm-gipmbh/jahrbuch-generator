@@ -429,7 +429,7 @@ public class PdfService {
                 bgCtrl.set(groupBg.coverFront());
                 String title = options.coverTitle() != null && !options.coverTitle().isBlank()
                     ? options.coverTitle() : "Jahrbuch";
-                renderCoverPage(doc, title);
+                renderCoverPage(doc, title, settings);
                 if (showToc) {
                     bgCtrl.set(groupBg.toc());
                     doc.add(new AreaBreak());
@@ -461,13 +461,28 @@ public class PdfService {
         return out.toByteArray();
     }
 
-    private void renderCoverPage(Document doc, String title) {
+    private void renderCoverPage(Document doc, String title, PdfSettings settings) {
         float pageHeight = doc.getPdfDocument().getDefaultPageSize().getHeight();
+        float marginTop = switch (settings.coverTitlePositionOrDefault()) {
+            case "top"    -> pageHeight * 0.08f;
+            case "bottom" -> pageHeight * 0.65f;
+            default       -> pageHeight / 2 - 80; // middle
+        };
+        DeviceRgb color = hexToRgb(settings.coverTitleColorOrDefault());
         doc.add(new Paragraph(title)
             .setFontSize(36)
             .setBold()
+            .setFontColor(color)
             .setTextAlignment(TextAlignment.CENTER)
-            .setMarginTop(pageHeight / 2 - 80));
+            .setMarginTop(marginTop));
+    }
+
+    private static DeviceRgb hexToRgb(String hex) {
+        String h = hex.startsWith("#") ? hex.substring(1) : hex;
+        int r = Integer.parseInt(h.substring(0, 2), 16);
+        int g = Integer.parseInt(h.substring(2, 4), 16);
+        int b = Integer.parseInt(h.substring(4, 6), 16);
+        return new DeviceRgb(r / 255f, g / 255f, b / 255f);
     }
 
     /**
