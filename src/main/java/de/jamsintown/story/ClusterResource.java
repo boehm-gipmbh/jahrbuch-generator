@@ -2,10 +2,13 @@ package de.jamsintown.story;
 
 import de.jamsintown.bild.Bild;
 import de.jamsintown.text.Text;
+import de.jamsintown.user.Gruppe;
+import de.jamsintown.user.User;
+import de.jamsintown.user.UserService;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.tuples.Tuple2;
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -13,6 +16,9 @@ import jakarta.ws.rs.core.Response;
 @Path("/api/v1/clusters")
 @RolesAllowed("user")
 public class ClusterResource {
+
+    @Inject
+    UserService userService;
 
     public record LinkRequest(String typeA, Long idA, String typeB, Long idB) {}
     public record UnlinkRequest(String type, Long id) {}
@@ -23,8 +29,11 @@ public class ClusterResource {
     @Produces(MediaType.APPLICATION_JSON)
     @WithTransaction
     public Uni<Response> link(LinkRequest req) {
-        return Uni.combine().all().unis(getClusterId(req.typeA(), req.idA()), getClusterId(req.typeB(), req.idB()))
-            .asTuple()
+        return userService.getCurrentUser()
+            .chain(user -> Uni.combine().all()
+                .unis(loadAndCheck(req.typeA(), req.idA(), user),
+                      loadAndCheck(req.typeB(), req.idB(), user))
+                .asTuple())
             .chain(t -> {
                 Long cidA = t.getItem1(), cidB = t.getItem2();
                 if (cidA != null && cidA.equals(cidB))
@@ -40,7 +49,6 @@ public class ClusterResource {
                 if (cidB == null)
                     return setClusterId(req.typeB(), req.idB(), cidA)
                         .map(v -> Response.ok(cidA).build());
-                // merge: move all of cidB into cidA, delete cidB
                 Long winner = cidA, loser = cidB;
                 return Bild.<Bild>update("clusterId = ?1 WHERE clusterId = ?2", winner, loser)
                     .chain(v -> Text.<Text>update("clusterId = ?1 WHERE clusterId = ?2", winner, loser))
@@ -54,7 +62,8 @@ public class ClusterResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @WithTransaction
     public Uni<Response> unlink(UnlinkRequest req) {
-        return getClusterId(req.type(), req.id())
+        return userService.getCurrentUser()
+            .chain(user -> loadAndCheck(req.type(), req.id(), user))
             .chain(cid -> {
                 if (cid == null) return Uni.createFrom().item(Response.noContent().build());
                 return setClusterId(req.type(), req.id(), null)
@@ -65,10 +74,25 @@ public class ClusterResource {
             });
     }
 
-    private Uni<Long> getClusterId(String type, Long id) {
+    /** Lädt clusterId und prüft ob der User Zugriff hat (Eigentümer oder gleiche Gruppe). */
+    private Uni<Long> loadAndCheck(String type, Long id, User user) {
         if ("BILD".equals(type))
-            return Bild.<Bild>findById(id).map(b -> b != null ? b.clusterId : null);
-        return Text.<Text>findById(id).map(t -> t != null ? t.clusterId : null);
+            return Bild.<Bild>findById(id)
+                .onItem().ifNull().failWith(() -> new NotFoundException("Bild " + id))
+                .onItem().invoke(b -> checkAccess(b.user, b.group, user, id))
+                .map(b -> b.clusterId);
+        return Text.<Text>findById(id)
+            .onItem().ifNull().failWith(() -> new NotFoundException("Text " + id))
+            .onItem().invoke(t -> checkAccess(t.user, t.group, user, id))
+            .map(t -> t.clusterId);
+    }
+
+    private void checkAccess(User owner, Gruppe itemGroup, User currentUser, Long id) {
+        boolean isOwner = owner != null && owner.id.equals(currentUser.id);
+        boolean inGroup = currentUser.activeGroup != null && itemGroup != null
+            && currentUser.activeGroup.id.equals(itemGroup.id);
+        if (!isOwner && !inGroup)
+            throw new ForbiddenException("Access denied to item " + id);
     }
 
     private Uni<Integer> setClusterId(String type, Long id, Long clusterId) {
