@@ -527,7 +527,7 @@ public class PdfService {
 
         if (font != null) doc.setFont(font);
 
-        DeviceRgb tocColor = hexToRgb(settings.tocTitleColorOrDefault());
+        DeviceRgb tocColor = hexToRgb(settings.tocColorOrDefault());
         doc.add(new Paragraph(tocTitle)
             .setFontSize(titleSize)
             .setBold()
@@ -540,7 +540,7 @@ public class PdfService {
             Table table = new Table(new float[]{colW, colW}).setWidth(contentW);
             for (int i = 0; i < stories.size(); i++) {
                 Paragraph p = buildTocEntry(stories.get(i).story().name,
-                    showPageNums ? storyStartPages[i] : -1, entrySize, colW);
+                    showPageNums ? storyStartPages[i] : -1, entrySize, colW, tocColor);
                 table.addCell(new com.itextpdf.layout.element.Cell()
                     .setBorder(com.itextpdf.layout.borders.Border.NO_BORDER)
                     .setPadding(3).add(p));
@@ -553,13 +553,13 @@ public class PdfService {
         } else {
             for (int i = 0; i < stories.size(); i++) {
                 doc.add(buildTocEntry(stories.get(i).story().name,
-                    showPageNums ? storyStartPages[i] : -1, entrySize, contentW));
+                    showPageNums ? storyStartPages[i] : -1, entrySize, contentW, tocColor));
             }
         }
     }
 
-    private Paragraph buildTocEntry(String storyName, int pageNum, float fontSize, float width) {
-        Paragraph p = new Paragraph().setFontSize(fontSize).setMarginBottom(6);
+    private Paragraph buildTocEntry(String storyName, int pageNum, float fontSize, float width, DeviceRgb color) {
+        Paragraph p = new Paragraph().setFontSize(fontSize).setMarginBottom(6).setFontColor(color);
         if (pageNum > 0) {
             p.addTabStops(new com.itextpdf.layout.element.TabStop(
                 width - 20,
