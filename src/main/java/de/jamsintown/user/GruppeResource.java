@@ -46,9 +46,19 @@ public class GruppeResource {
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
+    @RolesAllowed({"admin", "group-admin"})
     @WithSession
     public Uni<List<Gruppe>> list() {
-        return Gruppe.listAll();
+        return userService.getCurrentUser().map(user -> {
+            boolean isAdmin = user.roles != null && user.roles.contains("admin");
+            if (isAdmin) return (List<Gruppe>) null;
+            List<Gruppe> managed = new java.util.ArrayList<>();
+            if (user.managedGroup != null) managed.add(user.managedGroup);
+            if (user.managedGroups != null) managed.addAll(user.managedGroups);
+            return managed;
+        }).chain(managed -> managed != null
+            ? Uni.createFrom().item(managed)
+            : Gruppe.listAll());
     }
 
     @POST
