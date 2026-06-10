@@ -25,7 +25,10 @@ public record PdfSettings(
     Float tocTitleSize,
     Float tocEntrySize,
     Boolean tocShowPageNumbers,
-    Integer tocColumns
+    Integer tocColumns,
+    String coverTitlePosition,
+    String coverTitleColor,
+    String tocColor
 ) {
     public static PdfSettings defaults() {
         return new PdfSettings(
@@ -46,9 +49,16 @@ public record PdfSettings(
             24f,                     // tocTitleSize
             13f,                     // tocEntrySize
             true,                    // tocShowPageNumbers
-            1                        // tocColumns
+            1,                       // tocColumns
+            "middle",                // coverTitlePosition
+            "#000000",               // coverTitleColor
+            "#000000"                // tocColor
         );
     }
+
+    public String coverTitlePositionOrDefault() { return coverTitlePosition != null ? coverTitlePosition : "middle"; }
+    public String coverTitleColorOrDefault()    { return coverTitleColor    != null ? coverTitleColor    : "#000000"; }
+    public String tocColorOrDefault()           { return tocColor           != null ? tocColor           : "#000000"; }
 
     public boolean isTocEnabled()       { return tocEnabled == null || tocEnabled; }
     public String tocTitleOrDefault()   { return tocTitle != null && !tocTitle.isBlank() ? tocTitle : "Inhaltsverzeichnis"; }
