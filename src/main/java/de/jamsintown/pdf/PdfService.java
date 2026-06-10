@@ -238,7 +238,13 @@ public class PdfService {
         ).list()
         .chain(texte -> loadItemStats(bilder, texte, options)
             .chain(stats -> resolveStoryBackground(story)
-                .map(bg -> new StoryData(story, bilder, texte, stats[0], stats[1], bg)))));
+                .chain(bg -> de.jamsintown.story.TextBildLink.<de.jamsintown.story.TextBildLink>find(
+                        "text.story = ?1 OR bild.story = ?1", story).list()
+                    .map(links -> {
+                        List<long[]> pairs = links.stream()
+                            .map(l -> new long[]{l.text.id, l.bild.id}).toList();
+                        return new StoryData(story, bilder, texte, stats[0], stats[1], bg, pairs);
+                    })))));
     }
 
     private Uni<ResolvedBackground> resolveBackground(BackgroundImage bg) {
@@ -671,16 +677,17 @@ public class PdfService {
             }
         }
 
-        record Item(int pos, boolean isBild, Bild bild, Text text) {}
-        List<Item> flow = Stream.concat(
-            restBilder.stream().map(b -> new Item(b.storyPosition != null ? b.storyPosition : 0, true, b, null)),
-            texte.stream().map(t -> new Item(t.storyPosition != null ? t.storyPosition : 0, false, null, t))
-        ).sorted(Comparator.comparingInt(Item::pos)).toList();
+        List<FlowItem> flowItems = Stream.concat(
+            restBilder.stream().map(b -> new FlowItem(b.storyPosition != null ? b.storyPosition : 0, null, true, b, null)),
+            texte.stream().map(t -> new FlowItem(t.storyPosition != null ? t.storyPosition : 0, null, false, null, t))
+        ).sorted(Comparator.comparingInt(FlowItem::pos)).toList();
 
-        if (flow.isEmpty()) return;
+        if (flowItems.isEmpty()) return;
 
-        if (flow.size() == 1) {
-            Item item = flow.get(0);
+        List<List<FlowItem>> clusters = buildClusters(flowItems, sd.links());
+
+        if (clusters.size() == 1 && clusters.get(0).size() == 1) {
+            FlowItem item = clusters.get(0).get(0);
             if (item.isBild()) {
                 doc.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(60), heroes.size(), false, compact,
                     stats(sd.bildStats(), item.bild().id), settings).setHorizontalAlignment(com.itextpdf.layout.properties.HorizontalAlignment.CENTER));
@@ -695,14 +702,27 @@ public class PdfService {
         Cell left = new Cell().setBorder(null).setPaddingRight(8).setVerticalAlignment(VerticalAlignment.TOP);
         Cell right = new Cell().setBorder(null).setPaddingLeft(8).setPaddingRight(8).setVerticalAlignment(VerticalAlignment.TOP);
 
-        for (int i = 0; i < flow.size(); i++) {
-            Item item = flow.get(i);
+        for (int i = 0; i < clusters.size(); i++) {
             Cell target = (i % 2 == 0) ? left : right;
-            if (item.isBild()) {
-                target.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(82), heroes.size() + i, false, compact,
-                    stats(sd.bildStats(), item.bild().id), settings));
+            List<FlowItem> cluster = clusters.get(i);
+            if (cluster.size() == 1 && cluster.get(0).isBild()) {
+                target.add(buildPolaroidDiv(cluster.get(0).bild(), UnitValue.createPercentValue(82),
+                    heroes.size() + i, false, compact, stats(sd.bildStats(), cluster.get(0).bild().id), settings));
+            } else if (cluster.size() > 1) {
+                Div clusterDiv = new Div().setKeepTogether(true);
+                for (FlowItem fi : cluster) {
+                    if (fi.isBild()) {
+                        clusterDiv.add(buildPolaroidDiv(fi.bild(), UnitValue.createPercentValue(82),
+                            heroes.size() + i, false, compact, stats(sd.bildStats(), fi.bild().id), settings));
+                    } else {
+                        clusterDiv.add(buildTextDiv(fi.text(), stats(sd.textStats(), fi.text().id), settings)
+                            .setMarginTop(4).setMarginBottom(8));
+                    }
+                }
+                target.add(clusterDiv);
             } else {
-                target.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id), settings).setMarginTop(4).setMarginBottom(8));
+                target.add(buildTextDiv(cluster.get(0).text(), stats(sd.textStats(), cluster.get(0).text().id), settings)
+                    .setMarginTop(4).setMarginBottom(8));
             }
         }
         grid.addCell(left);
@@ -710,23 +730,87 @@ public class PdfService {
         doc.add(grid);
     }
 
+    // ── Cluster-Logik ────────────────────────────────────────────────────────
+
+    record FlowItem(int pos, Integer column, boolean isBild, Bild bild, Text text) {}
+
+    /** Gruppiert Items per Union-Find nach ihren text_bild_link-Verbindungen.
+     *  Jeder Cluster enthält nach Position sortierte Items. */
+    private List<List<FlowItem>> buildClusters(List<FlowItem> items, List<long[]> links) {
+        if (links.isEmpty()) return items.stream().map(i -> List.of(i)).toList();
+
+        Map<String, String> parent = new HashMap<>();
+        java.util.function.UnaryOperator<String> find = null;
+        // iterative path-compression find via wrapper
+        Map<String, String> p = parent;
+        java.util.function.Function<String, String> findFn = new java.util.function.Function<>() {
+            public String apply(String k) {
+                p.putIfAbsent(k, k);
+                while (!p.get(k).equals(k)) {
+                    p.put(k, p.get(p.get(k)));
+                    k = p.get(k);
+                }
+                return k;
+            }
+        };
+        for (FlowItem item : items) {
+            String key = item.isBild() ? "B" + item.bild().id : "T" + item.text().id;
+            parent.put(key, key);
+        }
+        for (long[] link : links) {
+            String tk = "T" + link[0], bk = "B" + link[1];
+            if (!parent.containsKey(tk) || !parent.containsKey(bk)) continue;
+            String rt = findFn.apply(tk), rb = findFn.apply(bk);
+            if (!rt.equals(rb)) parent.put(rt, rb);
+        }
+        Map<String, List<FlowItem>> groups = new LinkedHashMap<>();
+        for (FlowItem item : items) {
+            String key = item.isBild() ? "B" + item.bild().id : "T" + item.text().id;
+            String root = findFn.apply(key);
+            groups.computeIfAbsent(root, k -> new ArrayList<>()).add(item);
+        }
+        return groups.values().stream()
+            .map(g -> g.stream().sorted(Comparator.comparingInt(FlowItem::pos)).toList())
+            .toList();
+    }
+
+    private com.itextpdf.layout.element.IBlockElement buildFlowItemElement(
+            FlowItem item, UnitValue width, boolean compact, StoryData sd, PdfSettings settings) {
+        if (item.isBild()) {
+            return buildBildDiv(item.bild(), width, compact, stats(sd.bildStats(), item.bild().id), settings);
+        }
+        return buildTextDiv(item.text(), stats(sd.textStats(), item.text().id), settings)
+            .setMarginTop(4).setMarginBottom(8);
+    }
+
+    private void addClusterItems(
+            List<FlowItem> cluster, UnitValue width, boolean compact, StoryData sd, PdfSettings settings,
+            java.util.function.Consumer<com.itextpdf.layout.element.IBlockElement> adder) {
+        if (cluster.size() == 1) {
+            adder.accept(buildFlowItemElement(cluster.get(0), width, compact, sd, settings));
+            return;
+        }
+        Div div = new Div().setKeepTogether(true);
+        for (FlowItem item : cluster) {
+            div.add(buildFlowItemElement(item, width, compact, sd, settings));
+        }
+        adder.accept(div);
+    }
+
+    // ── Layout-Renderer ──────────────────────────────────────────────────────
+
     private void renderOneColumn(Document doc, StoryData sd) {
         renderOneColumn(doc, sd, false);
     }
 
     private void renderOneColumn(Document doc, StoryData sd, boolean compact) {
-        record Item(int pos, boolean isBild, Bild bild, Text text) {}
-        List<Item> items = Stream.concat(
-            sd.bilder().stream().map(b -> new Item(b.storyPosition != null ? b.storyPosition : 0, true, b, null)),
-            sd.texte().stream().map(t -> new Item(t.storyPosition != null ? t.storyPosition : 0, false, null, t))
-        ).sorted(Comparator.comparingInt(Item::pos)).toList();
+        List<FlowItem> items = Stream.concat(
+            sd.bilder().stream().map(b -> new FlowItem(b.storyPosition != null ? b.storyPosition : 0, b.storyColumn, true, b, null)),
+            sd.texte().stream().map(t -> new FlowItem(t.storyPosition != null ? t.storyPosition : 0, t.storyColumn, false, null, t))
+        ).sorted(Comparator.comparingInt(FlowItem::pos)).toList();
 
-        for (Item item : items) {
-            if (item.isBild()) {
-                doc.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact, stats(sd.bildStats(), item.bild().id)));
-            } else {
-                doc.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id)));
-            }
+        for (List<FlowItem> cluster : buildClusters(items, sd.links())) {
+            addClusterItems(cluster, UnitValue.createPercentValue(100), compact, sd, PdfSettings.defaults(), doc::add);
         }
     }
 
@@ -735,35 +819,28 @@ public class PdfService {
     }
 
     private void renderTwoColumn(Document doc, StoryData sd, boolean compact) {
-        record Item(int pos, boolean isBild, Bild bild, Text text) {}
-
-        List<Item> col0 = Stream.concat(
+        List<FlowItem> col0items = Stream.concat(
             sd.bilder().stream().filter(b -> b.storyColumn == null || b.storyColumn == 0)
-                .map(b -> new Item(b.storyPosition != null ? b.storyPosition : 0, true, b, null)),
+                .map(b -> new FlowItem(b.storyPosition != null ? b.storyPosition : 0, 0, true, b, null)),
             sd.texte().stream().filter(t -> t.storyColumn == null || t.storyColumn == 0)
-                .map(t -> new Item(t.storyPosition != null ? t.storyPosition : 0, false, null, t))
-        ).sorted(Comparator.comparingInt(Item::pos)).toList();
+                .map(t -> new FlowItem(t.storyPosition != null ? t.storyPosition : 0, 0, false, null, t))
+        ).sorted(Comparator.comparingInt(FlowItem::pos)).toList();
 
-        List<Item> col1 = Stream.concat(
+        List<FlowItem> col1items = Stream.concat(
             sd.bilder().stream().filter(b -> b.storyColumn != null && b.storyColumn == 1)
-                .map(b -> new Item(b.storyPosition != null ? b.storyPosition : 0, true, b, null)),
+                .map(b -> new FlowItem(b.storyPosition != null ? b.storyPosition : 0, 1, true, b, null)),
             sd.texte().stream().filter(t -> t.storyColumn != null && t.storyColumn == 1)
-                .map(t -> new Item(t.storyPosition != null ? t.storyPosition : 0, false, null, t))
-        ).sorted(Comparator.comparingInt(Item::pos)).toList();
+                .map(t -> new FlowItem(t.storyPosition != null ? t.storyPosition : 0, 1, false, null, t))
+        ).sorted(Comparator.comparingInt(FlowItem::pos)).toList();
 
         Table table = new Table(UnitValue.createPercentArray(new float[]{1, 1})).useAllAvailableWidth().setMarginBottom(8);
-
         Cell leftCell = new Cell().setBorder(null).setPaddingRight(3).setVerticalAlignment(VerticalAlignment.TOP);
-        for (Item item : col0) {
-            if (item.isBild()) leftCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact, stats(sd.bildStats(), item.bild().id)));
-            else leftCell.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id)));
-        }
-
         Cell rightCell = new Cell().setBorder(null).setPaddingLeft(3).setVerticalAlignment(VerticalAlignment.TOP);
-        for (Item item : col1) {
-            if (item.isBild()) rightCell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact, stats(sd.bildStats(), item.bild().id)));
-            else rightCell.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id)));
-        }
+
+        for (List<FlowItem> cluster : buildClusters(col0items, sd.links()))
+            addClusterItems(cluster, UnitValue.createPercentValue(100), compact, sd, PdfSettings.defaults(), leftCell::add);
+        for (List<FlowItem> cluster : buildClusters(col1items, sd.links()))
+            addClusterItems(cluster, UnitValue.createPercentValue(100), compact, sd, PdfSettings.defaults(), rightCell::add);
 
         table.addCell(leftCell);
         table.addCell(rightCell);
@@ -775,26 +852,22 @@ public class PdfService {
     }
 
     private void renderThreeColumn(Document doc, StoryData sd, boolean compact) {
-        record Item(int pos, boolean isBild, Bild bild, Text text) {}
-
-        java.util.function.IntFunction<List<Item>> colItems = c -> Stream.concat(
-            sd.bilder().stream().filter(b -> c == 0 ? (b.storyColumn == null || b.storyColumn == 0) : b.storyColumn != null && b.storyColumn == c)
-                .map(b -> new Item(b.storyPosition != null ? b.storyPosition : 0, true, b, null)),
-            sd.texte().stream().filter(t -> c == 0 ? (t.storyColumn == null || t.storyColumn == 0) : t.storyColumn != null && t.storyColumn == c)
-                .map(t -> new Item(t.storyPosition != null ? t.storyPosition : 0, false, null, t))
-        ).sorted(Comparator.comparingInt(Item::pos)).toList();
-
         Table table = new Table(UnitValue.createPercentArray(new float[]{1, 1, 1})).useAllAvailableWidth().setMarginBottom(8);
-
         for (int c = 0; c < 3; c++) {
+            final int col = c;
+            List<FlowItem> colItems = Stream.concat(
+                sd.bilder().stream().filter(b -> col == 0 ? (b.storyColumn == null || b.storyColumn == 0) : b.storyColumn != null && b.storyColumn == col)
+                    .map(b -> new FlowItem(b.storyPosition != null ? b.storyPosition : 0, col, true, b, null)),
+                sd.texte().stream().filter(t -> col == 0 ? (t.storyColumn == null || t.storyColumn == 0) : t.storyColumn != null && t.storyColumn == col)
+                    .map(t -> new FlowItem(t.storyPosition != null ? t.storyPosition : 0, col, false, null, t))
+            ).sorted(Comparator.comparingInt(FlowItem::pos)).toList();
+
             float padLeft = c > 0 ? 3 : 0;
             float padRight = c < 2 ? 3 : 0;
             Cell cell = new Cell().setBorder(null).setPaddingLeft(padLeft).setPaddingRight(padRight)
                 .setVerticalAlignment(VerticalAlignment.TOP);
-            for (Item item : colItems.apply(c)) {
-                if (item.isBild()) cell.add(buildBildDiv(item.bild(), UnitValue.createPercentValue(100), compact, stats(sd.bildStats(), item.bild().id)));
-                else cell.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id)));
-            }
+            for (List<FlowItem> cluster : buildClusters(colItems, sd.links()))
+                addClusterItems(cluster, UnitValue.createPercentValue(100), compact, sd, PdfSettings.defaults(), cell::add);
             table.addCell(cell);
         }
         doc.add(table);
@@ -1167,8 +1240,15 @@ public class PdfService {
         List<Text> texte,
         Map<Long, ItemStats> bildStats,
         Map<Long, ItemStats> textStats,
-        ResolvedBackground resolvedBackground
-    ) {}
+        ResolvedBackground resolvedBackground,
+        List<long[]> links
+    ) {
+        StoryData(Story story, List<Bild> bilder, List<Text> texte,
+                  Map<Long, ItemStats> bildStats, Map<Long, ItemStats> textStats,
+                  ResolvedBackground resolvedBackground) {
+            this(story, bilder, texte, bildStats, textStats, resolvedBackground, List.of());
+        }
+    }
 
     private static class BackgroundController {
         volatile ResolvedBackground current;
