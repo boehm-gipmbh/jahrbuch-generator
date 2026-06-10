@@ -80,4 +80,7 @@ public class Bild extends PanacheEntity {
 
     @Column(name = "caption", columnDefinition = "text")
     public String caption;
+
+    @Column(name = "cluster_id")
+    public Long clusterId;
 }

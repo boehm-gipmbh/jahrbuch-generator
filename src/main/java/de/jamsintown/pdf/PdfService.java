@@ -238,13 +238,7 @@ public class PdfService {
         ).list()
         .chain(texte -> loadItemStats(bilder, texte, options)
             .chain(stats -> resolveStoryBackground(story)
-                .chain(bg -> de.jamsintown.story.TextBildLink.<de.jamsintown.story.TextBildLink>find(
-                        "text.story = ?1 OR bild.story = ?1", story).list()
-                    .map(links -> {
-                        List<long[]> pairs = links.stream()
-                            .map(l -> new long[]{l.text.id, l.bild.id}).toList();
-                        return new StoryData(story, bilder, texte, stats[0], stats[1], bg, pairs);
-                    })))));
+                .map(bg -> new StoryData(story, bilder, texte, stats[0], stats[1], bg)))));
     }
 
     private Uni<ResolvedBackground> resolveBackground(BackgroundImage bg) {
@@ -684,7 +678,7 @@ public class PdfService {
 
         if (flowItems.isEmpty()) return;
 
-        List<List<FlowItem>> clusters = buildClusters(flowItems, sd.links());
+        List<List<FlowItem>> clusters = buildClusters(flowItems);
 
         if (clusters.size() == 1 && clusters.get(0).size() == 1) {
             FlowItem item = clusters.get(0).get(0);
@@ -736,42 +730,23 @@ public class PdfService {
 
     /** Gruppiert Items per Union-Find nach ihren text_bild_link-Verbindungen.
      *  Jeder Cluster enthält nach Position sortierte Items. */
-    private List<List<FlowItem>> buildClusters(List<FlowItem> items, List<long[]> links) {
-        if (links.isEmpty()) return items.stream().map(i -> List.of(i)).toList();
-
-        Map<String, String> parent = new HashMap<>();
-        java.util.function.UnaryOperator<String> find = null;
-        // iterative path-compression find via wrapper
-        Map<String, String> p = parent;
-        java.util.function.Function<String, String> findFn = new java.util.function.Function<>() {
-            public String apply(String k) {
-                p.putIfAbsent(k, k);
-                while (!p.get(k).equals(k)) {
-                    p.put(k, p.get(p.get(k)));
-                    k = p.get(k);
-                }
-                return k;
+    private List<List<FlowItem>> buildClusters(List<FlowItem> items) {
+        Map<Long, List<FlowItem>> clusterMap = new LinkedHashMap<>();
+        List<List<FlowItem>> result = new ArrayList<>();
+        for (FlowItem item : items) {
+            Long cid = item.isBild() ? item.bild().clusterId : item.text().clusterId;
+            if (cid == null) {
+                result.add(new ArrayList<>(List.of(item)));
+            } else {
+                List<FlowItem> group = clusterMap.computeIfAbsent(cid, k -> {
+                    List<FlowItem> g = new ArrayList<>();
+                    result.add(g);
+                    return g;
+                });
+                group.add(item);
             }
-        };
-        for (FlowItem item : items) {
-            String key = item.isBild() ? "B" + item.bild().id : "T" + item.text().id;
-            parent.put(key, key);
         }
-        for (long[] link : links) {
-            String tk = "T" + link[0], bk = "B" + link[1];
-            if (!parent.containsKey(tk) || !parent.containsKey(bk)) continue;
-            String rt = findFn.apply(tk), rb = findFn.apply(bk);
-            if (!rt.equals(rb)) parent.put(rt, rb);
-        }
-        Map<String, List<FlowItem>> groups = new LinkedHashMap<>();
-        for (FlowItem item : items) {
-            String key = item.isBild() ? "B" + item.bild().id : "T" + item.text().id;
-            String root = findFn.apply(key);
-            groups.computeIfAbsent(root, k -> new ArrayList<>()).add(item);
-        }
-        return groups.values().stream()
-            .map(g -> g.stream().sorted(Comparator.comparingInt(FlowItem::pos)).toList())
-            .toList();
+        return result;
     }
 
     private com.itextpdf.layout.element.IBlockElement buildFlowItemElement(
@@ -809,7 +784,7 @@ public class PdfService {
             sd.texte().stream().map(t -> new FlowItem(t.storyPosition != null ? t.storyPosition : 0, t.storyColumn, false, null, t))
         ).sorted(Comparator.comparingInt(FlowItem::pos)).toList();
 
-        for (List<FlowItem> cluster : buildClusters(items, sd.links())) {
+        for (List<FlowItem> cluster : buildClusters(items)) {
             addClusterItems(cluster, UnitValue.createPercentValue(100), compact, sd, PdfSettings.defaults(), doc::add);
         }
     }
@@ -837,9 +812,9 @@ public class PdfService {
         Cell leftCell = new Cell().setBorder(null).setPaddingRight(3).setVerticalAlignment(VerticalAlignment.TOP);
         Cell rightCell = new Cell().setBorder(null).setPaddingLeft(3).setVerticalAlignment(VerticalAlignment.TOP);
 
-        for (List<FlowItem> cluster : buildClusters(col0items, sd.links()))
+        for (List<FlowItem> cluster : buildClusters(col0items))
             addClusterItems(cluster, UnitValue.createPercentValue(100), compact, sd, PdfSettings.defaults(), leftCell::add);
-        for (List<FlowItem> cluster : buildClusters(col1items, sd.links()))
+        for (List<FlowItem> cluster : buildClusters(col1items))
             addClusterItems(cluster, UnitValue.createPercentValue(100), compact, sd, PdfSettings.defaults(), rightCell::add);
 
         table.addCell(leftCell);
@@ -866,7 +841,7 @@ public class PdfService {
             float padRight = c < 2 ? 3 : 0;
             Cell cell = new Cell().setBorder(null).setPaddingLeft(padLeft).setPaddingRight(padRight)
                 .setVerticalAlignment(VerticalAlignment.TOP);
-            for (List<FlowItem> cluster : buildClusters(colItems, sd.links()))
+            for (List<FlowItem> cluster : buildClusters(colItems))
                 addClusterItems(cluster, UnitValue.createPercentValue(100), compact, sd, PdfSettings.defaults(), cell::add);
             table.addCell(cell);
         }
@@ -1240,15 +1215,8 @@ public class PdfService {
         List<Text> texte,
         Map<Long, ItemStats> bildStats,
         Map<Long, ItemStats> textStats,
-        ResolvedBackground resolvedBackground,
-        List<long[]> links
-    ) {
-        StoryData(Story story, List<Bild> bilder, List<Text> texte,
-                  Map<Long, ItemStats> bildStats, Map<Long, ItemStats> textStats,
-                  ResolvedBackground resolvedBackground) {
-            this(story, bilder, texte, bildStats, textStats, resolvedBackground, List.of());
-        }
-    }
+        ResolvedBackground resolvedBackground
+    ) {}
 
     private static class BackgroundController {
         volatile ResolvedBackground current;

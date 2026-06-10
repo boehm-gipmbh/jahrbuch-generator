@@ -58,4 +58,7 @@ public class Text extends PanacheEntity {
 
     @Column(name = "deleted_from_story_name")
     public String deletedFromStoryName;
+
+    @Column(name = "cluster_id")
+    public Long clusterId;
 }
