@@ -27,7 +27,8 @@ public record PdfSettings(
     Boolean tocShowPageNumbers,
     Integer tocColumns,
     String coverTitlePosition,
-    String coverTitleColor
+    String coverTitleColor,
+    String tocTitleColor
 ) {
     public static PdfSettings defaults() {
         return new PdfSettings(
@@ -50,12 +51,14 @@ public record PdfSettings(
             true,                    // tocShowPageNumbers
             1,                       // tocColumns
             "middle",                // coverTitlePosition
-            "#000000"                // coverTitleColor
+            "#000000",               // coverTitleColor
+            "#000000"                // tocTitleColor
         );
     }
 
     public String coverTitlePositionOrDefault() { return coverTitlePosition != null ? coverTitlePosition : "middle"; }
     public String coverTitleColorOrDefault()    { return coverTitleColor    != null ? coverTitleColor    : "#000000"; }
+    public String tocTitleColorOrDefault()      { return tocTitleColor      != null ? tocTitleColor      : "#000000"; }
 
     public boolean isTocEnabled()       { return tocEnabled == null || tocEnabled; }
     public String tocTitleOrDefault()   { return tocTitle != null && !tocTitle.isBlank() ? tocTitle : "Inhaltsverzeichnis"; }

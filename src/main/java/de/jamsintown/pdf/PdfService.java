@@ -527,9 +527,11 @@ public class PdfService {
 
         if (font != null) doc.setFont(font);
 
+        DeviceRgb tocColor = hexToRgb(settings.tocTitleColorOrDefault());
         doc.add(new Paragraph(tocTitle)
             .setFontSize(titleSize)
             .setBold()
+            .setFontColor(tocColor)
             .setTextAlignment(TextAlignment.CENTER)
             .setMarginBottom(20));
 
