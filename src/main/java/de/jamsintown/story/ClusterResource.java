@@ -11,7 +11,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 @Path("/api/v1/clusters")
-@RolesAllowed("group-admin")
+@RolesAllowed("user")
 public class ClusterResource {
 
     public record LinkRequest(String typeA, Long idA, String typeB, Long idB) {}
