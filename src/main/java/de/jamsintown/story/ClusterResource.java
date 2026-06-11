@@ -30,31 +30,28 @@ public class ClusterResource {
     @WithTransaction
     public Uni<Response> link(LinkRequest req) {
         return userService.getCurrentUser()
-            .chain(user -> Uni.combine().all()
-                .unis(loadAndCheck(req.typeA(), req.idA(), user),
-                      loadAndCheck(req.typeB(), req.idB(), user))
-                .asTuple())
-            .chain(t -> {
-                Long cidA = t.getItem1(), cidB = t.getItem2();
-                if (cidA != null && cidA.equals(cidB))
-                    return Uni.createFrom().item(Response.ok(cidA).build());
-                if (cidA == null && cidB == null)
-                    return new Cluster().<Cluster>persistAndFlush()
-                        .chain(c -> setClusterId(req.typeA(), req.idA(), c.id)
-                            .chain(v -> setClusterId(req.typeB(), req.idB(), c.id))
-                            .map(v -> Response.ok(c.id).build()));
-                if (cidA == null)
-                    return setClusterId(req.typeA(), req.idA(), cidB)
-                        .map(v -> Response.ok(cidB).build());
-                if (cidB == null)
-                    return setClusterId(req.typeB(), req.idB(), cidA)
-                        .map(v -> Response.ok(cidA).build());
-                Long winner = cidA, loser = cidB;
-                return Bild.<Bild>update("clusterId = ?1 WHERE clusterId = ?2", winner, loser)
-                    .chain(v -> Text.<Text>update("clusterId = ?1 WHERE clusterId = ?2", winner, loser))
-                    .chain(v -> Cluster.deleteById(loser))
-                    .map(v -> Response.ok(winner).build());
-            });
+            .chain(user -> loadAndCheck(req.typeA(), req.idA(), user)
+                .chain(cidA -> loadAndCheck(req.typeB(), req.idB(), user)
+                    .chain(cidB -> {
+                        if (cidA != null && cidA.equals(cidB))
+                            return Uni.createFrom().item(Response.ok(cidA).build());
+                        if (cidA == null && cidB == null)
+                            return new Cluster().<Cluster>persistAndFlush()
+                                .chain(c -> setClusterId(req.typeA(), req.idA(), c.id)
+                                    .chain(v -> setClusterId(req.typeB(), req.idB(), c.id))
+                                    .map(v -> Response.ok(c.id).build()));
+                        if (cidA == null)
+                            return setClusterId(req.typeA(), req.idA(), cidB)
+                                .map(v -> Response.ok(cidB).build());
+                        if (cidB == null)
+                            return setClusterId(req.typeB(), req.idB(), cidA)
+                                .map(v -> Response.ok(cidA).build());
+                        Long winner = cidA, loser = cidB;
+                        return Bild.<Bild>update("clusterId = ?1 WHERE clusterId = ?2", winner, loser)
+                            .chain(v -> Text.<Text>update("clusterId = ?1 WHERE clusterId = ?2", winner, loser))
+                            .chain(v -> Cluster.deleteById(loser))
+                            .map(v -> Response.ok(winner).build());
+                    })));
     }
 
     @DELETE
