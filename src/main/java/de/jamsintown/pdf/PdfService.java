@@ -648,43 +648,61 @@ public class PdfService {
             return;
         }
 
-        List<Bild> heroes = bilder.stream().filter(b -> b.hauptbild).toList();
+        List<Bild> heroes = bilder.stream()
+            .filter(b -> b.hauptbild)
+            .sorted(Comparator.comparingInt(b -> b.storyPosition != null ? b.storyPosition : 0))
+            .toList();
         List<Bild> restBilder = bilder.stream().filter(b -> !b.hauptbild).toList();
 
-        // Erstes Hero mit Header zusammen in keepTogether-Div – verhindert Seitenumbruch dazwischen
-        if (headerTable != null && !heroes.isEmpty()) {
-            Div headerAndHero = new Div().setKeepTogether(true);
-            headerAndHero.add(headerTable);
-            headerAndHero.add(new Paragraph("").setMarginBottom(10));
-            headerAndHero.add(buildPolaroidDiv(heroes.get(0), UnitValue.createPercentValue(94), 0, true, compact,
-                stats(sd.bildStats(), heroes.get(0).id), settings));
-            doc.add(headerAndHero);
-            for (int i = 1; i < heroes.size(); i++) {
-                doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact,
-                    stats(sd.bildStats(), heroes.get(i).id), settings));
+        // Mutable pool – hero-Cluster-Items werden herausgezogen
+        List<FlowItem> flowPool = new ArrayList<>(Stream.concat(
+            restBilder.stream().map(b -> new FlowItem(b.storyPosition != null ? b.storyPosition : 0, null, true, b, null)),
+            texte.stream().map(t -> new FlowItem(t.storyPosition != null ? t.storyPosition : 0, null, false, null, t))
+        ).sorted(Comparator.comparingInt(FlowItem::pos)).toList());
+
+        // Jeden Hero rendern, danach sofort seinen Cluster-Schwanz
+        for (int i = 0; i < heroes.size(); i++) {
+            Bild hero = heroes.get(i);
+            if (i == 0 && headerTable != null) {
+                Div headerAndHero = new Div().setKeepTogether(true);
+                headerAndHero.add(headerTable);
+                headerAndHero.add(new Paragraph("").setMarginBottom(10));
+                headerAndHero.add(buildPolaroidDiv(hero, UnitValue.createPercentValue(94), i, true, compact,
+                    stats(sd.bildStats(), hero.id), settings));
+                doc.add(headerAndHero);
+            } else {
+                doc.add(buildPolaroidDiv(hero, UnitValue.createPercentValue(94), i, true, compact,
+                    stats(sd.bildStats(), hero.id), settings));
             }
-        } else {
-            if (headerTable != null) doc.add(headerTable);
-            for (int i = 0; i < heroes.size(); i++) {
-                doc.add(buildPolaroidDiv(heroes.get(i), UnitValue.createPercentValue(94), i, true, compact,
-                    stats(sd.bildStats(), heroes.get(i).id), settings));
+            // Alle FlowItems mit derselben clusterId direkt nach dem Hero rendern
+            if (hero.clusterId != null) {
+                List<FlowItem> tail = flowPool.stream()
+                    .filter(fi -> Objects.equals(fi.isBild() ? fi.bild().clusterId : fi.text().clusterId, hero.clusterId))
+                    .toList();
+                if (!tail.isEmpty()) {
+                    renderFlowGrid(doc, tail, i, compact, sd, settings);
+                    flowPool.removeIf(fi -> Objects.equals(fi.isBild() ? fi.bild().clusterId : fi.text().clusterId, hero.clusterId));
+                }
             }
         }
 
-        List<FlowItem> flowItems = Stream.concat(
-            restBilder.stream().map(b -> new FlowItem(b.storyPosition != null ? b.storyPosition : 0, null, true, b, null)),
-            texte.stream().map(t -> new FlowItem(t.storyPosition != null ? t.storyPosition : 0, null, false, null, t))
-        ).sorted(Comparator.comparingInt(FlowItem::pos)).toList();
+        if (heroes.isEmpty() && headerTable != null) doc.add(headerTable);
 
-        if (flowItems.isEmpty()) return;
+        // Verbleibende Items (kein Hero-Cluster) normal im 2-Spalten-Grid
+        if (!flowPool.isEmpty()) {
+            renderFlowGrid(doc, flowPool, heroes.size(), compact, sd, settings);
+        }
+    }
 
-        List<List<FlowItem>> clusters = buildClusters(flowItems);
+    private void renderFlowGrid(Document doc, List<FlowItem> items, int heroOffset, boolean compact, StoryData sd, PdfSettings settings) {
+        List<List<FlowItem>> clusters = buildClusters(items);
 
         if (clusters.size() == 1 && clusters.get(0).size() == 1) {
             FlowItem item = clusters.get(0).get(0);
             if (item.isBild()) {
-                doc.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(60), heroes.size(), false, compact,
-                    stats(sd.bildStats(), item.bild().id), settings).setHorizontalAlignment(com.itextpdf.layout.properties.HorizontalAlignment.CENTER));
+                doc.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(60), heroOffset, false, compact,
+                    stats(sd.bildStats(), item.bild().id), settings)
+                    .setHorizontalAlignment(com.itextpdf.layout.properties.HorizontalAlignment.CENTER));
             } else {
                 doc.add(buildTextDiv(item.text(), stats(sd.textStats(), item.text().id), settings).setMarginTop(4).setMarginBottom(8));
             }
@@ -701,13 +719,13 @@ public class PdfService {
             List<FlowItem> cluster = clusters.get(i);
             if (cluster.size() == 1 && cluster.get(0).isBild()) {
                 target.add(buildPolaroidDiv(cluster.get(0).bild(), UnitValue.createPercentValue(82),
-                    heroes.size() + i, false, compact, stats(sd.bildStats(), cluster.get(0).bild().id), settings));
+                    heroOffset + i, false, compact, stats(sd.bildStats(), cluster.get(0).bild().id), settings));
             } else if (cluster.size() > 1) {
                 Div clusterDiv = new Div().setKeepTogether(true);
                 for (FlowItem fi : cluster) {
                     if (fi.isBild()) {
                         clusterDiv.add(buildPolaroidDiv(fi.bild(), UnitValue.createPercentValue(82),
-                            heroes.size() + i, false, compact, stats(sd.bildStats(), fi.bild().id), settings));
+                            heroOffset + i, false, compact, stats(sd.bildStats(), fi.bild().id), settings));
                     } else {
                         clusterDiv.add(buildTextDiv(fi.text(), stats(sd.textStats(), fi.text().id), settings)
                             .setMarginTop(4).setMarginBottom(8));
