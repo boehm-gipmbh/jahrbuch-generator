@@ -695,10 +695,11 @@ public class PdfService {
     }
 
     private void renderFlowGrid(Document doc, List<FlowItem> items, int heroOffset, boolean compact, StoryData sd, PdfSettings settings) {
-        List<List<FlowItem>> clusters = buildClusters(items);
+        if (items.isEmpty()) return;
 
-        if (clusters.size() == 1 && clusters.get(0).size() == 1) {
-            FlowItem item = clusters.get(0).get(0);
+        // Einzelnes Item: zentriert ohne Grid
+        if (items.size() == 1) {
+            FlowItem item = items.get(0);
             if (item.isBild()) {
                 doc.add(buildPolaroidDiv(item.bild(), UnitValue.createPercentValue(60), heroOffset, false, compact,
                     stats(sd.bildStats(), item.bild().id), settings)
@@ -709,31 +710,20 @@ public class PdfService {
             return;
         }
 
+        // Jedes Item füllt die nächste freie Zelle – von links nach rechts
         Table grid = new Table(UnitValue.createPercentArray(new float[]{1, 1}))
             .useAllAvailableWidth().setMarginTop(8);
         Cell left = new Cell().setBorder(null).setPaddingRight(8).setVerticalAlignment(VerticalAlignment.TOP);
         Cell right = new Cell().setBorder(null).setPaddingLeft(8).setPaddingRight(8).setVerticalAlignment(VerticalAlignment.TOP);
 
-        for (int i = 0; i < clusters.size(); i++) {
+        for (int i = 0; i < items.size(); i++) {
             Cell target = (i % 2 == 0) ? left : right;
-            List<FlowItem> cluster = clusters.get(i);
-            if (cluster.size() == 1 && cluster.get(0).isBild()) {
-                target.add(buildPolaroidDiv(cluster.get(0).bild(), UnitValue.createPercentValue(82),
-                    heroOffset + i, false, compact, stats(sd.bildStats(), cluster.get(0).bild().id), settings));
-            } else if (cluster.size() > 1) {
-                Div clusterDiv = new Div().setKeepTogether(true);
-                for (FlowItem fi : cluster) {
-                    if (fi.isBild()) {
-                        clusterDiv.add(buildPolaroidDiv(fi.bild(), UnitValue.createPercentValue(82),
-                            heroOffset + i, false, compact, stats(sd.bildStats(), fi.bild().id), settings));
-                    } else {
-                        clusterDiv.add(buildTextDiv(fi.text(), stats(sd.textStats(), fi.text().id), settings)
-                            .setMarginTop(4).setMarginBottom(8));
-                    }
-                }
-                target.add(clusterDiv);
+            FlowItem fi = items.get(i);
+            if (fi.isBild()) {
+                target.add(buildPolaroidDiv(fi.bild(), UnitValue.createPercentValue(82),
+                    heroOffset + i, false, compact, stats(sd.bildStats(), fi.bild().id), settings));
             } else {
-                target.add(buildTextDiv(cluster.get(0).text(), stats(sd.textStats(), cluster.get(0).text().id), settings)
+                target.add(buildTextDiv(fi.text(), stats(sd.textStats(), fi.text().id), settings)
                     .setMarginTop(4).setMarginBottom(8));
             }
         }
