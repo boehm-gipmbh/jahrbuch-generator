@@ -103,7 +103,7 @@ public class BildResource {
     @RolesAllowed("admin")
     public Uni<Void> clearCaption(@PathParam("id") long id) {
         return bildService.clearCaptionAdmin(id);
-    }
+        }
 
     @DELETE
     @Path("/captions")
