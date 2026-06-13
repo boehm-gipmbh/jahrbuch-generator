@@ -691,6 +691,13 @@ public class PdfService {
                 doc.add(buildPolaroidDiv(hero, UnitValue.createPercentValue(94), i, true, compact,
                     stats(sd.bildStats(), hero.id), settings));
             }
+            if (hero.description != null && !hero.description.isBlank()) {
+                doc.add(new Paragraph(hero.description)
+                    .setFontSize(settings.textDescriptionSize())
+                    .setTextAlignment(TextAlignment.JUSTIFIED)
+                    .setMarginTop(2).setMarginBottom(10)
+                    .setMarginLeft(8).setMarginRight(8));
+            }
             // Alle FlowItems mit derselben clusterId direkt nach dem Hero rendern
             if (hero.clusterId != null) {
                 List<FlowItem> tail = flowPool.stream()
