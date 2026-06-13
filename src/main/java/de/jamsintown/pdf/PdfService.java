@@ -974,12 +974,31 @@ public class PdfService {
         }
 
         String title = bild.getTitle();
-        if (title != null && !title.isBlank()) {
-            float captionSize = hero ? settings.imageCaptionSize() + 1 : settings.imageCaptionSize();
-            frame.add(new Paragraph(title)
-                .setFontSize(captionSize).setItalic()
-                .setTextAlignment(TextAlignment.CENTER)
-                .setMarginTop(4).setMarginBottom(0));
+        if (hero) {
+            if (title != null && !title.isBlank()) {
+                frame.add(new Paragraph(title)
+                    .setFontSize(settings.imageCaptionSize() + 1).setBold()
+                    .setMarginTop(6).setMarginBottom(2));
+            }
+            if (bild.description != null && !bild.description.isBlank()) {
+                frame.add(new Paragraph(bild.description)
+                    .setFontSize(settings.textDescriptionSize())
+                    .setTextAlignment(TextAlignment.JUSTIFIED)
+                    .setMarginTop(0).setMarginBottom(2));
+            }
+        } else {
+            if (title != null && !title.isBlank()) {
+                frame.add(new Paragraph(title)
+                    .setFontSize(settings.imageCaptionSize()).setItalic()
+                    .setTextAlignment(TextAlignment.CENTER)
+                    .setMarginTop(4).setMarginBottom(2));
+            }
+            if (bild.description != null && !bild.description.isBlank()) {
+                frame.add(new Paragraph(bild.description)
+                    .setFontSize(settings.textDescriptionSize())
+                    .setTextAlignment(TextAlignment.JUSTIFIED)
+                    .setMarginTop(0).setMarginBottom(0));
+            }
         }
         wrapper.add(frame);
         appendStats(wrapper, stats, settings);
